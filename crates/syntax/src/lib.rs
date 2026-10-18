@@ -1,16 +1,13 @@
 //! Lexer, parser and lossless CST for the FerroBASIC (B4X-compatible) language.
 //!
-//! Status: stub. See `docs/architecture.md` and `AGENTS.md`.
+//! Status: syntax kinds only; lexer and parser in progress. See
+//! `docs/spec/level0.ebnf` and `AGENTS.md`.
 
-/// Returns the crate version; placeholder until real functionality lands.
-pub fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
-}
+mod kind;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn version_is_set() {
-        assert!(!super::version().is_empty());
-    }
-}
+pub use kind::{FerroLanguage, SyntaxKind};
+
+/// A node of the lossless syntax tree.
+pub type SyntaxNode = rowan::SyntaxNode<FerroLanguage>;
+/// A token of the lossless syntax tree.
+pub type SyntaxToken = rowan::SyntaxToken<FerroLanguage>;
