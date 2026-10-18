@@ -138,8 +138,11 @@ a payload and a trailer:
 
 - The **payload** is the checked program as source text. It is the input module,
   or the project header plus main module, as UTF-8 bytes in a small container:
-  - a list of `(name: string, bytes)` entries;
-  - each string is a length (u32 LE) followed by UTF-8 bytes.
+  - an entry count (u32 LE), then each entry as its name and its bytes, each
+    a length (u32 LE) followed by the data; names are UTF-8;
+  - format version 1 has one entry, `main.bas`, the module's source as read.
+  - A payload with trailing bytes, a truncated entry or no `main.bas` is
+    corrupt (exit code 2).
 
   Source rather than MIR keeps the format free of any IR serialisation. The
   program was already fully checked at build time, so re-parsing at start-up
@@ -153,6 +156,7 @@ a payload and a trailer:
   - A trailer whose version it does not know, or whose length is impossible,
     exits with code 2.
 - Linux (ELF) and Windows (PE) ignore appended bytes, so the result runs as is.
+  Verified on Linux x86_64; Windows is not tested yet.
   - **macOS** is *(open)*: appended bytes break the code signature, and arm64
     refuses unsigned binaries.
   - Until it is verified, `ferro build` on macOS re-signs ad hoc
@@ -160,7 +164,8 @@ a payload and a trailer:
     rather than writing a binary that will not start.
 - **Dependencies**: the output depends on exactly what `ferro` itself depends on.
   On Linux that is the system C library (glibc), unless `ferro` was built for
-  `*-linux-musl`, which makes the output fully static. On Windows it needs no
+  `*-linux-musl`, which makes the output fully static (verified with
+  `x86_64-unknown-linux-musl`). On Windows it needs no
   extra DLLs.
 - Building for another OS or architecture is out of scope here (see M4 and the
   `zig cc` / `cargo-zigbuild` question).
