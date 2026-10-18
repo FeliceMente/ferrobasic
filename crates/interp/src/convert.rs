@@ -10,8 +10,41 @@ use crate::strings::to_rust;
 use crate::value::*;
 
 /// `Rvalue::Default`: 0, `False`, `""`, `Chr(0)`, `Null`, a fresh
-/// uninitialised wrapper or record, or an empty array.
-pub fn default_value(ty: &Ty) -> Value {
+/// uninitialised wrapper, an empty array, or a record whose fields hold
+/// Java defaults (see [`java_default`]) with `IsInitialized` false.
+pub fn default_value(ty: &Ty, program: &Program) -> Value {
+    match ty {
+        Ty::String => Value::Str(Rc::from(Vec::new())),
+        Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception => fresh_wrapper(ty),
+        // The contract says "an empty array of rank 1"; an array type of a
+        // higher rank gets an empty array with as many (zero) dimensions,
+        // so that indexing it reports an index error, not a rank mismatch.
+        Ty::Array(elem, rank) => Value::Array(Rc::new(ArrayObj {
+            elem: (**elem).clone(),
+            dims: vec![0; (*rank).max(1) as usize],
+            items: Rc::new(RefCell::new(Vec::new())),
+        })),
+        // B4J records are Java objects: `Dim p As T` creates one whose
+        // fields hold Java defaults; `Initialize` (the record's `init`
+        // function) then gives them their B4X defaults.
+        Ty::Record(id) => Value::Record(Rc::new(RecordObj {
+            id: *id,
+            initialized: std::cell::Cell::new(false),
+            fields: RefCell::new(
+                program
+                    .records
+                    .get(id.0 as usize)
+                    .map(|r| r.fields.iter().map(|f| java_default(&f.ty)).collect())
+                    .unwrap_or_default(),
+            ),
+        })),
+        _ => java_default(ty),
+    }
+}
+
+/// A Java field's default: 0, `false`, `'\0'` for primitives, `null` for
+/// every reference type (String, Object, wrappers, arrays, records).
+pub fn java_default(ty: &Ty) -> Value {
     match ty {
         Ty::Boolean => Value::Bool(false),
         Ty::Byte => Value::Byte(0),
@@ -21,24 +54,18 @@ pub fn default_value(ty: &Ty) -> Value {
         Ty::Float => Value::Float(0.0),
         Ty::Double => Value::Double(0.0),
         Ty::Char => Value::Char(0),
-        Ty::String => Value::Str(Rc::from(Vec::new())),
+        _ => Value::Null,
+    }
+}
+
+/// A new uninitialised `List`/`Map`/`StringBuilder`/`Exception` wrapper.
+pub fn fresh_wrapper(ty: &Ty) -> Value {
+    match ty {
         Ty::List => Value::List(Rc::new(RefCell::new(None))),
         Ty::Map => Value::Map(Rc::new(RefCell::new(None))),
         Ty::StringBuilder => Value::Sb(Rc::new(RefCell::new(None))),
         Ty::Exception => Value::Exc(None),
-        // The contract says "an empty array of rank 1"; an array type of a
-        // higher rank gets an empty array with as many (zero) dimensions,
-        // so that indexing it reports an index error, not a rank mismatch.
-        Ty::Array(elem, rank) => Value::Array(Rc::new(ArrayObj {
-            elem: (**elem).clone(),
-            dims: vec![0; (*rank).max(1) as usize],
-            items: Rc::new(RefCell::new(Vec::new())),
-        })),
-        Ty::Record(id) => Value::Record(Rc::new(RecordObj {
-            id: *id,
-            fields: RefCell::new(None),
-        })),
-        Ty::Object | Ty::Iterable | Ty::Void | Ty::Null | Ty::Error => Value::Null,
+        _ => Value::Null,
     }
 }
 
@@ -48,7 +75,7 @@ pub fn default_value(ty: &Ty) -> Value {
 /// converted (constants are only Int, Long and Double).
 pub fn coerce(ty: &Ty, v: Value) -> Value {
     match (ty, &v) {
-        (Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception, Value::Null) => default_value(ty),
+        (Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception, Value::Null) => fresh_wrapper(ty),
         (Ty::Byte, Value::Byte(_))
         | (Ty::Short, Value::Short(_))
         | (Ty::Int, Value::Int(_))
@@ -152,23 +179,73 @@ pub fn number_text(v: &Value) -> Option<String> {
 /// Any value converted to String, given its static type: numbers through
 /// `NumberToString`, wrappers through their `toString`, everything else
 /// through `String.valueOf`.
-pub fn to_string_from(v: &Value, from: &Ty, program: &Program) -> Value {
+pub fn to_string_from(v: &Value, from: &Ty, program: &Program) -> Result<Value, Exc> {
     if let Value::Str(_) = v {
-        return v.clone();
+        return Ok(v.clone());
     }
     if from.is_numeric()
         && let Some(s) = number_text(v)
     {
-        return Value::str(&s);
+        return Ok(Value::str(&s));
     }
     let mut out = Vec::new();
     match (from, v) {
         // A Null String or the Null literal stays a null String.
-        (Ty::String | Ty::Null, Value::Null) => return Value::Null,
-        (t, _) if is_wrapper_type(t) => wrapper_to_string(v, program, &mut out),
-        _ => raw_to_string(v, program, &mut out),
+        (Ty::String | Ty::Null, Value::Null) => return Ok(Value::Null),
+        (t, _) if is_wrapper_type(t) => wrapper_to_string(v, program, &mut out)?,
+        _ => raw_to_string(v, program, &mut out)?,
     }
-    Value::from_utf16(out)
+    Ok(Value::from_utf16(out))
+}
+
+/// Whether a Java array of `src_rank` dimensions over `src` can be viewed as
+/// one of `dst_rank` over `dst`: the same type, or reference-array
+/// covariance (`String()` is an `Object()`, `Int()` is not, and `Int(,)`
+/// is not an `Int()` but is an `Object()`, its elements being arrays).
+pub fn array_assignable(src: &Ty, src_rank: usize, dst: &Ty, dst_rank: usize) -> bool {
+    let is_ref = |t: &Ty, rank: usize| rank > 0 || t.is_reference();
+    if src_rank == dst_rank && src == dst {
+        return true;
+    }
+    if dst_rank == 0 {
+        return matches!(dst, Ty::Object) && is_ref(src, src_rank);
+    }
+    if src_rank == 0 {
+        return false;
+    }
+    is_ref(src, src_rank - 1)
+        && is_ref(dst, dst_rank - 1)
+        && array_assignable(src, src_rank - 1, dst, dst_rank - 1)
+}
+
+/// A value stored into an array whose runtime component type is `elem`:
+/// numbers are converted, and a value of another type raises
+/// `java.lang.ArrayStoreException` (the array may be a `String()` seen as an
+/// `Object()`).
+pub fn checked_store(elem: &Ty, v: Value, program: &Program) -> Result<Value, Exc> {
+    let ok = match (elem, &v) {
+        (Ty::Object | Ty::Iterable | Ty::Error | Ty::Void | Ty::Null, _) => true,
+        (t, Value::Null) => t.is_reference(),
+        (t, n) if t.is_numeric() => n.is_number(),
+        (Ty::Boolean, Value::Bool(_))
+        | (Ty::Char, Value::Char(_))
+        | (Ty::String, Value::Str(_))
+        | (Ty::List, Value::List(_))
+        | (Ty::Map, Value::Map(_))
+        | (Ty::StringBuilder, Value::Sb(_))
+        | (Ty::Exception, Value::Exc(_)) => true,
+        (Ty::Record(id), Value::Record(r)) => r.id == *id,
+        (Ty::Array(e, rank), Value::Array(a)) => {
+            array_assignable(&a.elem, a.dims.len(), e, *rank as usize)
+        }
+        _ => false,
+    };
+    if ok {
+        Ok(coerce(elem, v))
+    } else {
+        let class = java_class_name(&v, program).unwrap_or_else(|| "null".into());
+        Err(Exc::new(ARRAY_STORE, class))
+    }
 }
 
 /// `Rvalue::Convert`.
@@ -202,13 +279,15 @@ pub fn convert(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value,
             }
             _ => Err(class_cast(&v, "java.lang.Character", program)),
         },
-        Ty::String => Ok(to_string_from(&v, from, program)),
+        Ty::String => to_string_from(&v, from, program),
         Ty::Object => Ok(unwrap(v)),
         Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception => rewrap(v, to, program),
-        Ty::Array(elem, _) => match &v {
+        Ty::Array(elem, rank) => match &v {
             Value::Null => Ok(v),
-            Value::Array(a) if a.elem == **elem || matches!(**elem, Ty::Object) => Ok(v),
-            _ => Err(class_cast(&v, "[Ljava.lang.Object;", program)),
+            Value::Array(a) if array_assignable(&a.elem, a.dims.len(), elem, *rank as usize) => {
+                Ok(v)
+            }
+            _ => Err(class_cast(&v, &array_class_name(elem, *rank), program)),
         },
         Ty::Record(id) => match &v {
             Value::Null => Ok(v),
@@ -272,12 +351,12 @@ pub fn unwrap(v: Value) -> Value {
 /// `Object` (or another value) to a wrapper type.
 fn rewrap(v: Value, to: &Ty, program: &Program) -> Result<Value, Exc> {
     match (to, &v) {
-        (_, Value::Null) => Ok(default_value(to)),
+        (_, Value::Null) => Ok(fresh_wrapper(to)),
         (Ty::List, Value::List(_))
         | (Ty::Map, Value::Map(_))
         | (Ty::StringBuilder, Value::Sb(_))
         | (Ty::Exception, Value::Exc(_)) => Ok(match unwrap(v) {
-            Value::Null => default_value(to),
+            Value::Null => fresh_wrapper(to),
             w => w,
         }),
         (Ty::List, Value::Array(a)) => Ok(array_to_list(a)),
@@ -292,15 +371,13 @@ fn rewrap(v: Value, to: &Ty, program: &Program) -> Result<Value, Exc> {
 /// array of references it shares the array's storage (`Arrays.asList`); for
 /// an array of primitives the elements are copied into boxes.
 pub fn array_to_list(a: &Rc<ArrayObj>) -> Value {
-    let items = if a.elem.is_primitive() {
-        Rc::new(RefCell::new(a.items.borrow().clone()))
+    let list = if a.elem.is_primitive() || a.dims.len() > 1 {
+        ListObj::new(a.items.borrow().clone(), ListKind::FixedSize)
     } else {
-        a.items.clone()
+        // Stores through the list are checked against the array's type.
+        ListObj::shared(a.items.clone(), ListKind::FixedSize, Some(a.elem.clone()))
     };
-    Value::List(Rc::new(RefCell::new(Some(Rc::new(ListObj {
-        items,
-        kind: ListKind::FixedSize,
-    })))))
+    Value::List(Rc::new(RefCell::new(Some(Rc::new(list)))))
 }
 
 #[cfg(test)]
@@ -429,29 +506,32 @@ mod tests {
         let p = program();
         let list = Value::new_list(vec![Value::Int(1), Value::Double(2.0)], ListKind::Growable);
         assert_eq!(
-            text_of(&to_string_from(&list, &Ty::List, &p)),
+            text_of(&to_string_from(&list, &Ty::List, &p).unwrap()),
             "(ArrayList) [1, 2.0]"
         );
-        assert_eq!(text_of(&to_string_from(&list, &Ty::Object, &p)), "[1, 2.0]");
+        assert_eq!(
+            text_of(&to_string_from(&list, &Ty::Object, &p).unwrap()),
+            "[1, 2.0]"
+        );
         let mut m = OrderedMap::default();
         m.put(Value::str("a"), Value::Int(1));
         m.put(Value::str("b"), Value::Int(2));
         let map = Value::new_map(m);
         assert_eq!(
-            text_of(&to_string_from(&map, &Ty::Map, &p)),
+            text_of(&to_string_from(&map, &Ty::Map, &p).unwrap()),
             "(MyMap) {a=1, b=2}"
         );
-        let uninit = default_value(&Ty::List);
+        let uninit = fresh_wrapper(&Ty::List);
         assert_eq!(
-            text_of(&to_string_from(&uninit, &Ty::List, &p)),
+            text_of(&to_string_from(&uninit, &Ty::List, &p).unwrap()),
             "(List) Not initialized"
         );
-        let uninit = default_value(&Ty::Map);
+        let uninit = fresh_wrapper(&Ty::Map);
         assert_eq!(
-            text_of(&to_string_from(&uninit, &Ty::Map, &p)),
+            text_of(&to_string_from(&uninit, &Ty::Map, &p).unwrap()),
             "(Map) Not initialized"
         );
         // Converting an uninitialised list to Object gives Null.
-        assert!(matches!(unwrap(default_value(&Ty::List)), Value::Null));
+        assert!(matches!(unwrap(fresh_wrapper(&Ty::List)), Value::Null));
     }
 }

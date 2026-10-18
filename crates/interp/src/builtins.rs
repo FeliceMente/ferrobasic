@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use ferro_mir::{Builtin, Ty};
 
-use crate::convert::{array_to_list, default_value};
+use crate::convert::{array_to_list, checked_store};
 use crate::machine::{Machine, Signal, as_array, int_of};
 use crate::number::{JavaRandom, number_format, parse_java_double};
 use crate::strings::{self, compare_ignore_case, compare_to, to_rust, to_utf16};
@@ -227,12 +227,15 @@ impl Machine<'_, '_> {
         Ok(())
     }
 
-    fn text_key(&self, v: &Value) -> Result<Vec<u16>, Exc> {
-        if matches!(v, Value::Null) {
+    /// The text a case-insensitive sort compares. `SortCaseInsensitive`
+    /// calls `toString()` on the element, so Null raises; the `SortType`
+    /// comparator uses `String.valueOf`, so a Null field is `"null"`.
+    fn text_key(&self, v: &Value, null_is_text: bool) -> Result<Vec<u16>, Exc> {
+        if matches!(v, Value::Null) && !null_is_text {
             return Err(Exc::bare(NULL_POINTER));
         }
         let mut out = Vec::new();
-        raw_to_string(v, self.program, &mut out);
+        raw_to_string(v, self.program, &mut out)?;
         Ok(out)
     }
 
@@ -258,10 +261,7 @@ impl Machine<'_, '_> {
                     .iter()
                     .position(|f| f.name == name)
                     .ok_or_else(|| Exc::new(NO_SUCH_FIELD, name.clone()))?;
-                Ok(match r.fields.borrow().as_ref() {
-                    Some(f) => f[i].clone(),
-                    None => default_value(&def.fields[i].ty),
-                })
+                Ok(r.fields.borrow()[i].clone())
             })
             .collect()
     }
@@ -425,7 +425,7 @@ impl Machine<'_, '_> {
                 Err(Exc::internal("Initialize of a record outside a statement").into())
             }
             RecordIsInitialized => match recv()? {
-                Value::Record(r) => Ok(Value::Bool(r.fields.borrow().is_some())),
+                Value::Record(r) => Ok(Value::Bool(r.initialized.get())),
                 _ => Err(Exc::bare(NULL_POINTER).into()),
             },
         }
@@ -493,8 +493,10 @@ impl Machine<'_, '_> {
 
     fn sb_member(&self, b: Builtin, recv: &Value, args: &[Value]) -> Result<Value, Exc> {
         use Builtin::*;
-        let Value::Sb(w) = recv else {
-            return Err(Exc::internal("not a StringBuilder"));
+        let w = match recv {
+            Value::Sb(w) => w,
+            Value::Null => return Err(Exc::bare(NULL_POINTER)),
+            _ => return Err(Exc::internal("not a StringBuilder")),
         };
         match b {
             SbInitialize => {
@@ -555,34 +557,36 @@ impl Machine<'_, '_> {
 
     fn list_member(&self, b: Builtin, recv: &Value, args: &[Value]) -> Result<Value, Exc> {
         use Builtin::*;
-        let Value::List(w) = recv else {
-            return Err(Exc::internal("not a List"));
+        let w = match recv {
+            Value::List(w) => w,
+            // A Java `null` wrapper (a record field never initialised).
+            Value::Null => return Err(Exc::bare(NULL_POINTER)),
+            _ => return Err(Exc::internal("not a List")),
         };
         let n = |i| arg(args, i).and_then(int_of);
         let a = |i| arg(args, i);
-        // The inner list of a `List` argument (an array is wrapped).
-        let list_arg = |i| -> Result<Option<ListRef>, Exc> {
-            match a(i)? {
-                Value::List(w) => Ok(w.borrow().clone()),
+        // The inner list of a `List` argument (an array is wrapped); an
+        // uninitialised one raises, as `source.getObject()` does.
+        let list_arg = |i| -> Result<ListRef, Exc> {
+            let inner = match a(i)? {
+                Value::List(w) => w.borrow().clone(),
                 Value::Array(arr) => match array_to_list(arr) {
-                    Value::List(w) => Ok(w.borrow().clone()),
-                    _ => Ok(None),
+                    Value::List(w) => w.borrow().clone(),
+                    _ => None,
                 },
-                Value::Null => Ok(None),
-                _ => Err(Exc::internal("expected a List")),
-            }
+                Value::Null => None,
+                _ => return Err(Exc::internal("expected a List")),
+            };
+            inner.ok_or_else(|| Exc::not_initialized("List"))
         };
         match b {
             ListInitialize => {
-                *w.borrow_mut() = Some(Rc::new(ListObj {
-                    items: Rc::new(RefCell::new(Vec::new())),
-                    kind: ListKind::Growable,
-                }));
+                *w.borrow_mut() = Some(Rc::new(ListObj::new(Vec::new(), ListKind::Growable)));
                 return Ok(Value::Null);
             }
             ListInitialize2 => {
                 let inner = list_arg(0)?;
-                *w.borrow_mut() = inner;
+                *w.borrow_mut() = Some(inner);
                 return Ok(Value::Null);
             }
             ListIsInitialized => return Ok(Value::Bool(w.borrow().is_some())),
@@ -592,7 +596,8 @@ impl Machine<'_, '_> {
             .borrow()
             .clone()
             .ok_or_else(|| Exc::not_initialized("List"))?;
-        let size = list.items.borrow().len();
+        // Any access through a sub-list whose parent changed raises here.
+        let size = list.len()?;
         let unsupported = || Exc::bare(UNSUPPORTED);
         let growable = || {
             if list.kind == ListKind::Growable {
@@ -625,69 +630,84 @@ impl Machine<'_, '_> {
                 Ok(i as usize)
             }
         };
-        let elements = |l: Option<ListRef>| -> Result<Vec<Value>, Exc> {
-            Ok(l.ok_or_else(|| Exc::not_initialized("List"))?
-                .items
-                .borrow()
-                .clone())
-        };
+        let items = list.storage();
         Ok(match b {
             ListAdd => {
                 growable()?;
-                list.items.borrow_mut().push(a(0)?.clone());
+                items.borrow_mut().push(a(0)?.clone());
+                list.modified();
                 Value::Null
             }
             ListAddAll => {
-                let src = elements(list_arg(0)?)?;
+                let src = list_arg(0)?.to_vec()?;
                 growable()?;
-                list.items.borrow_mut().extend(src);
+                items.borrow_mut().extend(src);
+                list.modified();
                 Value::Null
             }
             ListAddAllAt => {
-                let src = elements(list_arg(1)?)?;
+                let src = list_arg(1)?.to_vec()?;
                 growable()?;
                 let at = for_add(n(0)?)?;
-                list.items.borrow_mut().splice(at..at, src);
+                items.borrow_mut().splice(at..at, src);
+                list.modified();
                 Value::Null
             }
             ListInsertAt => {
                 growable()?;
                 let at = for_add(n(0)?)?;
-                list.items.borrow_mut().insert(at, a(1)?.clone());
+                items.borrow_mut().insert(at, a(1)?.clone());
+                list.modified();
                 Value::Null
             }
-            ListGet => list.items.borrow()[checked(n(0)?)?].clone(),
+            ListGet => list
+                .get(checked(n(0)?)?)?
+                .ok_or_else(|| Exc::internal("list index"))?,
             ListSet => {
                 if list.kind == ListKind::ReadOnly {
                     return Err(unsupported());
                 }
                 let i = checked(n(0)?)?;
-                list.items.borrow_mut()[i] = a(1)?.clone();
+                // A list sharing an array's storage checks the array's type.
+                let value = match &list.elem {
+                    Some(elem) => checked_store(elem, a(1)?.clone(), self.program)?,
+                    None => a(1)?.clone(),
+                };
+                items.borrow_mut()[i] = value;
                 Value::Null
             }
             ListRemoveAt => {
                 growable()?;
                 let i = checked(n(0)?)?;
-                list.items.borrow_mut().remove(i);
+                items.borrow_mut().remove(i);
+                list.modified();
                 Value::Null
             }
             ListClear => {
-                if size > 0 {
-                    growable()?;
+                match list.kind {
+                    // `Collections.unmodifiableList.clear` always throws.
+                    ListKind::ReadOnly => return Err(unsupported()),
+                    // `Arrays.asList(...).clear()` only fails on a removal.
+                    ListKind::FixedSize if size > 0 => return Err(unsupported()),
+                    ListKind::FixedSize => {}
+                    ListKind::Growable => {
+                        items.borrow_mut().clear();
+                        list.modified();
+                    }
                 }
-                list.items.borrow_mut().clear();
                 Value::Null
             }
             ListSize => Value::Int(size as i32),
             ListIndexOf => {
                 let item = a(0)?;
-                let items = list.items.borrow().clone();
-                Value::Int(
-                    items
-                        .iter()
-                        .position(|x| java_equals(x, item))
-                        .map_or(-1, |i| i as i32),
-                )
+                let mut found = -1;
+                for (i, x) in list.to_vec()?.iter().enumerate() {
+                    if java_equals(x, item)? {
+                        found = i as i32;
+                        break;
+                    }
+                }
+                Value::Int(found)
             }
             ListSubList => {
                 let (from, to) = (n(0)?, n(1)?);
@@ -703,21 +723,28 @@ impl Machine<'_, '_> {
                         format!("fromIndex({from}) > toIndex({to})"),
                     ));
                 }
-                // A read-only copy: the spec calls it a read-only view, and
-                // changing the parent invalidates a Java view anyway.
-                let items = list.items.borrow()[from as usize..to as usize].to_vec();
-                Value::new_list(items, ListKind::ReadOnly)
+                // `Collections.unmodifiableList(subList(from, to))`: a live,
+                // read-only view of this list.
+                let view = ListObj::view(&list, from as usize, to as usize);
+                Value::List(Rc::new(RefCell::new(Some(Rc::new(view)))))
             }
             ListSort | ListSortCaseInsensitive | ListSortType | ListSortTypeCaseInsensitive => {
-                if list.kind == ListKind::ReadOnly && size > 0 {
+                let by_field = matches!(b, ListSortType | ListSortTypeCaseInsensitive);
+                // `SortType` returns early on an empty list; `Sort` calls
+                // `Collections.sort`, which an unmodifiable list refuses.
+                if by_field && size == 0 {
+                    return Ok(Value::Null);
+                }
+                if list.kind == ListKind::ReadOnly {
                     return Err(unsupported());
                 }
-                let items = list.items.borrow().clone();
-                let (keys, asc) = match b {
-                    ListSort | ListSortCaseInsensitive => (items.clone(), bool_arg(a(0)?)?),
-                    _ => (self.field_keys(&items, str_arg(a(0)?)?)?, bool_arg(a(1)?)?),
+                let values = list.to_vec()?;
+                let (keys, asc) = if by_field {
+                    (self.field_keys(&values, str_arg(a(0)?)?)?, bool_arg(a(1)?)?)
+                } else {
+                    (values.clone(), bool_arg(a(0)?)?)
                 };
-                let mut order: Vec<usize> = (0..items.len()).collect();
+                let mut order: Vec<usize> = (0..values.len()).collect();
                 if matches!(b, ListSort | ListSortType) {
                     self.check_comparable(&keys)?;
                     order.sort_by(|&x, &y| {
@@ -729,7 +756,7 @@ impl Machine<'_, '_> {
                         Vec::new()
                     } else {
                         keys.iter()
-                            .map(|k| self.text_key(k))
+                            .map(|k| self.text_key(k, by_field))
                             .collect::<Result<_, _>>()?
                     };
                     order.sort_by(|&x, &y| {
@@ -737,8 +764,12 @@ impl Machine<'_, '_> {
                         if asc { c } else { c.reverse() }
                     });
                 }
-                let sorted: Vec<Value> = order.into_iter().map(|i| items[i].clone()).collect();
-                *list.items.borrow_mut() = sorted;
+                let sorted: Vec<Value> = order.into_iter().map(|i| values[i].clone()).collect();
+                *items.borrow_mut() = sorted;
+                // `ArrayList.sort` counts as a structural modification.
+                if list.kind == ListKind::Growable {
+                    list.modified();
+                }
                 Value::Null
             }
             _ => return Err(Exc::internal("not a List member")),
@@ -747,8 +778,10 @@ impl Machine<'_, '_> {
 
     fn map_member(&self, b: Builtin, recv: &Value, args: &[Value]) -> Result<Value, Exc> {
         use Builtin::*;
-        let Value::Map(w) = recv else {
-            return Err(Exc::internal("not a Map"));
+        let w = match recv {
+            Value::Map(w) => w,
+            Value::Null => return Err(Exc::bare(NULL_POINTER)),
+            _ => return Err(Exc::internal("not a Map")),
         };
         match b {
             MapInitialize => {

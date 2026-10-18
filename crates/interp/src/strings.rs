@@ -24,14 +24,26 @@ pub fn compare_to(a: &[u16], b: &[u16]) -> i32 {
     a.len() as i32 - b.len() as i32
 }
 
-/// `Character.toUpperCase(char)`: the simple (one to one) mapping.
+/// `Character.toUpperCase(char)`: the simple (one to one) mapping of
+/// UnicodeData. Rust only offers the full mapping, which equals the simple
+/// one except for the characters it expands; of those, only the Greek
+/// letters with ypogegrammeni have a simple uppercase (their titlecase
+/// form), the others (`ß`, `ŉ`, ligatures, …) map to themselves.
 fn upper(c: u16) -> u16 {
-    simple_map(c, |ch| ch.to_uppercase().collect())
+    match c {
+        0x1F80..=0x1F87 | 0x1F90..=0x1F97 | 0x1FA0..=0x1FA7 => c + 8,
+        0x1FB3 | 0x1FC3 | 0x1FF3 => c + 9,
+        _ => simple_map(c, |ch| ch.to_uppercase().collect()),
+    }
 }
 
-/// `Character.toLowerCase(char)`.
+/// `Character.toLowerCase(char)`. The only full lowercase mapping that
+/// expands is U+0130 (`İ` → `i̇`), whose simple lowercase is `i`.
 fn lower(c: u16) -> u16 {
-    simple_map(c, |ch| ch.to_lowercase().collect())
+    match c {
+        0x0130 => 0x0069,
+        _ => simple_map(c, |ch| ch.to_lowercase().collect()),
+    }
 }
 
 fn simple_map(c: u16, f: impl Fn(char) -> Vec<char>) -> u16 {
@@ -204,5 +216,21 @@ mod tests {
         assert_eq!(to_lower(&u("ΟΔΟΣ")), u("\u{3bf}\u{3b4}\u{3bf}\u{3c2}"));
         assert_eq!(to_rust(&[0x61, 0xD800, 0x62]), "a?b");
         assert_eq!(to_upper(&[0x61, 0xD800]), vec![0x41, 0xD800]);
+    }
+
+    #[test]
+    fn case_insensitive_comparison_uses_java_simple_mappings() {
+        // Character.toLowerCase('İ') is 'i'.
+        assert!(equals_ignore_case(&u("\u{130}"), &u("i")));
+        assert!(equals_ignore_case(&u("\u{130}stanbul"), &u("ISTANBUL")));
+        assert_eq!(compare_ignore_case(&u("\u{130}b"), &u("ia")), 1);
+        // Characters whose full mapping expands but have no simple one.
+        assert!(!equals_ignore_case(&u("\u{df}"), &u("ss")));
+        assert_eq!(upper(0xDF), 0xDF);
+        assert_eq!(upper(0xFB01), 0xFB01);
+        // Ypogegrammeni letters map to their titlecase form.
+        assert_eq!(upper(0x1FB3), 0x1FBC);
+        assert_eq!(upper(0x1F80), 0x1F88);
+        assert!(equals_ignore_case(&u("\u{1fb3}"), &u("\u{1fbc}")));
     }
 }

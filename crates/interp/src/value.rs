@@ -34,15 +34,131 @@ pub enum ListKind {
     Growable,
     /// `Arrays.asList`: elements can be set, the size cannot change.
     FixedSize,
-    /// `SubList`: no change at all.
+    /// `SubList`: `Collections.unmodifiableList(parent.subList(a, b))`, a
+    /// read-only view of the parent.
     ReadOnly,
+}
+
+impl ListKind {
+    /// `getClass().getName()`.
+    pub fn class_name(self) -> &'static str {
+        match self {
+            ListKind::Growable => "java.util.ArrayList",
+            ListKind::FixedSize => "java.util.Arrays$ArrayList",
+            ListKind::ReadOnly => "java.util.Collections$UnmodifiableRandomAccessList",
+        }
+    }
+
+    /// `getClass().getSimpleName()`, the prefix a `List` prints with.
+    pub fn simple_name(self) -> &'static str {
+        match self {
+            ListKind::Growable | ListKind::FixedSize => "ArrayList",
+            ListKind::ReadOnly => "UnmodifiableRandomAccessList",
+        }
+    }
+}
+
+/// A `SubList` view: `len` elements of `parent` from `from`, valid while
+/// the parent's modification count is still `expected` (Java `modCount`).
+#[derive(Debug)]
+struct SubView {
+    parent: ListRef,
+    from: usize,
+    len: usize,
+    expected: u64,
 }
 
 #[derive(Debug)]
 pub struct ListObj {
-    /// Shared with the array for a fixed-size list made from a reference array.
-    pub items: Shared<Vec<Value>>,
     pub kind: ListKind,
+    /// The elements, shared with the array for a fixed-size list made from
+    /// a reference array. Empty and unused for a view.
+    items: Shared<Vec<Value>>,
+    /// The array's runtime component type when `items` is an array's
+    /// storage: stores are checked against it (`ArrayStoreException`).
+    pub elem: Option<Ty>,
+    /// Structural modifications so far (Java `modCount`).
+    mod_count: std::cell::Cell<u64>,
+    view: Option<SubView>,
+}
+
+pub const CONCURRENT_MODIFICATION: &str = "java.util.ConcurrentModificationException";
+
+impl ListObj {
+    pub fn new(items: Vec<Value>, kind: ListKind) -> ListObj {
+        ListObj::shared(Rc::new(RefCell::new(items)), kind, None)
+    }
+
+    pub fn shared(items: Shared<Vec<Value>>, kind: ListKind, elem: Option<Ty>) -> ListObj {
+        ListObj {
+            kind,
+            items,
+            elem,
+            mod_count: std::cell::Cell::new(0),
+            view: None,
+        }
+    }
+
+    /// A read-only view of `parent[from..to]` (bounds already checked).
+    pub fn view(parent: &ListRef, from: usize, to: usize) -> ListObj {
+        ListObj {
+            kind: ListKind::ReadOnly,
+            items: Rc::new(RefCell::new(Vec::new())),
+            elem: None,
+            mod_count: std::cell::Cell::new(0),
+            view: Some(SubView {
+                parent: parent.clone(),
+                from,
+                len: to - from,
+                expected: parent.mod_count.get(),
+            }),
+        }
+    }
+
+    /// The storage and the range this list covers. A view whose parent was
+    /// structurally modified raises `ConcurrentModificationException`.
+    fn resolve(&self) -> Result<(Shared<Vec<Value>>, usize, usize), Exc> {
+        match &self.view {
+            None => {
+                let len = self.items.borrow().len();
+                Ok((self.items.clone(), 0, len))
+            }
+            Some(v) => {
+                if v.parent.mod_count.get() != v.expected {
+                    return Err(Exc::bare(CONCURRENT_MODIFICATION));
+                }
+                let (items, offset, _) = v.parent.resolve()?;
+                Ok((items, offset + v.from, v.len))
+            }
+        }
+    }
+
+    pub fn len(&self) -> Result<usize, Exc> {
+        Ok(self.resolve()?.2)
+    }
+
+    pub fn to_vec(&self) -> Result<Vec<Value>, Exc> {
+        let (items, from, len) = self.resolve()?;
+        let items = items.borrow();
+        Ok(items[from..from + len].to_vec())
+    }
+
+    pub fn get(&self, i: usize) -> Result<Option<Value>, Exc> {
+        let (items, from, len) = self.resolve()?;
+        let items = items.borrow();
+        Ok((i < len).then(|| items[from + i].clone()))
+    }
+
+    /// The own storage, for changes; only lists that are not views (callers
+    /// reject `ReadOnly` lists first).
+    pub fn storage(&self) -> &Shared<Vec<Value>> {
+        &self.items
+    }
+
+    /// Records a structural modification (it invalidates sub-list views).
+    pub fn modified(&self) {
+        self.mod_count.set(self.mod_count.get() + 1);
+    }
 }
 
 pub type ListRef = Rc<ListObj>;
@@ -57,11 +173,13 @@ pub struct ArrayObj {
     pub items: Shared<Vec<Value>>,
 }
 
+/// A `Type` record: a Java object whose fields exist from the start (with
+/// Java defaults) and whose `IsInitialized` becomes true at `Initialize`.
 #[derive(Debug)]
 pub struct RecordObj {
     pub id: RecordId,
-    /// `None` until `Initialize`.
-    pub fields: RefCell<Option<Vec<Value>>>,
+    pub initialized: std::cell::Cell<bool>,
+    pub fields: RefCell<Vec<Value>>,
 }
 
 /// A runtime error or the value of `LastException`, named after the Java
@@ -91,6 +209,7 @@ pub const NO_SUCH_FIELD: &str = "java.lang.NoSuchFieldException";
 pub const UNSUPPORTED_ENCODING: &str = "java.io.UnsupportedEncodingException";
 /// Not a Java exception: the program broke the MIR contract.
 pub const INTERNAL: &str = "ferro.InternalError";
+pub const ARRAY_STORE: &str = "java.lang.ArrayStoreException";
 
 impl Exc {
     pub fn new(kind: &'static str, message: impl Into<String>) -> Exc {
@@ -173,11 +292,11 @@ impl Value {
         Value::Str(s.into())
     }
 
+    #[cfg(test)]
     pub fn new_list(items: Vec<Value>, kind: ListKind) -> Value {
-        Value::List(Rc::new(RefCell::new(Some(Rc::new(ListObj {
-            items: Rc::new(RefCell::new(items)),
-            kind,
-        })))))
+        Value::List(Rc::new(RefCell::new(Some(Rc::new(ListObj::new(
+            items, kind,
+        ))))))
     }
 
     pub fn new_map(map: OrderedMap) -> Value {
@@ -359,40 +478,84 @@ impl HKey {
     }
 }
 
+/// How deep `equals` may go into nested collections before raising
+/// `StackOverflowError`, as Java's recursive `ArrayList.equals` does on
+/// self-containing lists (`a.Add(a)`, `b.Add(b)`, `a = b`).
+const MAX_EQUALS_DEPTH: usize = 1000;
+
 /// Java `equals` on boxed values. Lists and maps compare by content, as
 /// `ArrayList.equals` and `AbstractMap.equals` do; other objects by identity.
-pub fn java_equals(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::List(x), Value::List(y)) => {
-            let (x, y) = (x.borrow().clone(), y.borrow().clone());
-            match (x, y) {
-                (Some(x), Some(y)) => {
-                    Rc::ptr_eq(&x.items, &y.items) || {
-                        let (x, y) = (x.items.borrow(), y.items.borrow());
-                        x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| java_equals(p, q))
-                    }
-                }
-                (None, None) => true,
-                _ => false,
-            }
-        }
-        (Value::Map(x), Value::Map(y)) => {
-            let (x, y) = (x.borrow().clone(), y.borrow().clone());
-            match (x, y) {
-                (Some(x), Some(y)) => {
-                    Rc::ptr_eq(&x, &y) || {
-                        let (x, y) = (x.borrow(), y.borrow());
-                        x.len() == y.len()
-                            && x.iter()
-                                .all(|(k, v)| y.get(k).is_some_and(|w| java_equals(v, w)))
-                    }
-                }
-                (None, None) => true,
-                _ => false,
-            }
-        }
-        _ => HKey::of(a) == HKey::of(b),
+///
+/// Runs on an explicit work list (no Rust recursion) in Java's order:
+/// depth first, elements left to right, so the first difference or the
+/// overflow is found where Java finds it.
+pub fn java_equals(a: &Value, b: &Value) -> Result<bool, Exc> {
+    enum Work {
+        Pair(Value, Value, usize),
+        /// A map key missing from the other map.
+        Unequal,
     }
+    let mut work = vec![Work::Pair(a.clone(), b.clone(), 0)];
+    while let Some(item) = work.pop() {
+        let (a, b, depth) = match item {
+            Work::Pair(a, b, depth) => (a, b, depth),
+            Work::Unequal => return Ok(false),
+        };
+        if depth > MAX_EQUALS_DEPTH {
+            return Err(Exc::bare(STACK_OVERFLOW));
+        }
+        match (&a, &b) {
+            (Value::List(x), Value::List(y)) => {
+                let (x, y) = (x.borrow().clone(), y.borrow().clone());
+                match (x, y) {
+                    (Some(x), Some(y)) => {
+                        if Rc::ptr_eq(&x, &y) {
+                            continue;
+                        }
+                        let (x, y) = (x.to_vec()?, y.to_vec()?);
+                        if x.len() != y.len() {
+                            return Ok(false);
+                        }
+                        for (p, q) in x.into_iter().zip(y).rev() {
+                            work.push(Work::Pair(p, q, depth + 1));
+                        }
+                    }
+                    (None, None) => {}
+                    _ => return Ok(false),
+                }
+            }
+            (Value::Map(x), Value::Map(y)) => {
+                let (x, y) = (x.borrow().clone(), y.borrow().clone());
+                match (x, y) {
+                    (Some(x), Some(y)) => {
+                        if Rc::ptr_eq(&x, &y) {
+                            continue;
+                        }
+                        let xs: Vec<(Value, Value)> = x.borrow().iter().cloned().collect();
+                        if xs.len() != y.borrow().len() {
+                            return Ok(false);
+                        }
+                        let mut pending = Vec::with_capacity(xs.len());
+                        for (k, v) in xs {
+                            pending.push(match y.borrow().get(&k) {
+                                Some(w) => Work::Pair(v, w.clone(), depth + 1),
+                                None => Work::Unequal,
+                            });
+                        }
+                        work.extend(pending.into_iter().rev());
+                    }
+                    (None, None) => {}
+                    _ => return Ok(false),
+                }
+            }
+            _ => {
+                if HKey::of(&a) != HKey::of(&b) {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+    Ok(true)
 }
 
 /// Java `getClass().getName()` of a value held in an `Object`.
@@ -408,12 +571,7 @@ pub fn java_class_name(v: &Value, program: &Program) -> Option<String> {
         Value::Double(_) => "java.lang.Double".into(),
         Value::Char(_) => "java.lang.Character".into(),
         Value::Str(_) => "java.lang.String".into(),
-        Value::List(w) => match w.borrow().as_ref()?.kind {
-            ListKind::Growable => "java.util.ArrayList",
-            ListKind::FixedSize => "java.util.Arrays$ArrayList",
-            ListKind::ReadOnly => "java.util.ArrayList$SubList",
-        }
-        .into(),
+        Value::List(w) => w.borrow().as_ref()?.kind.class_name().into(),
         Value::Map(w) => {
             w.borrow().as_ref()?;
             "anywheresoftware.b4a.objects.collections.Map$MyMap".into()
@@ -441,6 +599,13 @@ pub fn java_class_name(v: &Value, program: &Program) -> Option<String> {
     })
 }
 
+/// Java's name of an array class: `[I`, `[[Ljava.lang.String;`.
+pub fn array_class_name(elem: &Ty, rank: u8) -> String {
+    let mut s = "[".repeat(rank.max(1) as usize);
+    s.push_str(&array_descriptor(elem));
+    s
+}
+
 fn array_descriptor(elem: &Ty) -> String {
     match elem {
         Ty::Boolean => "Z".into(),
@@ -466,12 +631,15 @@ fn push(out: &mut Vec<u16>, s: &str) {
 /// Java `String.valueOf(object)` of a value held in an `Object` (so a
 /// collection prints without its wrapper's prefix and a Double keeps its
 /// `.0`). Self-containing collections print `(this Collection)` /
-/// `(this Map)`.
-pub fn raw_to_string(v: &Value, program: &Program, out: &mut Vec<u16>) {
-    raw(v, program, out, &mut Vec::new());
+/// `(this Map)`. Fails like Java's `toString` does, e.g. on a sub-list
+/// whose parent changed.
+pub fn raw_to_string(v: &Value, program: &Program, out: &mut Vec<u16>) -> Result<(), Exc> {
+    raw(v, program, out, &mut Vec::new())
 }
 
-fn raw(v: &Value, program: &Program, out: &mut Vec<u16>, seen: &mut Vec<usize>) {
+type Seen = Vec<usize>;
+
+fn raw(v: &Value, program: &Program, out: &mut Vec<u16>, seen: &mut Seen) -> Result<(), Exc> {
     match v {
         Value::Null => push(out, "null"),
         Value::Bool(b) => push(out, if *b { "true" } else { "false" }),
@@ -486,15 +654,8 @@ fn raw(v: &Value, program: &Program, out: &mut Vec<u16>, seen: &mut Vec<usize>) 
         Value::List(w) => match w.borrow().clone() {
             None => push(out, "null"),
             Some(l) => {
-                let items = l.items.borrow().clone();
-                sequence(
-                    &items,
-                    ptr(&l.items),
-                    "(this Collection)",
-                    program,
-                    out,
-                    seen,
-                );
+                let items = l.to_vec()?;
+                sequence(&items, ptr(&l), "(this Collection)", program, out, seen)?;
             }
         },
         Value::Map(w) => match w.borrow().clone() {
@@ -508,9 +669,9 @@ fn raw(v: &Value, program: &Program, out: &mut Vec<u16>, seen: &mut Vec<usize>) 
                     if i > 0 {
                         push(out, ", ");
                     }
-                    element(k, "(this Map)", program, out, seen);
+                    element(k, "(this Map)", program, out, seen)?;
                     out.push(b'=' as u16);
-                    element(val, "(this Map)", program, out, seen);
+                    element(val, "(this Map)", program, out, seen)?;
                 }
                 out.push(b'}' as u16);
                 seen.pop();
@@ -530,32 +691,40 @@ fn raw(v: &Value, program: &Program, out: &mut Vec<u16>, seen: &mut Vec<usize>) 
             name.push_str(&array_descriptor(&a.elem));
             push(out, &format!("{name}@{:x}", (ptr(a) >> 4) & 0x7fff_ffff));
         }
-        Value::Record(r) => record_to_string(r, program, out, seen),
+        Value::Record(r) => record_to_string(r, program, out, seen)?,
         Value::View(m, keys) => {
             let items: Vec<Value> = m
                 .borrow()
                 .iter()
                 .map(|(k, v)| if *keys { k.clone() } else { v.clone() })
                 .collect();
-            sequence(&items, ptr(m), "(this Collection)", program, out, seen);
+            sequence(&items, ptr(m), "(this Collection)", program, out, seen)?;
         }
     }
+    Ok(())
 }
 
 fn identity(v: &Value) -> Option<usize> {
     match v {
-        Value::List(w) => w.borrow().as_ref().map(|l| ptr(&l.items)),
+        Value::List(w) => w.borrow().as_ref().map(ptr),
         Value::Map(w) => w.borrow().as_ref().map(ptr),
         Value::Record(r) => Some(ptr(r)),
         _ => None,
     }
 }
 
-fn element(v: &Value, this: &str, program: &Program, out: &mut Vec<u16>, seen: &mut Vec<usize>) {
+fn element(
+    v: &Value,
+    this: &str,
+    program: &Program,
+    out: &mut Vec<u16>,
+    seen: &mut Seen,
+) -> Result<(), Exc> {
     if identity(v).is_some_and(|id| seen.contains(&id)) {
         push(out, this);
+        Ok(())
     } else {
-        raw(v, program, out, seen);
+        raw(v, program, out, seen)
     }
 }
 
@@ -565,18 +734,19 @@ fn sequence(
     this: &str,
     program: &Program,
     out: &mut Vec<u16>,
-    seen: &mut Vec<usize>,
-) {
+    seen: &mut Seen,
+) -> Result<(), Exc> {
     seen.push(id);
     out.push(b'[' as u16);
     for (i, item) in items.iter().enumerate() {
         if i > 0 {
             push(out, ", ");
         }
-        element(item, this, program, out, seen);
+        element(item, this, program, out, seen)?;
     }
     out.push(b']' as u16);
     seen.pop();
+    Ok(())
 }
 
 /// The `toString` B4X generates for a `Type`:
@@ -585,37 +755,29 @@ fn record_to_string(
     r: &Rc<RecordObj>,
     program: &Program,
     out: &mut Vec<u16>,
-    seen: &mut Vec<usize>,
-) {
+    seen: &mut Seen,
+) -> Result<(), Exc> {
     let Some(rec) = program.records.get(r.id.0 as usize) else {
         push(out, "[]");
-        return;
+        return Ok(());
     };
     let fields = r.fields.borrow().clone();
     seen.push(ptr(r));
     push(out, "[IsInitialized=");
-    push(out, if fields.is_some() { "true" } else { "false" });
-    for (i, f) in rec.fields.iter().enumerate() {
+    push(out, if r.initialized.get() { "true" } else { "false" });
+    for (f, v) in rec.fields.iter().zip(&fields) {
         push(out, ", ");
         push(out, &f.name);
         out.push(b'=' as u16);
-        match fields.as_ref().and_then(|v| v.get(i)) {
-            Some(v) if is_wrapper_type(&f.ty) => wrapper_to_string(v, program, out),
-            Some(v) => element(v, "(this Map)", program, out, seen),
-            // Java field defaults of an object that was never initialised.
-            None => push(
-                out,
-                match &f.ty {
-                    Ty::Boolean => "false",
-                    Ty::Float | Ty::Double => "0.0",
-                    t if t.is_numeric() => "0",
-                    _ => "null",
-                },
-            ),
+        if is_wrapper_type(&f.ty) {
+            wrapper_to_string(v, program, out)?;
+        } else {
+            element(v, "(this Collection)", program, out, seen)?;
         }
     }
     out.push(b']' as u16);
     seen.pop();
+    Ok(())
 }
 
 pub fn is_wrapper_type(ty: &Ty) -> bool {
@@ -624,26 +786,29 @@ pub fn is_wrapper_type(ty: &Ty) -> bool {
 
 /// `AbsObjectWrapper.toString`: what a `List`, `Map`, `StringBuilder` or
 /// `Exception` *variable* prints: `(ArrayList) [1, 2]`, `(MyMap) {a=1}`,
-/// `(List) Not initialized`.
-pub fn wrapper_to_string(v: &Value, program: &Program, out: &mut Vec<u16>) {
+/// `(List) Not initialized`. The prefix is the inner object's simple class
+/// name (`(UnmodifiableRandomAccessList)` for a `SubList`). A Java `null`
+/// wrapper reference (a field of a record that was never initialised)
+/// prints `null`.
+pub fn wrapper_to_string(v: &Value, program: &Program, out: &mut Vec<u16>) -> Result<(), Exc> {
     let (short, simple) = match v {
-        Value::List(w) => ("List", w.borrow().is_some().then_some("ArrayList")),
+        Value::List(w) => ("List", w.borrow().as_ref().map(|l| l.kind.simple_name())),
         Value::Map(w) => ("Map", w.borrow().is_some().then_some("MyMap")),
         Value::Sb(w) => (
             "StringBuilder",
             w.borrow().is_some().then_some("StringBuilder"),
         ),
         Value::Exc(e) => ("Exception", e.as_ref().map(|e| e.simple_name())),
-        Value::Null => ("Object", None),
         other => return raw_to_string(other, program, out),
     };
     match simple {
         None => push(out, &format!("({short}) Not initialized")),
         Some(simple) => {
             push(out, &format!("({simple}) "));
-            raw_to_string(v, program, out);
+            raw_to_string(v, program, out)?;
         }
     }
+    Ok(())
 }
 
 /// The Rust text of a `String` value (`null` for Null).

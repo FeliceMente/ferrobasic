@@ -267,30 +267,33 @@ fn parse_decimal(s: &str) -> Option<f64> {
     s.parse().ok()
 }
 
-/// `HexDigits [. HexDigits] p [+-] Digits`. Rounding is exact for up to 64
-/// significant bits, which covers every literal a double can represent.
+/// `HexDigits [. HexDigits] (p|P) [+|-] Digits`, correctly rounded
+/// (half to even) to a double, subnormals included.
 fn parse_hex(s: &str) -> Option<f64> {
     let (mantissa, exp) = s.split_once(['p', 'P'])?;
-    let exp: i64 = {
-        let e = exp.strip_prefix('+').unwrap_or(exp);
-        if e.is_empty()
-            || !e
-                .trim_start_matches('-')
-                .bytes()
-                .all(|c| c.is_ascii_digit())
-        {
-            return None;
-        }
-        e.parse().unwrap_or(if e.starts_with('-') {
-            -100_000
-        } else {
-            100_000
-        })
+    // Exactly one optional sign, then at least one decimal digit. The value
+    // saturates: anything beyond ±10^9 is far outside the double range.
+    let (negative, digits) = match exp.as_bytes().first() {
+        Some(b'-') => (true, &exp[1..]),
+        Some(b'+') => (false, &exp[1..]),
+        _ => (false, exp),
     };
+    if digits.is_empty() || !digits.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let mut exp: i64 = 0;
+    for c in digits.bytes() {
+        exp = (exp * 10 + (c - b'0') as i64).min(1_000_000_000);
+    }
+    if negative {
+        exp = -exp;
+    }
     let (int, frac) = mantissa.split_once('.').unwrap_or((mantissa, ""));
     if int.is_empty() && frac.is_empty() {
         return None;
     }
+    // The first 60+ significant bits, exactly, and whether any non-zero
+    // digit was dropped (`sticky`); the value is `value × 2^shift`.
     let mut value: u64 = 0;
     let mut shift: i64 = 0;
     let mut sticky = false;
@@ -304,15 +307,54 @@ fn parse_hex(s: &str) -> Option<f64> {
         } else {
             sticky |= d != 0;
             if k < int.len() {
-                shift += 4;
+                shift = shift.saturating_add(4);
             }
         }
     }
-    if sticky {
-        value |= 1;
+    Some(round_binary(value, sticky, exp.saturating_add(shift)))
+}
+
+/// The double nearest to `value × 2^exp` (plus a sliver when `sticky`),
+/// ties to even, rounding only once.
+fn round_binary(value: u64, sticky: bool, exp: i64) -> f64 {
+    if value == 0 {
+        return 0.0;
     }
-    Some(value as f64 * 2f64.powi((exp + shift).clamp(-2000, 2000) as i32))
-        .map(|v| if v.is_nan() { 0.0 } else { v })
+    let bits = 64 - value.leading_zeros() as i64;
+    // Exponent of the leading bit.
+    let lead = exp.saturating_add(bits - 1);
+    if lead > 1023 {
+        return f64::INFINITY;
+    }
+    // Significant bits a double keeps at this magnitude: 53 for normal
+    // numbers, fewer for subnormals (the last bit is worth 2^-1074).
+    let keep = if lead >= -1022 { 53 } else { lead + 1075 };
+    if keep < 0 {
+        return 0.0;
+    }
+    let drop = (bits - keep).max(0) as u32;
+    let wide = value as u128;
+    let mut kept = (wide >> drop) as u64;
+    if drop > 0 {
+        let rest = wide & ((1u128 << drop) - 1);
+        let half = 1u128 << (drop - 1);
+        if rest > half || (rest == half && (sticky || kept & 1 == 1)) {
+            kept += 1;
+        }
+    }
+    // `kept × 2^(exp + drop)` is exactly representable (or overflows to
+    // infinity after a carry); scale in steps so no step underflows.
+    let mut x = kept as f64;
+    let mut e = exp + drop as i64;
+    while e < -1000 {
+        x *= 2f64.powi(-1000);
+        e += 1000;
+    }
+    while e > 1000 {
+        x *= 2f64.powi(1000);
+        e -= 1000;
+    }
+    x * 2f64.powi(e as i32)
 }
 
 /// `java.util.Random`: the 48-bit linear congruential generator.
@@ -444,6 +486,75 @@ mod tests {
         ] {
             assert_eq!(parse_java_double(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn hex_exponent_has_one_sign_and_digits() {
+        for bad in [
+            "0x1p-", "0x1p+", "0x1p", "0x1p--1", "0x1p+-1", "0x1p-+1", "0x1p1a",
+        ] {
+            assert_eq!(parse_java_double(bad), None, "{bad:?}");
+        }
+        assert_eq!(parse_java_double("0x1p-1"), Some(0.5));
+        assert_eq!(parse_java_double("0x1p+1"), Some(2.0));
+        assert_eq!(parse_java_double("0X1P3"), Some(8.0));
+    }
+
+    #[test]
+    fn hex_exponents_saturate() {
+        assert_eq!(parse_java_double("0x1.0p-9223372036854775808"), Some(0.0));
+        assert_eq!(
+            parse_java_double("0x1.0p9223372036854775807"),
+            Some(f64::INFINITY)
+        );
+        assert_eq!(
+            parse_java_double("0x1.0p99999999999999999999999"),
+            Some(f64::INFINITY)
+        );
+        let many = format!("0x{}p-9223372036854775808", "f".repeat(100));
+        assert_eq!(parse_java_double(&many), Some(0.0));
+        let many = format!("0x{}p0", "f".repeat(300));
+        assert_eq!(parse_java_double(&many), Some(f64::INFINITY));
+    }
+
+    #[test]
+    fn hex_floats_round_correctly() {
+        assert_eq!(parse_java_double("0x1.0p-1074"), Some(5e-324));
+        assert_eq!(
+            number_to_string(parse_java_double("0x1.0p-1074").unwrap()),
+            "4.9E-324"
+        );
+        assert_eq!(parse_java_double("0x1.0p-1075"), Some(0.0));
+        assert_eq!(parse_java_double("0x1.8p-1075"), Some(5e-324));
+        assert_eq!(parse_java_double("0x1.0p-1022"), Some(f64::MIN_POSITIVE));
+        assert_eq!(
+            parse_java_double("0x0.8p-1022"),
+            Some(f64::MIN_POSITIVE / 2.0)
+        );
+        assert_eq!(parse_java_double("0x1.fffffffffffffp1023"), Some(f64::MAX));
+        assert_eq!(
+            parse_java_double("0x1.fffffffffffff8p1023"),
+            Some(f64::INFINITY)
+        );
+        // 2^53 + 1 is a tie: to even (2^53); 2^53 + 3 rounds up.
+        assert_eq!(
+            parse_java_double("0x20000000000001p0"),
+            Some(9007199254740992.0)
+        );
+        assert_eq!(
+            parse_java_double("0x20000000000003p0"),
+            Some(9007199254740996.0)
+        );
+        // ((2^53 + 1) × 2^64 + 1) × 2^-68: a dropped non-zero digit breaks
+        // the tie, so it rounds up to (2^53 + 2) / 16.
+        assert_eq!(
+            parse_java_double("0x200000000000010000000000000001p-68"),
+            Some(9007199254740994.0 / 16.0)
+        );
+        assert_eq!(
+            parse_java_double("0x200000000000010000000000000000p-68"),
+            Some(9007199254740992.0 / 16.0)
+        );
     }
 
     #[test]

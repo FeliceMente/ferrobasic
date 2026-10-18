@@ -11,7 +11,7 @@ use ferro_mir::{
     Rvalue, StatementKind, Terminator, TextRange, Ty,
 };
 
-use crate::convert::{coerce, convert, default_value, to_string_from};
+use crate::convert::{checked_store, coerce, convert, default_value, to_string_from};
 use crate::number::{JavaRandom, number_format, parse_java_double};
 use crate::strings::{compare_to, to_rust};
 use crate::value::*;
@@ -119,7 +119,7 @@ impl<'p, 'w> Machine<'p, 'w> {
             globals: program
                 .globals
                 .iter()
-                .map(|g| default_value(&g.ty))
+                .map(|g| default_value(&g.ty, program))
                 .collect(),
             frames: Vec::new(),
             last_exception: None,
@@ -151,7 +151,7 @@ impl<'p, 'w> Machine<'p, 'w> {
             };
             locals.push(match arg {
                 Some(a) => coerce(&local.ty, a),
-                None => default_value(&local.ty),
+                None => default_value(&local.ty, self.program),
             });
         }
         self.frames.push(Frame {
@@ -216,7 +216,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                 Terminator::Return(value) => {
                     let value = match value {
                         Some(op) => self.operand_in_frame(op),
-                        None => default_value(&function.ret),
+                        None => default_value(&function.ret, program),
                     };
                     let done = self.frames.pop();
                     if let Some(Frame {
@@ -307,7 +307,13 @@ impl<'p, 'w> Machine<'p, 'w> {
                     .get(i)
                     .ok_or_else(|| Exc::internal("missing local"))?
                     .ty;
-                locals[i] = coerce(ty, v);
+                // A record field is copied as is: a wrapper field that was
+                // never initialised is a Java `null` reference (members on it
+                // raise NullPointerException), not an uninitialised wrapper.
+                locals[i] = match value {
+                    Rvalue::Field { .. } => v,
+                    _ => coerce(ty, v),
+                };
             }
             StatementKind::Eval(value) => {
                 if let Some(step) = self.call_step(value, locals, None)? {
@@ -336,7 +342,8 @@ impl<'p, 'w> Machine<'p, 'w> {
                 let value = self.operand(locals, value);
                 let a = as_array(&array)?;
                 let i = flat_index(a, &indices)?;
-                a.items.borrow_mut()[i] = coerce(&a.elem, value);
+                let value = checked_store(&a.elem, value, self.program)?;
+                a.items.borrow_mut()[i] = value;
             }
             StatementKind::SetField {
                 record,
@@ -347,11 +354,8 @@ impl<'p, 'w> Machine<'p, 'w> {
                 let value = self.operand(locals, value);
                 let r = self.as_record(&record)?;
                 let ty = self.field_ty(r, *field)?;
-                let mut fields = r.fields.borrow_mut();
-                let fields = fields
-                    .as_mut()
-                    .ok_or_else(|| Exc::not_initialized(self.record_name(r)))?;
-                fields[*field as usize] = coerce(&ty, value);
+                // Fields exist before `Initialize`, as in Java.
+                r.fields.borrow_mut()[*field as usize] = coerce(&ty, value);
             }
         }
         Ok(Step::Next)
@@ -382,8 +386,9 @@ impl<'p, 'w> Machine<'p, 'w> {
                     .records
                     .get(rec.id.0 as usize)
                     .ok_or_else(|| Exc::internal("missing record"))?;
-                *rec.fields.borrow_mut() =
-                    Some(def.fields.iter().map(|f| default_value(&f.ty)).collect());
+                // The fields already exist; `init` gives them their B4X
+                // defaults.
+                rec.initialized.set(true);
                 Some(Step::Call {
                     func: def.init,
                     args: vec![record.clone()],
@@ -400,13 +405,6 @@ impl<'p, 'w> Machine<'p, 'w> {
             Value::Null => Err(Exc::bare(NULL_POINTER)),
             _ => Err(Exc::internal("not a record")),
         }
-    }
-
-    pub fn record_name(&self, r: &RecordObj) -> &'p str {
-        self.program
-            .records
-            .get(r.id.0 as usize)
-            .map_or("Type", |rec| rec.name.as_str())
     }
 
     fn field_ty(&self, r: &RecordObj, field: u32) -> Result<Ty, Exc> {
@@ -427,7 +425,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                 .get(g.0 as usize)
                 .cloned()
                 .ok_or_else(|| Exc::internal("missing global"))?,
-            Rvalue::Default(ty) => default_value(ty),
+            Rvalue::Default(ty) => default_value(ty, program),
             Rvalue::Convert { value, from, to } => {
                 let v = self.operand(locals, value);
                 convert(v, from, to, program)?
@@ -456,7 +454,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                     match self.operand(locals, p) {
                         Value::Str(s) => out.extend_from_slice(&s),
                         other => {
-                            if let Value::Str(s) = to_string_from(&other, &Ty::Object, program) {
+                            if let Value::Str(s) = to_string_from(&other, &Ty::Object, program)? {
                                 out.extend_from_slice(&s);
                             }
                         }
@@ -499,11 +497,8 @@ impl<'p, 'w> Machine<'p, 'w> {
             Rvalue::Field { record, field } => {
                 let record = self.operand(locals, record);
                 let r = self.as_record(&record)?;
-                let fields = r.fields.borrow();
-                let fields = fields
-                    .as_ref()
-                    .ok_or_else(|| Exc::not_initialized(self.record_name(r)))?;
-                fields
+                r.fields
+                    .borrow()
                     .get(*field as usize)
                     .cloned()
                     .ok_or_else(|| Exc::internal("missing record field"))?
@@ -526,7 +521,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                     sizes.push(0);
                     total = 0;
                 }
-                let items = (0..total).map(|_| default_value(elem)).collect();
+                let items = (0..total).map(|_| default_value(elem, program)).collect();
                 Value::Array(Rc::new(ArrayObj {
                     elem: elem.clone(),
                     dims: sizes,
@@ -726,8 +721,8 @@ pub fn compare(
             Ok(ordered(op, a.total_cmp(&b)))
         }
         CmpKind::Object => match op {
-            CmpOp::Eq => Ok(java_equals(l, r)),
-            CmpOp::Ne => Ok(!java_equals(l, r)),
+            CmpOp::Eq => java_equals(l, r),
+            CmpOp::Ne => Ok(!java_equals(l, r)?),
             _ => match (l, r) {
                 (Value::Str(a), Value::Str(b)) => Ok(ordered(op, compare_to(a, b).cmp(&0))),
                 _ if l.is_number() && r.is_number() => compare(op, CmpKind::Numeric, l, r, program),
@@ -748,7 +743,7 @@ pub fn compare(
 /// digits without `.M`; `NaN` for a value that is not a number).
 fn smart_format(format: &str, v: &Value, program: &Program) -> Result<String, Exc> {
     if format == "xml" {
-        let text = match to_string_from(v, &Ty::Object, program) {
+        let text = match to_string_from(v, &Ty::Object, program)? {
             Value::Str(s) => to_rust(&s),
             _ => "null".into(),
         };
@@ -789,7 +784,7 @@ fn list_inner(w: &Wrapper<ListRef>) -> Result<ListRef, Exc> {
 fn iter_size(c: &Value) -> Result<usize, Exc> {
     Ok(match c {
         Value::Array(a) => a.items.borrow().len(),
-        Value::List(w) => list_inner(w)?.items.borrow().len(),
+        Value::List(w) => list_inner(w)?.len()?,
         Value::View(m, _) => m.borrow().len(),
         Value::Null => return Err(Exc::bare(NULL_POINTER)),
         _ => return Err(Exc::internal("not iterable")),
@@ -812,8 +807,7 @@ fn iter_get(c: &Value, i: i32) -> Result<Value, Exc> {
         }
         Value::List(w) => {
             let l = list_inner(w)?;
-            let items = l.items.borrow();
-            items.get(i).cloned().ok_or_else(|| oob(items.len()))
+            l.get(i)?.ok_or_else(|| oob(l.len().unwrap_or(0)))
         }
         Value::View(m, keys) => {
             let len = m.borrow().len();

@@ -851,7 +851,7 @@ fn list_members() {
     assert_eq!(
         stdout_of(&p),
         "false\n(ArrayList) [10, 3, 1, 2]\n(ArrayList) [1, 2, 3, 10]\n(ArrayList) [1, 10, 2, 3]\n\
-         (ArrayList) [10, 3, 2, 1]\nx\n2\n-1\n(ArrayList) [2, 1]\n(ArrayList) [x, 2, 1, c, b, A]\n6\n\
+         (ArrayList) [10, 3, 2, 1]\nx\n2\n-1\n(UnmodifiableRandomAccessList) [2, 1]\n(ArrayList) [x, 2, 1, c, b, A]\n6\n\
          (ArrayList) []\n"
     );
 }
@@ -1342,6 +1342,24 @@ fn records() {
             value: s("?"),
         },
     );
+    // What the lowering does for the other fields: B4X defaults.
+    f.stmt(
+        B0,
+        StatementKind::SetField {
+            record: l(r),
+            field: 1,
+            value: dbl(0.0),
+        },
+    );
+    let tags = f.tmp(B0, Ty::List, Rvalue::Default(Ty::List));
+    f.stmt(
+        B0,
+        StatementKind::SetField {
+            record: l(r),
+            field: 2,
+            value: tags,
+        },
+    );
     pb.define(init, f);
     let p = pb.program(None, |_, f| {
         let item = f.tmp(B0, Ty::Record(id), Rvalue::Default(Ty::Record(id)));
@@ -1352,18 +1370,45 @@ fn records() {
             member(Builtin::RecordIsInitialized, item_id, vec![]),
         );
         f.log_as(B0, ok, Ty::Boolean);
+        // Before Initialize the fields hold Java defaults and can be used.
+        f.stmt(
+            B0,
+            StatementKind::SetField {
+                record: item.clone(),
+                field: 1,
+                value: dbl(1.0),
+            },
+        );
+        let name = f.tmp(
+            B0,
+            Ty::String,
+            Rvalue::Field {
+                record: item.clone(),
+                field: 0,
+            },
+        );
+        f.log(B0, name);
+        f.log_as(B0, item.clone(), Ty::Record(id));
+        // A List field is a Java null: calling a member raises.
+        let tags = f.tmp(
+            B0,
+            Ty::List,
+            Rvalue::Field {
+                record: item.clone(),
+                field: 2,
+            },
+        );
         let b = try_log(f, B0, |f, b| {
-            f.stmt(
-                b,
-                StatementKind::SetField {
-                    record: item.clone(),
-                    field: 1,
-                    value: dbl(1.0),
-                },
-            );
+            f.eval(b, member(Builtin::ListSize, local_of(&tags), vec![]));
             b
         });
         f.eval(b, member(Builtin::RecordInitialize, item_id, vec![]));
+        let ok = f.tmp(
+            b,
+            Ty::Boolean,
+            member(Builtin::RecordIsInitialized, item_id, vec![]),
+        );
+        f.log_as(b, ok, Ty::Boolean);
         let name = f.tmp(
             b,
             Ty::String,
@@ -1453,7 +1498,8 @@ fn records() {
     });
     assert_eq!(
         stdout_of(&p),
-        "false\njava.lang.RuntimeException: Object should first be initialized (Item).\n?\n\
+        "false\nnull\n[IsInitialized=false, Name=null, Price=1.0, Tags=null]\n\
+         java.lang.NullPointerException\ntrue\n?\n\
          [IsInitialized=true, Name=?, Price=2.5, Tags=(List) Not initialized]\na\nc\nb\nc\n"
     );
 }
@@ -1720,4 +1766,388 @@ fn invalid_program_is_reported_not_run() {
     let r = exec(&p);
     assert_eq!(r.stdout, "");
     assert_eq!(r.outcome.error.unwrap().kind, "ferro.InternalError");
+}
+
+// Regression tests for the review of the first version.
+
+fn str_array(f: &mut Fb, b: BlockId, items: &[&str]) -> Operand {
+    f.tmp(
+        b,
+        Ty::Array(Box::new(Ty::String), 1),
+        Rvalue::ArrayLiteral {
+            elem: Ty::String,
+            items: items.iter().map(|x| s(x)).collect(),
+        },
+    )
+}
+
+fn obj(f: &mut Fb, b: BlockId, v: Operand, from: Ty) -> Operand {
+    f.tmp(b, Ty::Object, conv(v, from, Ty::Object))
+}
+
+/// Runs `body` in a Try: logs `ok` when it completes, else the message.
+fn try_ok(f: &mut Fb, start: BlockId, body: impl FnOnce(&mut Fb, BlockId)) -> BlockId {
+    try_log(f, start, |f, b| {
+        body(f, b);
+        f.log(b, s("ok"));
+        b
+    })
+}
+
+/// A `String()` seen as an `Object()` keeps its runtime component type:
+/// storing an Int raises `ArrayStoreException` before any change, through
+/// the array and through a fixed-size list sharing it.
+#[test]
+fn array_store_checks_the_runtime_component_type() {
+    let p = program(|_, f| {
+        let arr = str_array(f, B0, &["a", "b"]);
+        let o = obj(f, B0, arr.clone(), Ty::Array(Box::new(Ty::String), 1));
+        let objs = f.tmp(
+            B0,
+            Ty::Array(Box::new(Ty::Object), 1),
+            conv(o, Ty::Object, Ty::Array(Box::new(Ty::Object), 1)),
+        );
+        let one = obj(f, B0, int(1), Ty::Int);
+        let b = try_ok(f, B0, |f, b| {
+            f.stmt(
+                b,
+                StatementKind::SetIndex {
+                    array: objs.clone(),
+                    indices: vec![int(0)],
+                    value: one.clone(),
+                },
+            );
+        });
+        let x = obj(f, b, s("x"), Ty::String);
+        let b = try_ok(f, b, |f, b| {
+            f.stmt(
+                b,
+                StatementKind::SetIndex {
+                    array: objs.clone(),
+                    indices: vec![int(1)],
+                    value: x,
+                },
+            );
+        });
+        let list = f.local(Ty::List);
+        f.assign(b, list, Rvalue::Default(Ty::List));
+        let wrapped = f.tmp(
+            b,
+            Ty::List,
+            conv(arr.clone(), Ty::Array(Box::new(Ty::String), 1), Ty::List),
+        );
+        f.eval(b, member(Builtin::ListInitialize2, list, vec![wrapped]));
+        let b = try_ok(f, b, |f, b| {
+            f.eval(b, member(Builtin::ListSet, list, vec![int(0), one.clone()]));
+        });
+        let y = obj(f, b, s("y"), Ty::String);
+        f.eval(b, member(Builtin::ListSet, list, vec![int(0), y]));
+        let joined = f.tmp(
+            b,
+            Ty::List,
+            conv(arr, Ty::Array(Box::new(Ty::String), 1), Ty::List),
+        );
+        f.log_as(b, joined, Ty::List);
+    });
+    assert_eq!(
+        stdout_of(&p),
+        "java.lang.ArrayStoreException: java.lang.Integer\nok\n\
+         java.lang.ArrayStoreException: java.lang.Integer\n(ArrayList) [y, x]\n"
+    );
+}
+
+/// Object → array checks rank, element type and primitive vs reference,
+/// with reference-array covariance.
+#[test]
+fn object_to_array_checks_the_whole_type() {
+    let arr = |e: Ty, r: u8| Ty::Array(Box::new(e), r);
+    let p = program(|_, f| {
+        let ints = f.tmp(
+            B0,
+            arr(Ty::Int, 1),
+            Rvalue::ArrayLiteral {
+                elem: Ty::Int,
+                items: vec![int(1)],
+            },
+        );
+        let grid = f.tmp(
+            B0,
+            arr(Ty::Int, 2),
+            Rvalue::NewArray {
+                elem: Ty::Int,
+                dims: vec![int(2), int(2)],
+            },
+        );
+        let strs = str_array(f, B0, &["a"]);
+        let cases = [
+            (ints.clone(), arr(Ty::Int, 1), arr(Ty::Object, 1)),
+            (ints.clone(), arr(Ty::Int, 1), arr(Ty::Long, 1)),
+            (grid.clone(), arr(Ty::Int, 2), arr(Ty::Int, 1)),
+            (grid, arr(Ty::Int, 2), arr(Ty::Object, 1)),
+            (strs.clone(), arr(Ty::String, 1), arr(Ty::Object, 1)),
+            (strs, arr(Ty::String, 1), arr(Ty::String, 2)),
+            (ints, arr(Ty::Int, 1), arr(Ty::Int, 1)),
+        ];
+        let mut b = B0;
+        for (v, from, to) in cases {
+            let o = obj(f, b, v, from);
+            b = try_ok(f, b, |f, b| {
+                let t = f.local(to.clone());
+                f.assign(b, t, conv(o, Ty::Object, to));
+            });
+        }
+    });
+    assert_eq!(
+        stdout_of(&p),
+        "java.lang.ClassCastException: class [I cannot be cast to class [Ljava.lang.Object;\n\
+         java.lang.ClassCastException: class [I cannot be cast to class [J\n\
+         java.lang.ClassCastException: class [[I cannot be cast to class [I\n\
+         ok\nok\n\
+         java.lang.ClassCastException: class [Ljava.lang.String; cannot be cast to class [[Ljava.lang.String;\n\
+         ok\n"
+    );
+}
+
+/// `a.Add(a)`, `b.Add(b)`: `a = b` recurses like Java's `ArrayList.equals`
+/// and ends in `StackOverflowError` instead of crashing; `a = a` is true.
+#[test]
+fn equality_of_self_containing_lists_is_bounded() {
+    let build = |compare: bool| {
+        program(|_, f| {
+            let mut objs = Vec::new();
+            for _ in 0..2 {
+                let list = f.local(Ty::List);
+                f.assign(B0, list, Rvalue::Default(Ty::List));
+                f.eval(B0, member(Builtin::ListInitialize, list, vec![]));
+                let o = obj(f, B0, l(list), Ty::List);
+                f.eval(B0, member(Builtin::ListAdd, list, vec![o.clone()]));
+                objs.push((list, o));
+            }
+            let (a, oa) = objs[0].clone();
+            let (_, ob) = objs[1].clone();
+            let same = f.tmp(
+                B0,
+                Ty::Boolean,
+                cmp(CmpOp::Eq, CmpKind::Object, oa.clone(), oa.clone()),
+            );
+            f.log_as(B0, same, Ty::Boolean);
+            f.log_as(B0, l(a), Ty::List);
+            if compare {
+                let r = f.tmp(B0, Ty::Boolean, cmp(CmpOp::Eq, CmpKind::Object, oa, ob));
+                f.log_as(B0, r, Ty::Boolean);
+            } else {
+                let r = f.tmp(B0, Ty::Int, member(Builtin::ListIndexOf, a, vec![ob]));
+                f.log_as(B0, r, Ty::Int);
+            }
+        })
+    };
+    for compare in [true, false] {
+        let r = exec(&build(compare));
+        assert_eq!(r.stdout, "true\n(ArrayList) [(this Collection)]\n");
+        assert_eq!(
+            r.outcome.error.unwrap().kind,
+            "java.lang.StackOverflowError"
+        );
+    }
+}
+
+#[test]
+fn initialize2_with_an_uninitialised_list_raises_first() {
+    let p = program(|_, f| {
+        let dest = f.local(Ty::List);
+        f.assign(B0, dest, Rvalue::Default(Ty::List));
+        f.eval(B0, member(Builtin::ListInitialize, dest, vec![]));
+        f.eval(B0, member(Builtin::ListAdd, dest, vec![int(1)]));
+        let src = f.tmp(B0, Ty::List, Rvalue::Default(Ty::List));
+        let b = try_ok(f, B0, |f, b| {
+            f.eval(b, member(Builtin::ListInitialize2, dest, vec![src]));
+        });
+        f.log_as(b, l(dest), Ty::List);
+    });
+    assert_eq!(
+        stdout_of(&p),
+        "java.lang.RuntimeException: Object should first be initialized (List).\n\
+         (ArrayList) [1]\n"
+    );
+}
+
+/// `SubList` is `Collections.unmodifiableList(parent.subList(a, b))`.
+#[test]
+fn sub_lists_are_read_only_views() {
+    let mut pb = Pb::default();
+    let id = RecordId(0);
+    let init = pb.func(Fb::new("T.Initialize", Ty::Void));
+    // `init` takes the record as its parameter.
+    pb.functions[init.0 as usize].as_mut().unwrap().params = 1;
+    pb.functions[init.0 as usize]
+        .as_mut()
+        .unwrap()
+        .locals
+        .push(Local {
+            name: None,
+            ty: Ty::Record(id),
+        });
+    pb.records.push(Record {
+        name: "T".into(),
+        fields: vec![RecordField {
+            name: "N".into(),
+            ty: Ty::Int,
+        }],
+        init,
+    });
+    let p = pb.program(None, |_, f| {
+        let parent = f.local(Ty::List);
+        f.assign(B0, parent, Rvalue::Default(Ty::List));
+        f.eval(B0, member(Builtin::ListInitialize, parent, vec![]));
+        for x in [1, 2, 3] {
+            f.eval(B0, member(Builtin::ListAdd, parent, vec![int(x)]));
+        }
+        // Empty views: Clear and Sort always refuse, SortType returns early.
+        let empty = f.tmp(
+            B0,
+            Ty::List,
+            member(Builtin::ListSubList, parent, vec![int(1), int(1)]),
+        );
+        let empty = local_of(&empty);
+        let mut b = B0;
+        for (op, args) in [
+            (Builtin::ListClear, vec![]),
+            (Builtin::ListSort, vec![boolean(true)]),
+            (Builtin::ListSortCaseInsensitive, vec![boolean(true)]),
+            (Builtin::ListSortType, vec![s("N"), boolean(true)]),
+            (
+                Builtin::ListSortTypeCaseInsensitive,
+                vec![s("N"), boolean(true)],
+            ),
+        ] {
+            b = try_ok(f, b, |f, b| f.eval(b, member(op, empty, args)));
+        }
+        // An empty fixed-size list can still be cleared.
+        let fixed = f.local(Ty::List);
+        f.assign(b, fixed, Rvalue::Default(Ty::List));
+        let none = str_array(f, b, &[]);
+        let wrapped = f.tmp(
+            b,
+            Ty::List,
+            conv(none, Ty::Array(Box::new(Ty::String), 1), Ty::List),
+        );
+        f.eval(b, member(Builtin::ListInitialize2, fixed, vec![wrapped]));
+        b = try_ok(f, b, |f, b| {
+            f.eval(b, member(Builtin::ListClear, fixed, vec![]))
+        });
+        // A live view: Set on the parent shows through.
+        let child = f.tmp(
+            b,
+            Ty::List,
+            member(Builtin::ListSubList, parent, vec![int(0), int(2)]),
+        );
+        let child = local_of(&child);
+        f.eval(b, member(Builtin::ListSet, parent, vec![int(0), s("new")]));
+        let first = f.tmp(b, Ty::Object, member(Builtin::ListGet, child, vec![int(0)]));
+        f.log_as(b, first, Ty::Object);
+        f.log_as(b, l(child), Ty::List);
+        let o = obj(f, b, l(child), Ty::List);
+        let t = f.tmp(b, Ty::String, builtin(Builtin::GetType, None, vec![o]));
+        f.log(b, t);
+        b = try_ok(f, b, |f, b| {
+            f.eval(b, member(Builtin::ListSet, child, vec![int(0), int(9)]));
+        });
+        // A structural change of the parent invalidates the view.
+        f.eval(b, member(Builtin::ListAdd, parent, vec![int(4)]));
+        b = try_ok(f, b, |f, b| {
+            f.eval(b, member(Builtin::ListGet, child, vec![int(0)]));
+        });
+        b = try_ok(f, b, |f, b| {
+            f.eval(b, member(Builtin::ListSize, child, vec![]));
+        });
+        try_ok(f, b, |f, b| f.log_as(b, l(child), Ty::List));
+    });
+    assert_eq!(
+        stdout_of(&p),
+        "java.lang.UnsupportedOperationException\n\
+         java.lang.UnsupportedOperationException\n\
+         java.lang.UnsupportedOperationException\n\
+         ok\nok\nok\n\
+         new\n(UnmodifiableRandomAccessList) [new, 2]\n\
+         java.util.Collections$UnmodifiableRandomAccessList\n\
+         java.lang.UnsupportedOperationException\n\
+         java.util.ConcurrentModificationException\n\
+         java.util.ConcurrentModificationException\n\
+         java.util.ConcurrentModificationException\n"
+    );
+}
+
+/// `SortTypeCaseInsensitive` compares `String.valueOf(field)` ("null" for
+/// Null); `SortCaseInsensitive` calls `toString()` and raises on Null.
+#[test]
+fn case_insensitive_sorts_and_null() {
+    let mut pb = Pb::default();
+    let id = RecordId(0);
+    let init = pb.reserve();
+    pb.records.push(Record {
+        name: "T".into(),
+        fields: vec![RecordField {
+            name: "Name".into(),
+            ty: Ty::String,
+        }],
+        init,
+    });
+    let mut f = Fb::new("T.Initialize", Ty::Void);
+    f.param(Ty::Record(id));
+    pb.define(init, f);
+    let p = pb.program(None, |_, f| {
+        let list = f.local(Ty::List);
+        f.assign(B0, list, Rvalue::Default(Ty::List));
+        f.eval(B0, member(Builtin::ListInitialize, list, vec![]));
+        for name in [Some("b"), None, Some("A"), Some("o")] {
+            // Not initialised: Name is a Java null until set.
+            let t = f.tmp(B0, Ty::Record(id), Rvalue::Default(Ty::Record(id)));
+            if let Some(name) = name {
+                f.stmt(
+                    B0,
+                    StatementKind::SetField {
+                        record: t.clone(),
+                        field: 0,
+                        value: s(name),
+                    },
+                );
+            }
+            let o = obj(f, B0, t, Ty::Record(id));
+            f.eval(B0, member(Builtin::ListAdd, list, vec![o]));
+        }
+        f.eval(
+            B0,
+            member(
+                Builtin::ListSortTypeCaseInsensitive,
+                list,
+                vec![s("Name"), boolean(true)],
+            ),
+        );
+        let after = for_each(f, B0, l(list), Ty::Record(id), |f, b, t| {
+            let n = f.tmp(
+                b,
+                Ty::String,
+                Rvalue::Field {
+                    record: t,
+                    field: 0,
+                },
+            );
+            f.log(b, n);
+        });
+        let names = f.local(Ty::List);
+        f.assign(after, names, Rvalue::Default(Ty::List));
+        f.eval(after, member(Builtin::ListInitialize, names, vec![]));
+        f.eval(after, member(Builtin::ListAdd, names, vec![s("x")]));
+        f.eval(after, member(Builtin::ListAdd, names, vec![null()]));
+        try_ok(f, after, |f, b| {
+            f.eval(
+                b,
+                member(Builtin::ListSortCaseInsensitive, names, vec![boolean(true)]),
+            );
+        });
+    });
+    assert_eq!(
+        stdout_of(&p),
+        "A\nb\nnull\no\njava.lang.NullPointerException\n"
+    );
 }
