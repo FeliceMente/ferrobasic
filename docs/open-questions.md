@@ -43,6 +43,16 @@ related tests stay `pending-recording`.
       the loop variable after the loop.
 - [ ] Undeclared variables other than `For` counters: implicit `String` (old
       forum posts) or a compile error.
+- [ ] Type of a variable declared without `As` (`Dim x`, `Dim x = 5`): `String`, or inferred.
+- [ ] Two `Dim`s of the same name in one Sub, with the same or different types.
+- [ ] Return value of a typed Sub that ends without `Return`.
+- [ ] Comparing Strings with `<` / `>`, and comparing a String with a number.
+- [ ] Changing a `List` or `Map` while iterating it with `For Each`.
+- [ ] Output and exit code of a B4J non-UI program that stops on an uncaught error.
+- [ ] `AppType` value of a non-UI `.b4j` project.
+- [ ] Whether `LogDebug` prints in release mode (provisionally not).
+- [ ] Standalone binaries on macOS: whether ad-hoc re-signing works with
+      appended payload bytes (see `docs/spec/cli.md`).
 
 ## Porting
 

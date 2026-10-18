@@ -52,8 +52,8 @@ Other values go through [`BA.ObjectToString`](https://github.com/AnywhereSoftwar
 prints `null`. `Log(Null)` prints `null` ([`BA.Log`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L369-L371));
 `Log` writes to stdout with a trailing newline.
 
-An uninitialised `List`/`Map` prints as `(ArrayList) Not initialized` style
-text, and an initialised one as `(ArrayList) [1, 2]` / `(MyMap) {a=1}`
+An uninitialised `List`/`Map` prints as `(List) Not initialized` /
+`(Map) Not initialized` (the `@ShortName`), and an initialised one as `(ArrayList) [1, 2]` / `(MyMap) {a=1}`
 ([`AbsObjectWrapper.toString`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/AbsObjectWrapper.java#L104-L130)).
 Exact type names need a recording.
 
@@ -205,7 +205,8 @@ out of scope for Level 0.
 
 ## Impact on the Level 0 spec
 
-To apply when writing the specs (step 3), not done here:
+Applied to [spec/level0.ebnf](../spec/level0.ebnf), [spec/level0.md](../spec/level0.md),
+[spec/level0-builtins.md](../spec/level0-builtins.md) and the conformance tests:
 
 1. `level0.ebnf`:
    - add `:` as a statement separator;
@@ -224,7 +225,9 @@ To apply when writing the specs (step 3), not done here:
 
 ## Expected output of the existing tests (not a recording)
 
-From the rules above, and only as a sanity check while no recording exists:
+From the rules above; now kept as `.provisional` files next to the tests.
+Double formatting and `NumberFormat` results were checked by running the
+`jCore` code paths on OpenJDK 21.0.12:
 
 - `prices_map.bas`: `1.2 + 1.5` is `2.7` in IEEE double, so
   `Big breakfast` then `Total: 2.7`.
