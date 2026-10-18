@@ -8,7 +8,7 @@ B4X; M3 is the first milestone where real B4J projects build unchanged.
 | Milestone | Scope | Gate |
 | --- | --- | --- |
 | **M0 · Foundations** | Project-file reader, lexer, parser, lossless CST, Level 0 test corpus, recorder | The whole corpus parses without errors |
-| **M1 · Interpreter and REPL** | Level 0 execution, REPL, LSP with diagnostics | Conformance tests pass in the interpreter |
+| **M1 · Interpreter and REPL** | Level 0 execution, `ferro run`, standalone `ferro build` (interpreter + embedded program), REPL, LSP with diagnostics | Conformance tests pass in the interpreter and as standalone binaries |
 | **M2 · Classes and events** | Levels 1 and 2: classes, events, Sleep and Wait For | Real B4J console programs match the reference |
 | **M3 · JVM backend** | Java backend, library descriptors, original jars, Android | Real B4J projects build unchanged and match the reference |
 | **M4 · Native LLVM and WASM** | Native runtime with ARC, desktop executables, wasm32 | Same output, binaries with no external dependencies |
@@ -17,15 +17,40 @@ B4X; M3 is the first milestone where real B4J projects build unchanged.
 
 ## M0 task breakdown
 
+Order changed: the interpreter comes right after the parser, and recording is
+deferred, with `.provisional` outputs standing in
+(see [compatibility-testing.md](compatibility-testing.md#provisional-outputs)).
+
 - [ ] Collect 5–10 small B4J console projects and document the project-file
       format in `docs/spec/project-files.md`.
 - [ ] `ferro-project`: read `.b4j` headers and modules; round-trip tests.
-- [ ] `ferro-syntax`: token kinds, lexer (case-insensitive keywords, smart
+- [x] `ferro-syntax`: token kinds, lexer (case-insensitive keywords, smart
       strings, line continuation, comments as trivia).
-- [ ] `ferro-syntax`: parser producing a lossless CST for the Level 0 grammar,
+- [x] `ferro-syntax`: parser producing a lossless CST for the Level 0 grammar,
       with error recovery.
-- [ ] Snapshot tests: every file in `tests/conformance` parses and prints back
+- [x] Snapshot tests: every file in `tests/conformance` parses and prints back
       byte-identical.
+- [x] Level 0 semantics researched from public sources
+      ([research/level0-semantics.md](research/level0-semantics.md)); specs
+      updated; pending tests with provisional outputs added.
 - [ ] `tools/recorder`: wrap a `.bas` in a B4J console project, build and run it
-      with the original toolchain, write `.expected` and `.meta.toml`.
-- [ ] CI green on Linux, macOS and Windows.
+      with the original toolchain, write `.expected` and `.meta.toml`. *Deferred.*
+- [ ] CI green on Linux, macOS and Windows. *Deferred.*
+
+## M1 task breakdown (first part)
+
+Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
+
+- [ ] `ferro-project`: read `.bas` module headers and single-module non-UI `.b4j`.
+- [x] `ferro-hir`: name resolution with Sub-wide hoisting, types, conversions,
+      Level 0 built-ins from [spec/level0-builtins.md](spec/level0-builtins.md).
+      Provisional rules are listed in [open-questions.md](open-questions.md).
+- [x] `ferro-mir`: typed IR with explicit `Convert`, lowered loops and smart strings.
+- [x] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
+- [x] `ferro check` / `ferro run`: every conformance test with a provisional
+      output matches it (`crates/interp/tests/conformance.rs`).
+- [x] `ferro build`: standalone executable for the host (payload appended to `ferro`).
+      Verified on Linux x86_64, glibc and musl (fully static); Windows and
+      macOS are not tested yet.
+- [ ] `ferro-difftest --target interp` and `--target standalone` against
+      `.expected` / `.provisional`.

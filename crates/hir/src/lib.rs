@@ -1,16 +1,30 @@
-//! Name resolution, type checking and target profiles.
+//! Name resolution and type checking for Level 0 (`docs/spec/level0.md`).
 //!
-//! Status: stub. See `docs/architecture.md` and `AGENTS.md`.
+//! [`check`] parses nothing itself: it takes a syntax tree without syntax
+//! errors and returns the typed [`Module`] plus the semantic diagnostics.
+//! The module is only meant to run when there are no diagnostics.
 
-/// Returns the crate version; placeholder until real functionality lands.
-pub fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+pub mod builtins;
+pub mod hir;
+mod lower;
+pub mod ty;
+
+pub use hir::Module;
+pub use ty::Ty;
+
+use ferro_syntax::{SyntaxNode, TextRange};
+
+/// A semantic error, with its location in the source text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Diagnostic {
+    pub range: TextRange,
+    pub message: String,
+}
+
+/// Resolves names and types of a parsed module.
+pub fn check(root: &SyntaxNode) -> (Module, Vec<Diagnostic>) {
+    lower::lower(root)
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn version_is_set() {
-        assert!(!super::version().is_empty());
-    }
-}
+mod tests;
