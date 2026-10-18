@@ -45,9 +45,10 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] `ferro-hir`: name resolution with Sub-wide hoisting, types, conversions,
       Level 0 built-ins from [spec/level0-builtins.md](spec/level0-builtins.md).
       Provisional rules are listed in [open-questions.md](open-questions.md).
-- [ ] `ferro-mir`: typed IR with explicit `Convert`, lowered loops and smart strings.
-- [ ] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
-- [ ] `ferro check` / `ferro run`.
+- [x] `ferro-mir`: typed IR with explicit `Convert`, lowered loops and smart strings.
+- [x] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
+- [x] `ferro check` / `ferro run`: every conformance test with a provisional
+      output matches it (`crates/interp/tests/conformance.rs`).
 - [ ] `ferro build`: standalone executable for the host (payload appended to `ferro`).
 - [ ] `ferro-difftest --target interp` and `--target standalone` against
       `.expected` / `.provisional`.
