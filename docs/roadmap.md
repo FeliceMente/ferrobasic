@@ -24,11 +24,11 @@ deferred, with `.provisional` outputs standing in
 - [ ] Collect 5–10 small B4J console projects and document the project-file
       format in `docs/spec/project-files.md`.
 - [ ] `ferro-project`: read `.b4j` headers and modules; round-trip tests.
-- [ ] `ferro-syntax`: token kinds, lexer (case-insensitive keywords, smart
+- [x] `ferro-syntax`: token kinds, lexer (case-insensitive keywords, smart
       strings, line continuation, comments as trivia).
-- [ ] `ferro-syntax`: parser producing a lossless CST for the Level 0 grammar,
+- [x] `ferro-syntax`: parser producing a lossless CST for the Level 0 grammar,
       with error recovery.
-- [ ] Snapshot tests: every file in `tests/conformance` parses and prints back
+- [x] Snapshot tests: every file in `tests/conformance` parses and prints back
       byte-identical.
 - [x] Level 0 semantics researched from public sources
       ([research/level0-semantics.md](research/level0-semantics.md)); specs

@@ -35,8 +35,17 @@ related tests stay `pending-recording`.
 - [x] Number-to-string formatting: `Double.toString` without a trailing `.0`,
       Float widened to Double, JDK ≥ 19 rules
       ([source](research/level0-semantics.md#number-to-string-conversion-source)).
-- [ ] Whether the compiler routes every numeric `&` / `Log` conversion through
-      `BA.NumberToString`.
+- [x] Numbers in `&` are converted with `BA.NumberToString`
+      ([generated](research/level0-semantics.md#number-to-string-conversion-source)).
+- [ ] Whether `Log(number)` and number-to-String assignments also use `BA.NumberToString`.
+- [ ] Which keywords besides `In` are also accepted as names (`Step`, `To`,
+      `Each`, `Until`, `Type`, …): `In` is
+      ([generated](research/level0-semantics.md#keywords-used-as-names-generated)).
+- [ ] Whether a line break inside parentheses continues the line without ` _`.
+- [ ] Whether chained comparisons (`a < b < c`, `If a = b = c`) compile, and
+      how they group. The parser accepts them left-associatively for now.
+      Settled part: `x = a = b` as a statement assigns the comparison `a = b`
+      ([generated](research/level0-semantics.md#operators-and-precedence-docs-forum-open)).
 - [ ] Which boxed type a numeric literal gets when stored as `Object`
       (matters for `Map` keys: `Int` 1 and `Double` 1.0 are different keys).
 - [ ] `For`: whether the limit and step are evaluated once, and the value of
