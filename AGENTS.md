@@ -14,14 +14,18 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   -> `mir` (typed IR) -> `interp` | `backend-java` | `backend-llvm`.
 - Language: Rust (stable, edition 2024). Workspace in `crates/`, one crate per
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
-- Current milestone: **M0** — project-file reader, lexer, parser, lossless CST,
-  Level 0 test corpus, recorder. See `docs/roadmap.md`.
+- Current milestone: **M0 → M1** — lexer, parser, lossless CST, then the
+  Level 0 interpreter, `ferro run` and standalone `ferro build` (see
+  `docs/spec/cli.md`). The recorder is deferred. See `docs/roadmap.md`.
 
 ## Read before working
 
 - `docs/architecture.md` — components, IR, backends, tooling.
 - `docs/porting.md` — what "builds without changes" requires, layer by layer.
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
+- `docs/spec/level0-builtins.md` — keywords and library members at Level 0.
+- `docs/spec/cli.md` — `ferro check/run/build`, exit codes, standalone binaries.
+- `docs/research/level0-semantics.md` — where each Level 0 rule comes from.
 - `docs/compatibility-testing.md` — how compatibility is measured.
 - `docs/open-questions.md` — unresolved B4X semantics. Check here before guessing.
 
@@ -31,6 +35,11 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   from the ORIGINAL B4X toolchain (`*.meta.toml` records the B4X version).
   Expected behaviour is what those files say, not your memory of B4X.
 - Never write or edit a `*.expected` file by hand: only `tools/recorder` does.
+- Until recordings exist, `*.provisional` files hold hand-derived expected
+  output, only for behaviour settled in `docs/research/level0-semantics.md`.
+  Never write one for an open question, never change one to make a test pass,
+  and never let it override an `*.expected` file (see
+  `docs/compatibility-testing.md`).
 - The interpreter is FerroBASIC's semantic reference: every backend must
   produce the same output as the interpreter and as the recording.
 - Library `.xml` descriptors are the type-checking interface for libraries;
@@ -66,6 +75,7 @@ cargo test --workspace
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p ferro-cli -- run tests/conformance/level0/<file>.bas
+cargo run -p ferro-cli -- build tests/conformance/level0/<file>.bas -o /tmp/prog
 cargo run -p ferro-difftest -- --target interp   # compare against recordings (once implemented)
 ```
 
@@ -74,7 +84,8 @@ cargo run -p ferro-difftest -- --target interp   # compare against recordings (o
 1. `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
    `cargo test --workspace` all pass.
 2. New behaviour has conformance tests; open questions and deviations are recorded.
-3. Docs in `docs/` reflect any design change.
+3. Docs in `docs/` reflect any design change; `docs/tutorial.md` shows real
+   `ferro` output, so re-run its examples when CLI behaviour changes.
 
 ## Commits and PRs
 

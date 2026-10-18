@@ -8,8 +8,11 @@ iOS, WebAssembly and microcontrollers such as the Raspberry Pi Pico. It comes
 with a reference interpreter, a REPL and a Language Server, so you can use
 VS Code or any LSP-capable editor instead of a dedicated IDE.
 
-> **Status: pre-alpha (milestone M0).** Nothing works yet beyond the project
-> skeleton. See [`docs/roadmap.md`](docs/roadmap.md).
+> **Status: pre-alpha (milestone M0 → M1).** Level 0 programs (one module,
+> language core, `List`/`Map`) can be checked, run with the reference
+> interpreter and built into standalone executables for the host. Start with
+> the [tutorial](docs/tutorial.md); see [`docs/roadmap.md`](docs/roadmap.md)
+> for what comes next.
 
 FerroBASIC is an independent project. It is not affiliated with or endorsed by
 Anywhere Software, the maker of B4X. "B4X", "B4A", "B4i", "B4J" and "B4R" are
@@ -54,6 +57,25 @@ cargo test --workspace
 cargo run -p ferro-cli -- --help
 ```
 
+Running and building a Level 0 program:
+
+```sh
+ferro check prog.bas              # parse and type-check
+ferro run prog.bas -- a b         # run with the reference interpreter
+ferro build prog.bas -o prog      # bundle into a standalone executable
+./prog a b
+```
+
+A standalone binary is `ferro` with the program appended: it needs neither
+FerroBASIC nor a JVM, only the system C library (or nothing at all when
+`ferro` is built for `x86_64-unknown-linux-musl`).
+
+> **Note:** at Level 0, `ferro build` *bundles* rather than compiles. The
+> executable is the `ferro` interpreter plus the program's checked source,
+> which is parsed and interpreted at start-up exactly as `ferro run` does. So
+> it runs at interpreter speed, and the source can be recovered from the file.
+> Native code generation (M4) will replace this behind the same command.
+
 ## Working with AI coding agents
 
 Agent instructions live in [`AGENTS.md`](AGENTS.md), which Claude Code, Codex,
@@ -63,9 +85,12 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 
 ## Documentation
 
+- [Tutorial: the `ferro` command line](docs/tutorial.md)
 - [Architecture](docs/architecture.md)
 - [Porting existing B4X projects](docs/porting.md)
-- [Language spec, Level 0](docs/spec/level0.md) and [grammar](docs/spec/level0.ebnf)
+- [Language spec, Level 0](docs/spec/level0.md), [grammar](docs/spec/level0.ebnf) and [built-ins](docs/spec/level0-builtins.md)
+- [CLI, interpreter and standalone builds](docs/spec/cli.md)
+- [Level 0 semantics from public sources](docs/research/level0-semantics.md)
 - [Compatibility testing](docs/compatibility-testing.md)
 - [Roadmap](docs/roadmap.md)
 - [Open questions](docs/open-questions.md) and [deviations](docs/deviations.md)
