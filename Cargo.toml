@@ -14,7 +14,7 @@ members = [
 version = "0.0.1"
 edition = "2024"
 rust-version = "1.85"
-repository = "https://github.com/OWNER/ferrobasic"
+repository = "https://github.com/FeliceMente/ferrobasic"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
