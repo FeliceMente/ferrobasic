@@ -179,7 +179,9 @@ is embedded with `libsui` instead (see below).
   - At start-up `libsui` finds the package again: through `getsectdata` on
     Apple Silicon, by scanning the file for its marker on Intel.
   - The output must pass `codesign --verify --strict` (a test checks this
-    on macOS). Not verified on a Mac yet.
+    on macOS). Verified on an Apple Silicon Mac: native arm64, with
+    `cargo test --workspace` passing, and x86_64 through Rosetta. Not yet on
+    an Intel Mac.
 - **Writing the output**: the binary is staged in a new, uniquely named file
   next to the output (never an existing file or a symlink), signed there on
   Intel Macs, then renamed over the output. If any step fails, an existing output

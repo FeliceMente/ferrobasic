@@ -386,7 +386,8 @@ with the same OS and architecture.
 - On macOS the program goes inside the executable rather than after it, so
   the result can be code-signed. It is signed ad hoc, which is enough to run
   it on your own Mac.
-- Windows and macOS builds are not tested yet.
+- Tested on Linux and macOS (Apple Silicon, and Intel binaries through
+  Rosetta). Windows is not tested yet.
 
 ## 9. Exit codes
 
