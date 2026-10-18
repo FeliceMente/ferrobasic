@@ -66,6 +66,7 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 - [Architecture](docs/architecture.md)
 - [Porting existing B4X projects](docs/porting.md)
 - [Language spec, Level 0](docs/spec/level0.md) and [grammar](docs/spec/level0.ebnf)
+- [Level 0 semantics from public sources](docs/research/level0-semantics.md)
 - [Compatibility testing](docs/compatibility-testing.md)
 - [Roadmap](docs/roadmap.md)
 - [Open questions](docs/open-questions.md) and [deviations](docs/deviations.md)
