@@ -88,7 +88,11 @@ it arrives.
   - `java.lang.ArithmeticException`;
   - `java.lang.ClassCastException`;
   - `java.lang.UnsupportedOperationException`;
-  - `java.lang.ArrayIndexOutOfBoundsException`.
+  - `java.lang.ArrayIndexOutOfBoundsException`;
+  - `java.lang.ArrayStoreException`;
+  - `java.lang.NullPointerException`;
+  - `java.util.ConcurrentModificationException`;
+  - `java.lang.StackOverflowError`, which `Try` does not catch.
 
   The kind is what `ferro-difftest` compares. Messages are compared only where
   [level0-builtins.md](level0-builtins.md) quotes them exactly.

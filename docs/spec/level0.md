@@ -78,7 +78,7 @@ End Sub
 | Object | any value or `Null` | `Null` | `Object` | pointer with a type header |
 | List, Map | reference to a collection, uninitialised by default | uninitialised | wrapper | runtime object |
 | arrays `T()` | fixed size, zero-based, any rank | per element | `T[]` | runtime object |
-| `Type` records | reference, fields with defaults | fields at defaults | class | runtime object |
+| `Type` records | reference to an object with fields | an object whose fields hold Java defaults (0, `False`, `Null` for String and objects); `Initialize` then sets B4X's defaults (`""`, fresh uninitialised List/Map) and makes `IsInitialized` True. Fields can be read and written before `Initialize`. | class | runtime object |
 
 - Primitives (the numbers, `Boolean`, `Char`) are copied on assignment and
   when passed. Everything else, `String` included, copies the reference.
