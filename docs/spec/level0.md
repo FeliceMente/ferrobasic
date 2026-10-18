@@ -125,6 +125,7 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 | String → Char | first character, or `Chr(0)` for an empty string |
 | Object → T | unbox. A number box converts to any numeric type; a String converts as above; otherwise a runtime `ClassCastException`. |
 | Null → String | `"null"` when converted for output |
+| any other value → String | `BA.ObjectToString` (Java `String.valueOf`): B4X compiles `Log(LastException)` and `"e: " & LastException` this way (generated code) |
 
 ### Number to string
 

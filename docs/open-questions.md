@@ -67,6 +67,22 @@ related tests stay `pending-recording`.
 - [ ] Standalone binaries on macOS: whether ad-hoc re-signing works with
       appended payload bytes (see `docs/spec/cli.md`).
 
+Provisional type-checking rules in `crates/hir` (each needs a recorded test):
+
+- [ ] Calling a member on an `Object` (`o.Size`) is a compile error: the value
+      must first be assigned to a typed variable or cast with `.As(T)`.
+- [ ] `Return <value>` in a Sub declared without `As` is a compile error.
+- [ ] A parameter without `As` is a `String`.
+- [ ] Comparing a `Char` with a number is a compile error; `Char` with a
+      `String` compares as Strings.
+- [ ] In a mixed comparison the left operand decides: number vs String
+      compares numerically, String vs number compares as Strings (forum).
+- [ ] `<` / `>` on Booleans or objects is a compile error.
+- [ ] `Null` compared with a number, Boolean or Char is a compile error.
+- [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
+      -16777216, as the forum shows); a decimal literal that does not fit an
+      `Int` is a `Long`.
+
 ## Porting
 
 - [ ] Collect a corpus of real projects per product and document the project-file format from it.
