@@ -687,3 +687,19 @@ fn dump_is_readable() {
     assert!(text.contains("Add Int _1, 1"), "{text}");
     assert!(text.contains("eval Log("), "{text}");
 }
+
+#[test]
+fn inexact_constant_steps_use_the_run_time_sign_test() {
+    // A Float step of 1e-50 is 0 as a Float; a folded Double would say positive.
+    let p = program("Dim f As Float\nFor f = 0 To 1 Step 1.0e-50\nLog(f)\nExit\nNext");
+    let f = app(&p);
+    assert_eq!(compares(f, CmpOp::Gt), 1, "{}", crate::dump(&p));
+    assert_eq!(compares(f, CmpOp::Lt), 1);
+    // A Long step beyond 2^53 is not folded through a Double.
+    let p = program("Dim d As Double\nFor d = 0 To 1 Step 9007199254740993\nExit\nNext");
+    assert_eq!(compares(app(&p), CmpOp::Gt), 1);
+    // Exact constants still fold.
+    let p = program("For i = 1 To 3 Step -1\nNext");
+    assert_eq!(compares(app(&p), CmpOp::Gt), 0);
+    assert_eq!(compares(app(&p), CmpOp::Ge), 1);
+}

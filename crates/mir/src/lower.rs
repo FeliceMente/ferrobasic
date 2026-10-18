@@ -910,33 +910,52 @@ enum Sign {
 /// sign does not depend on a conversion rule. A zero step, or any other
 /// expression, is tested at run time.
 fn constant_sign(e: &h::Expr) -> Option<Sign> {
-    let v = constant_value(e)?;
-    if v > 0.0 {
-        Some(Sign::Positive)
-    } else if v < 0.0 {
-        Some(Sign::Negative)
-    } else {
-        None
+    match constant_value(e)? {
+        Folded::Int(v) if v > 0 => Some(Sign::Positive),
+        Folded::Int(v) if v < 0 => Some(Sign::Negative),
+        Folded::Double(v) if v > 0.0 => Some(Sign::Positive),
+        Folded::Double(v) if v < 0.0 => Some(Sign::Negative),
+        // Zero and NaN are decided at run time.
+        _ => None,
     }
 }
 
-fn constant_value(e: &h::Expr) -> Option<f64> {
-    match &e.kind {
-        ExprKind::Literal(Literal::Int(i)) => Some(f64::from(*i)),
-        ExprKind::Literal(Literal::Long(i)) => Some(*i as f64),
-        ExprKind::Literal(Literal::Double(d)) => Some(*d),
-        ExprKind::Neg(inner) => constant_value(inner).map(|v| -v),
-        ExprKind::Convert(inner) => {
-            let v = constant_value(inner)?;
-            // Narrowing integer conversions wrap; anything from a floating
-            // value to an integer is left to run time.
-            let int = inner.ty.is_integer();
-            match &e.ty {
-                Ty::Float | Ty::Double => Some(v),
-                Ty::Long if int => Some(v),
-                Ty::Int if int => Some(f64::from(v as i64 as i32)),
-                Ty::Short if int => Some(f64::from(v as i64 as i16)),
-                Ty::Byte if int => Some(f64::from(v as i64 as i8)),
+/// A folded step value, in the precision of the step's type.
+enum Folded {
+    /// An Int or Long value, exact.
+    Int(i64),
+    /// A Double value, exact.
+    Double(f64),
+}
+
+/// The value of a constant step, only when folding it is provably exact:
+/// integer literals with checked negation, widening to Long or Double, and
+/// Double literals. Anything else (Float, Byte and Short steps, narrowing,
+/// values that would wrap) is left to the run-time sign test.
+fn constant_value(e: &h::Expr) -> Option<Folded> {
+    match (&e.kind, &e.ty) {
+        (ExprKind::Literal(Literal::Int(i)), Ty::Int) => Some(Folded::Int(i64::from(*i))),
+        (ExprKind::Literal(Literal::Long(i)), Ty::Long) => Some(Folded::Int(*i)),
+        (ExprKind::Literal(Literal::Double(d)), Ty::Double) => Some(Folded::Double(*d)),
+        (ExprKind::Neg(inner), Ty::Int) => match constant_value(inner)? {
+            Folded::Int(v) => i32::try_from(v.checked_neg()?)
+                .ok()
+                .map(|v| Folded::Int(v.into())),
+            Folded::Double(_) => None,
+        },
+        (ExprKind::Neg(inner), Ty::Long) => match constant_value(inner)? {
+            Folded::Int(v) => v.checked_neg().map(Folded::Int),
+            Folded::Double(_) => None,
+        },
+        (ExprKind::Neg(inner), Ty::Double) => match constant_value(inner)? {
+            Folded::Double(v) => Some(Folded::Double(-v)),
+            Folded::Int(_) => None,
+        },
+        (ExprKind::Convert(inner), Ty::Long) if inner.ty == Ty::Int => constant_value(inner),
+        (ExprKind::Convert(inner), Ty::Double) if inner.ty.is_integer() => {
+            match constant_value(inner)? {
+                // Exact only within the 53-bit mantissa.
+                Folded::Int(v) if v.unsigned_abs() <= 1 << 53 => Some(Folded::Double(v as f64)),
                 _ => None,
             }
         }

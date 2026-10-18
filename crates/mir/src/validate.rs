@@ -30,7 +30,9 @@ pub fn validate(program: &Program) -> Result<(), String> {
     for (i, record) in program.records.iter().enumerate() {
         check_func(record.init, &format!("record {}", record.name))?;
         let init = program.function(record.init);
-        if init.params != 1 || init.locals[0].ty != Ty::Record(RecordId(i as u32)) {
+        if init.params != 1
+            || init.locals.first().map(|l| &l.ty) != Some(&Ty::Record(RecordId(i as u32)))
+        {
             return Err(format!(
                 "record {}: init must take the record as its only parameter",
                 record.name
@@ -309,5 +311,25 @@ mod tests {
         let mut p = hello();
         p.functions[1].locals[0].ty = Ty::String;
         assert!(validate(&p).unwrap_err().contains("entry must take"));
+
+        // A record initialiser with a parameter but no locals is rejected,
+        // not a panic.
+        let mut p = hello();
+        p.records.push(Record {
+            name: "R".into(),
+            fields: vec![],
+            init: FuncId(2),
+        });
+        p.functions.push(function(
+            "R.Initialize",
+            1,
+            vec![],
+            vec![block(vec![], Terminator::Return(None))],
+        ));
+        assert!(
+            validate(&p)
+                .unwrap_err()
+                .contains("init must take the record")
+        );
     }
 }
