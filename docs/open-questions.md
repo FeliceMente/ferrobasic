@@ -67,6 +67,25 @@ related tests stay `pending-recording`.
 - [ ] Standalone binaries on macOS: whether ad-hoc re-signing works with
       appended payload bytes (see `docs/spec/cli.md`).
 
+Provisional runtime behaviour in `crates/mir` and `crates/interp` (each
+needs a recorded test):
+
+- [ ] `For` evaluation order: FerroBASIC assigns the start value, then
+      evaluates the limit, then the step. B4J's generated Java may evaluate
+      limit and step first; it only matters when they read the counter or
+      have side effects.
+- [ ] Call depth before `java.lang.StackOverflowError` (FerroBASIC: 10,000
+      frames). The error is not caught by `Try`, as Java `Error`s escape the
+      generated `catch (Exception e)`.
+- [ ] How a record prints (`Log(p)`), and `GetType` of a record.
+- [ ] How a variable of type `Exception` and an array print.
+- [ ] Exact texts of JDK-generated messages (`ClassCastException`,
+      `IndexOutOfBoundsException`, …) seen through `LastException.Message`.
+- [x] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class),
+      even though they contain the product's package name: kept for
+      compatibility, since it is program output, not a FerroBASIC message.
+- [ ] A List or Map used as a Map key: compared by identity in FerroBASIC.
+
 Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 
 - [ ] Calling a member on an `Object` (`o.Size`) is a compile error: the value

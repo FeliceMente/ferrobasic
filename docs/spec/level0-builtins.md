@@ -89,7 +89,7 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 | `Get(Index) As Object`, `Set(Index, Item)`, `RemoveAt(Index)` | out of range → `IndexOutOfBoundsException` |
 | `Clear`, `Size As Int` | |
 | `IndexOf(Item) As Int` | `equals` comparison, so boxed types matter |
-| `SubList(BeginIndex, EndIndex) As List` | a read-only view |
+| `SubList(BeginIndex, EndIndex) As List` | a read-only view backed by the list (`Collections.unmodifiableList(subList(...))`, class `java.util.Collections$UnmodifiableRandomAccessList`): `Set` on the parent shows through; after a structural change of the parent (`Add`, `RemoveAt`, `InsertAt`, `Clear`, `AddAll`, `Sort`…) any access through the view raises `java.util.ConcurrentModificationException`; `Clear`, `Sort` and other changes through the view raise `java.lang.UnsupportedOperationException` |
 | `Sort(Ascending As Boolean)` | Java `Comparable` order, stable. Items must all have the same boxed type: all `String`s, or all numbers of one type. Mixing types, e.g. `Int` and `Double`, raises `ClassCastException`. |
 | `SortCaseInsensitive(Ascending As Boolean)` | compares the items' `toString()` with `compareToIgnoreCase`, stable. Numbers are therefore sorted as text: `2, 10` → `10, 2`, and a boxed Double `1` compares as `"1.0"`. |
 

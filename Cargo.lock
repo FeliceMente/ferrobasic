@@ -34,7 +34,9 @@ dependencies = [
 name = "ferro-interp"
 version = "0.0.1"
 dependencies = [
+ "ferro-hir",
  "ferro-mir",
+ "ferro-syntax",
 ]
 
 [[package]]
@@ -42,6 +44,7 @@ name = "ferro-mir"
 version = "0.0.1"
 dependencies = [
  "ferro-hir",
+ "ferro-syntax",
 ]
 
 [[package]]

@@ -14,7 +14,7 @@ Usage: ferro <command> [args]
 Commands:
   check <file>      Parse and type-check a module
   build <project>   Build a B4X project (.b4j/.b4a/.b4i/.b4r)
-  run <file|project> Run with the reference interpreter
+  run <file> [-- <args>...]  Run with the reference interpreter
   repl              Start the interactive REPL
   test              Run conformance tests
   fmt <file>        Format source files
@@ -41,7 +41,22 @@ fn main() -> ExitCode {
             [file] => dump_cst(Path::new(file)),
             _ => usage_error("ferro dump-cst: expected exactly one file"),
         },
-        Some(cmd @ ("build" | "run" | "repl" | "test" | "fmt")) => {
+        Some("dump-mir") => match &args[1..] {
+            [file] => match compile(Path::new(file)) {
+                Ok((_, module)) => {
+                    print!("{}", ferro_mir::dump(&ferro_mir::lower(&module)));
+                    ExitCode::SUCCESS
+                }
+                Err(code) => code,
+            },
+            _ => usage_error("ferro dump-mir: expected exactly one file"),
+        },
+        Some("run") => match &args[1..] {
+            [file] => run(Path::new(file), &[]),
+            [file, sep, program_args @ ..] if sep == "--" => run(Path::new(file), program_args),
+            _ => usage_error("ferro run: expected `ferro run <file> [-- <args>...]`"),
+        },
+        Some(cmd @ ("build" | "repl" | "test" | "fmt")) => {
             eprintln!("ferro {cmd}: not implemented yet (milestone M1)");
             ExitCode::from(EXIT_USAGE)
         }
@@ -66,32 +81,83 @@ fn read_source(path: &Path) -> Result<String, ExitCode> {
     })
 }
 
-fn check(path: &Path) -> ExitCode {
-    let text = match read_source(path) {
-        Ok(text) => text,
-        Err(code) => return code,
-    };
+/// Parses and type-checks a module, printing every error. `Err` holds the
+/// exit code to stop with.
+fn compile(path: &Path) -> Result<(String, ferro_hir::Module), ExitCode> {
+    let text = read_source(path)?;
     let parse = ferro_syntax::parse(&text);
     // Type checking runs only on a tree without syntax errors.
-    let errors: Vec<(ferro_syntax::TextRange, String)> = if parse.errors().is_empty() {
-        let (_, diags) = ferro_hir::check(&parse.syntax());
-        diags.into_iter().map(|d| (d.range, d.message)).collect()
+    let (module, errors): (_, Vec<(ferro_syntax::TextRange, String)>) = if parse.errors().is_empty()
+    {
+        let (module, diags) = ferro_hir::check(&parse.syntax());
+        let errors = diags.into_iter().map(|d| (d.range, d.message)).collect();
+        (Some(module), errors)
     } else {
-        parse
+        let errors = parse
             .errors()
             .iter()
             .map(|e| (e.range, e.message.clone()))
-            .collect()
+            .collect();
+        (None, errors)
     };
     for (range, message) in &errors {
         eprint!("{}", render_error(path, &text, *range, message));
     }
-    if errors.is_empty() {
-        ExitCode::SUCCESS
-    } else {
-        eprintln!("{} error(s)", errors.len());
-        ExitCode::from(EXIT_COMPILE_ERRORS)
+    match module {
+        Some(module) if errors.is_empty() => Ok((text, module)),
+        _ => {
+            eprintln!("{} error(s)", errors.len());
+            Err(ExitCode::from(EXIT_COMPILE_ERRORS))
+        }
     }
+}
+
+fn check(path: &Path) -> ExitCode {
+    match compile(path) {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(code) => code,
+    }
+}
+
+/// `ferro run`: compile, then interpret. An uncaught runtime error is printed
+/// the way B4J prints it (`docs/spec/cli.md`); stdout written before it is kept.
+fn run(path: &Path, args: &[String]) -> ExitCode {
+    let (text, module) = match compile(path) {
+        Ok(compiled) => compiled,
+        Err(code) => return code,
+    };
+    let program = ferro_mir::lower(&module);
+    let stdout = std::io::stdout();
+    let stderr = std::io::stderr();
+    let outcome = ferro_interp::run(&program, args, &mut stdout.lock(), &mut stderr.lock());
+    if let Some(error) = &outcome.error {
+        let (line, _) = line_and_column(&text, usize::from(error.range.start()));
+        eprintln!("Error occurred on line: {line} (Main)");
+        if error.message.is_empty() {
+            eprintln!("{}", error.kind);
+        } else {
+            eprintln!("{}: {}", error.kind, error.message);
+        }
+    }
+    ExitCode::from(exit_status(outcome.exit_code))
+}
+
+/// A process exit status from an `ExitApplication2` code: the low 8 bits,
+/// as POSIX shells see a JVM exit code.
+fn exit_status(code: i32) -> u8 {
+    (code & 0xff) as u8
+}
+
+/// 1-based line and character column of a byte offset; `\r\n`, `\n` and
+/// a lone `\r` each end a line.
+fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
+    let offset = offset.min(text.len());
+    let line_start = text[..offset].rfind(['\n', '\r']).map_or(0, |i| i + 1);
+    let before = &text[..line_start];
+    let line = before.matches('\n').count() + before.matches('\r').count()
+        - before.matches("\r\n").count()
+        + 1;
+    (line, text[line_start..offset].chars().count() + 1)
 }
 
 fn dump_cst(path: &Path) -> ExitCode {
@@ -115,11 +181,7 @@ fn render_error(path: &Path, text: &str, range: ferro_syntax::TextRange, message
     let line_end = text[offset..]
         .find(['\n', '\r'])
         .map_or(text.len(), |i| offset + i);
-    let line_number = text[..line_start].matches('\n').count()
-        + text[..line_start].matches('\r').count()
-        - text[..line_start].matches("\r\n").count()
-        + 1;
-    let column = text[line_start..offset].chars().count() + 1;
+    let (line_number, column) = line_and_column(text, offset);
     let source_line = text[line_start..line_end].trim_start_matches('\u{feff}');
     let caret_pad: String = text[line_start..offset]
         .trim_start_matches('\u{feff}')
@@ -136,6 +198,24 @@ fn render_error(path: &Path, text: &str, range: ferro_syntax::TextRange, message
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lines_count_every_line_ending() {
+        let text = "a\r\nb\nc\rd";
+        assert_eq!(line_and_column(text, 0), (1, 1));
+        assert_eq!(line_and_column(text, 3), (2, 1));
+        assert_eq!(line_and_column(text, 5), (3, 1));
+        assert_eq!(line_and_column(text, 7), (4, 1));
+        assert_eq!(line_and_column("x = é1", 6), (1, 6));
+    }
+
+    #[test]
+    fn exit_codes_keep_the_low_byte() {
+        assert_eq!(exit_status(0), 0);
+        assert_eq!(exit_status(1), 1);
+        assert_eq!(exit_status(300), 44);
+        assert_eq!(exit_status(-1), 255);
+    }
 
     #[test]
     fn error_locations_count_lines_and_characters() {
