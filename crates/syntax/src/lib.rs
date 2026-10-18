@@ -11,7 +11,7 @@ use std::fmt::Write;
 
 pub use kind::{FerroLanguage, SyntaxKind};
 pub use parser::{Parse, parse};
-pub use rowan::{TextRange, TextSize};
+pub use rowan::{NodeOrToken, TextRange, TextSize};
 
 /// A node of the lossless syntax tree.
 pub type SyntaxNode = rowan::SyntaxNode<FerroLanguage>;
