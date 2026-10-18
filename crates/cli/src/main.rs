@@ -1,7 +1,7 @@
 //! `ferro`: the FerroBASIC command-line tool.
 //!
-//! Status: `check` parses and reports syntax errors (type checking is not
-//! implemented yet); the other commands are stubs. See `docs/spec/cli.md`.
+//! Status: `check` parses and type-checks a module; the other commands are
+//! stubs. See `docs/spec/cli.md`.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -12,7 +12,7 @@ FerroBASIC - a B4X-compatible, multi-target BASIC compiler
 Usage: ferro <command> [args]
 
 Commands:
-  check <file>      Parse a module and report syntax errors
+  check <file>      Parse and type-check a module
   build <project>   Build a B4X project (.b4j/.b4a/.b4i/.b4r)
   run <file|project> Run with the reference interpreter
   repl              Start the interactive REPL
@@ -72,14 +72,24 @@ fn check(path: &Path) -> ExitCode {
         Err(code) => return code,
     };
     let parse = ferro_syntax::parse(&text);
-    for error in parse.errors() {
-        eprint!("{}", render_error(path, &text, error));
+    // Type checking runs only on a tree without syntax errors.
+    let errors: Vec<(ferro_syntax::TextRange, String)> = if parse.errors().is_empty() {
+        let (_, diags) = ferro_hir::check(&parse.syntax());
+        diags.into_iter().map(|d| (d.range, d.message)).collect()
+    } else {
+        parse
+            .errors()
+            .iter()
+            .map(|e| (e.range, e.message.clone()))
+            .collect()
+    };
+    for (range, message) in &errors {
+        eprint!("{}", render_error(path, &text, *range, message));
     }
-    if parse.errors().is_empty() {
-        eprintln!("note: syntax only; type checking is not implemented yet");
+    if errors.is_empty() {
         ExitCode::SUCCESS
     } else {
-        eprintln!("{} syntax error(s)", parse.errors().len());
+        eprintln!("{} error(s)", errors.len());
         ExitCode::from(EXIT_COMPILE_ERRORS)
     }
 }
@@ -99,8 +109,8 @@ fn dump_cst(path: &Path) -> ExitCode {
 
 /// `path:line:column: error: message`, then the source line and a caret.
 /// Columns count characters, starting at 1.
-fn render_error(path: &Path, text: &str, error: &ferro_syntax::SyntaxError) -> String {
-    let offset = usize::from(error.range.start()).min(text.len());
+fn render_error(path: &Path, text: &str, range: ferro_syntax::TextRange, message: &str) -> String {
+    let offset = usize::from(range.start()).min(text.len());
     let line_start = text[..offset].rfind(['\n', '\r']).map_or(0, |i| i + 1);
     let line_end = text[offset..]
         .find(['\n', '\r'])
@@ -119,7 +129,7 @@ fn render_error(path: &Path, text: &str, error: &ferro_syntax::SyntaxError) -> S
     format!(
         "{}:{line_number}:{column}: error: {}\n  {source_line}\n  {caret_pad}^\n",
         path.display(),
-        error.message
+        message
     )
 }
 
@@ -131,7 +141,8 @@ mod tests {
     fn error_locations_count_lines_and_characters() {
         let text = "Sub A\r\n\tx = = 1\r\nEnd Sub\r\n";
         let parse = ferro_syntax::parse(text);
-        let rendered = render_error(Path::new("a.bas"), text, &parse.errors()[0]);
+        let error = &parse.errors()[0];
+        let rendered = render_error(Path::new("a.bas"), text, error.range, &error.message);
         assert_eq!(
             rendered,
             "a.bas:2:6: error: expected an expression\n  \tx = = 1\n  \t    ^\n"

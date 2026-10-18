@@ -42,8 +42,9 @@ deferred, with `.provisional` outputs standing in
 Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 
 - [ ] `ferro-project`: read `.bas` module headers and single-module non-UI `.b4j`.
-- [ ] `ferro-hir`: name resolution with Sub-wide hoisting, types, conversions,
+- [x] `ferro-hir`: name resolution with Sub-wide hoisting, types, conversions,
       Level 0 built-ins from [spec/level0-builtins.md](spec/level0-builtins.md).
+      Provisional rules are listed in [open-questions.md](open-questions.md).
 - [ ] `ferro-mir`: typed IR with explicit `Convert`, lowered loops and smart strings.
 - [ ] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
 - [ ] `ferro check` / `ferro run`.
