@@ -56,8 +56,8 @@ While the recorder does not exist, a test may carry a `<name>.provisional`
 file: its expected stdout, derived by hand from the sources in
 [research/level0-semantics.md](research/level0-semantics.md). Rules:
 
-- Only for behaviour the research marks as settled by `source`, `docs` or
-  `forum`; the basis and the links go in a `[provisional]` table of the
+- Only for behaviour the research marks as settled by `source`, `generated`,
+  `docs` or `forum`; the basis and the links go in a `[provisional]` table of the
   `.meta.toml`. Behaviour marked *open* gets no provisional output: the test
   stays pending with no expectation.
 - A `.provisional` file never overrides an `.expected` one. When the recorder

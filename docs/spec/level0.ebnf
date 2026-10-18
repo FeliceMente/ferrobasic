@@ -4,7 +4,11 @@
 (* Keywords and identifiers are case-insensitive.                           *)
 (* SEP = end of line or ":" (a colon is exactly a line break, also after    *)
 (*       a single-line If: "If c Then a : b" runs b unconditionally).       *)
-(* " _" at end of line continues it; "'" starts a comment up to end of line. *)
+(* " _" at end of line continues it: the "_" must follow a space or tab   *)
+(* and be followed only by spaces and the line break. "'" starts a comment *)
+(* up to end of line.                                                       *)
+(* "In" is contextual: a keyword in For Each, a name elsewhere (B4X code    *)
+(* uses parameters named In). Other contextual keywords are open.          *)
 (* Whitespace, comments and continuations are trivia kept in the CST.       *)
 
 module        = [ BOM ] , [ header ] , program ;
@@ -12,7 +16,7 @@ header        = { header_line } , "@EndOfDesignText@" , NL ;
 header_line   = KEY , "=" , REST_OF_LINE , NL ;   (* B4J module/project header *)
 
 program       = { SEP } , { member , { SEP } } ;
-member        = attribute | region | sub_decl | type_decl ;
+member        = attribute | region | sub_decl ;
 attribute     = "#" , IDENT , ":" , REST_OF_LINE ;
 region        = "#Region" , REST_OF_LINE | "#End" , "Region" ;  (* trivia *)
 
@@ -27,7 +31,8 @@ field         = IDENT , [ "(" , expr_list , ")" ] , [ "As" , type_ref ] ;
 type_ref      = IDENT , { "." , IDENT } ;
 
 block         = { [ statement ] , SEP } ;
-statement     = dim_stmt | if_stmt | select_stmt | for_stmt
+(* Type declarations live inside Process_Globals (and Class_Globals).    *)
+statement     = dim_stmt | type_decl | if_stmt | select_stmt | for_stmt
               | foreach_stmt | do_stmt | try_stmt
               | "Return" , [ expr ] | "Exit" | "Continue"
               | assign_or_call ;
