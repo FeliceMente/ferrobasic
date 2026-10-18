@@ -41,6 +41,16 @@ fn main() -> ExitCode {
             [file] => dump_cst(Path::new(file)),
             _ => usage_error("ferro dump-cst: expected exactly one file"),
         },
+        Some("dump-mir") => match &args[1..] {
+            [file] => match compile(Path::new(file)) {
+                Ok((_, module)) => {
+                    print!("{}", ferro_mir::dump(&ferro_mir::lower(&module)));
+                    ExitCode::SUCCESS
+                }
+                Err(code) => code,
+            },
+            _ => usage_error("ferro dump-mir: expected exactly one file"),
+        },
         Some("run") => match &args[1..] {
             [file] => run(Path::new(file), &[]),
             [file, sep, program_args @ ..] if sep == "--" => run(Path::new(file), program_args),
