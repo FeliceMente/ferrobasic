@@ -340,5 +340,74 @@ fn select_kinds() {
         }
         _ => None,
     });
-    assert_eq!(kind, Some(CmpKind::String));
+    // Strings match with `equals`, like any non-numeric value.
+    assert_eq!(kind, Some(CmpKind::Object));
+}
+
+#[test]
+fn array_initializer_is_kept() {
+    let m = ok(&program(
+        "Dim days() As String = Array As String(\"Mon\", \"Tue\")",
+    ));
+    match &app_start(&m).body[0].kind {
+        StmtKind::Dim {
+            init: DimInit::Value(v),
+            ..
+        } => {
+            assert!(matches!(v.kind, ExprKind::ArrayLiteral(ref items) if items.len() == 2));
+        }
+        other => panic!("{other:?}"),
+    }
+    let d = errors(&program("Dim a() As Int = missing"));
+    assert!(has(&d, "`missing` is not declared"), "{d:?}");
+    let d = errors(&program("Dim a(3) As Int = Array As Int(1)"));
+    assert!(has(&d, "cannot also have an initial value"), "{d:?}");
+}
+
+#[test]
+fn too_many_dimensions_is_a_diagnostic() {
+    let dims = vec!["1"; 256].join(", ");
+    let d = errors(&program(&format!("Dim a({dims}) As Int\nDim s As Map = a")));
+    assert!(has(&d, "at most 255 dimensions"), "{d:?}");
+    let d = errors(&format!(
+        "Sub Process_Globals\n  Type R (F({dims}) As Int)\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n"
+    ));
+    assert!(has(&d, "at most 255 dimensions"), "{d:?}");
+}
+
+#[test]
+fn record_field_bounds_see_globals() {
+    ok(
+        "Sub Process_Globals\n  Private n As Int = 3\n  Type Row (Items(n) As Int)\nEnd Sub\n\
+        Sub AppStart (Args() As String)\nEnd Sub\n",
+    );
+}
+
+#[test]
+fn select_matches_like_switch_object_to_int() {
+    // A String scrutinee compares with `equals`: Case 1 stays a boxed Int.
+    let m = ok(&program(
+        "Select \"1\"\n  Case 1\n    Log(\"one\")\nEnd Select",
+    ));
+    match &app_start(&m).body[0].kind {
+        StmtKind::Select { kind, cases, .. } => {
+            assert_eq!(*kind, CmpKind::Object);
+            assert_eq!(show(&cases[0].values[0]), "conv(Int->Object, 1)");
+        }
+        other => panic!("{other:?}"),
+    }
+    // A Char scrutinee converts its cases to Char (docs: `Select Txt.CharAt(i)`).
+    let m = ok(&program(
+        "Dim t As String = \"AB\"\nSelect t.CharAt(0)\n  Case \"A\", \"B\"\nEnd Select",
+    ));
+    let kind = app_start(&m).body.iter().find_map(|s| match &s.kind {
+        StmtKind::Select { kind, .. } => Some(*kind),
+        _ => None,
+    });
+    assert_eq!(kind, Some(CmpKind::Char));
+}
+
+#[test]
+fn inline_cast_to_array_type() {
+    ok(&program("Dim o As Object\nLog(o.As(String()).Length)"));
 }

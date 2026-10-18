@@ -39,6 +39,8 @@ struct Lowerer {
     /// `Class_Globals`: rejected, but its variables are still declared so a
     /// class gets one diagnostic instead of one per use of its fields.
     class_globals: Option<SubId>,
+    /// `ARRAY_BOUNDS` of record fields, lowered after globals and Subs exist.
+    pending_bounds: Vec<(RecordId, usize, SyntaxNode)>,
     ret: Ty,
     loops: u32,
     /// Loops and Selects: what `Exit` can leave.
@@ -154,9 +156,22 @@ impl Lowerer {
         match ty {
             Ty::Record(id) => self.module.record(*id).name.clone(),
             Ty::Array(elem, rank) => {
-                format!("{}({})", self.ty_name(elem), ",".repeat(*rank as usize - 1))
+                let commas = ",".repeat(usize::from(rank.saturating_sub(1)));
+                format!("{}({commas})", self.ty_name(elem))
             }
             other => other.to_string(),
+        }
+    }
+
+    /// The rank of an array with `dims` dimensions: at least 1, at most 255
+    /// (the JVM's limit, so B4J cannot accept more either).
+    fn rank(&mut self, dims: usize, at: TextRange) -> u8 {
+        match u8::try_from(dims.max(1)) {
+            Ok(rank) => rank,
+            Err(_) => {
+                self.error(at, "an array can have at most 255 dimensions");
+                1
+            }
         }
     }
 
@@ -177,6 +192,16 @@ impl Lowerer {
         {
             let node = subs[id.0 as usize].clone();
             self.declare_globals(&node);
+        }
+        for (id, field, node) in std::mem::take(&mut self.pending_bounds) {
+            let bounds = exprs(&node)
+                .iter()
+                .map(|e| {
+                    let e = self.expr(e);
+                    self.coerce(e, &Ty::Int)
+                })
+                .collect();
+            self.module.records[id.0 as usize].fields[field].bounds = bounds;
         }
         for (i, node) in subs.iter().enumerate() {
             self.lower_sub(SubId(i as u32), node);
@@ -246,20 +271,17 @@ impl Lowerer {
                     Some(t) => self.resolve_type(&t),
                     None => Ty::String,
                 };
-                let (ty, bounds) = match bounds_node {
+                let ty = match &bounds_node {
                     Some(b) => {
-                        let bounds: Vec<Expr> = exprs(&b)
-                            .iter()
-                            .map(|e| {
-                                let e = self.expr(e);
-                                self.coerce(e, &Ty::Int)
-                            })
-                            .collect();
-                        let rank = bounds.len().max(1) as u8;
-                        (Ty::Array(Box::new(elem), rank), bounds)
+                        let rank = self.rank(exprs(b).len(), range(b));
+                        Ty::Array(Box::new(elem), rank)
                     }
-                    None => (elem, Vec::new()),
+                    None => elem,
                 };
+                // Bounds may use globals and Subs: lowered once those are declared.
+                if let Some(b) = bounds_node {
+                    self.pending_bounds.push((id, fields.len(), b));
+                }
                 if fields
                     .iter()
                     .any(|f| f.name.eq_ignore_ascii_case(&field_name))
@@ -272,7 +294,7 @@ impl Lowerer {
                 fields.push(Field {
                     name: field_name,
                     ty,
-                    bounds,
+                    bounds: Vec::new(),
                 });
             }
             self.module.records[id.0 as usize].fields = fields;
@@ -440,7 +462,7 @@ impl Lowerer {
                 let elem = elem.unwrap();
                 let ty = match child(&decl, ARRAY_BOUNDS) {
                     Some(bounds) if elem != Ty::Error => {
-                        let rank = exprs(&bounds).len().max(1) as u8;
+                        let rank = self.rank(exprs(&bounds).len(), range(&bounds));
                         match elem {
                             // `Dim a() As String()`: already an array type.
                             Ty::Array(..) => elem,
@@ -583,7 +605,18 @@ impl Lowerer {
                     let Some((var, ty)) = self.lookup_var(&name) else {
                         continue;
                     };
-                    let init = if let Some(bounds) = child(&decl, ARRAY_BOUNDS) {
+                    let bounds = child(&decl, ARRAY_BOUNDS);
+                    let init = if let Some(init) = exprs(&decl).first() {
+                        // `Dim days() As String = Array As String(...)`.
+                        if let Some(b) = bounds.as_ref().filter(|b| !exprs(b).is_empty()) {
+                            self.error(
+                                range(b),
+                                "an array declared with bounds cannot also have an initial value",
+                            );
+                        }
+                        let value = self.expr(init);
+                        DimInit::Value(self.coerce(value, &ty))
+                    } else if let Some(bounds) = bounds {
                         let bounds = exprs(&bounds)
                             .iter()
                             .map(|e| {
@@ -592,9 +625,6 @@ impl Lowerer {
                             })
                             .collect();
                         DimInit::Array(bounds)
-                    } else if let Some(init) = exprs(&decl).first() {
-                        let value = self.expr(init);
-                        DimInit::Value(self.coerce(value, &ty))
                     } else {
                         DimInit::Default
                     };
@@ -825,10 +855,13 @@ impl Lowerer {
             return;
         };
         let scrutinee = self.expr(&scrutinee);
+        // As `BA.switchObjectToInt`: numbers match by numeric value, anything
+        // else with `equals` on the boxed values (so String "1" does not match
+        // Int 1). A Char scrutinee converts its cases to Char, as the docs'
+        // `Select Txt.CharAt(i)` / `Case "A"` example needs.
         let (kind, domain) = match &scrutinee.ty {
             t if t.is_numeric() => (CmpKind::Numeric, Ty::Double),
-            Ty::String | Ty::Char => (CmpKind::String, Ty::String),
-            Ty::Boolean => (CmpKind::Boolean, Ty::Boolean),
+            Ty::Char => (CmpKind::Char, Ty::Char),
             Ty::Error => (CmpKind::Object, Ty::Error),
             _ => (CmpKind::Object, Ty::Object),
         };
@@ -1339,16 +1372,29 @@ impl Lowerer {
 
     /// `x.As(Type)`: an explicit conversion.
     fn inline_cast(&mut self, value: Expr, args: Option<&[SyntaxNode]>, at: TextRange) -> Expr {
-        let target = match args {
-            Some([arg]) if arg.kind() == NAME_REF => {
-                let name = name_of(arg);
+        // `.As(Int)`, or `.As(String())` for an array type (parsed as a call).
+        let type_name = match args {
+            Some([arg]) if arg.kind() == NAME_REF => Some((arg.clone(), false)),
+            Some([arg])
+                if arg.kind() == CALL_EXPR
+                    && arg.children().next().is_some_and(|c| c.kind() == NAME_REF)
+                    && child(arg, ARG_LIST).is_some_and(|a| exprs(&a).is_empty()) =>
+            {
+                Some((arg.children().next().unwrap(), true))
+            }
+            _ => None,
+        };
+        let target = match type_name {
+            Some((arg, is_array)) => {
+                let name = name_of(&arg);
                 match builtin_type(&name)
                     .or_else(|| self.records.get(&key(&name)).map(|&id| Ty::Record(id)))
                 {
+                    Some(ty) if is_array => Ty::Array(Box::new(ty), 1),
                     Some(ty) => ty,
                     None => {
                         self.error(
-                            range(arg),
+                            range(&arg),
                             format!(
                                 "unknown type `{name}`: library types are not supported at Level 0"
                             ),

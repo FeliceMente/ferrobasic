@@ -180,7 +180,10 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - **`If`**: single line `If c Then s [Else s]`, or the block form with `Else If`
   (two words) and `Else`.
 - **`Select expr`**: each `Case` holds a list of expressions, compared in order.
-  - Numbers match by numeric value (as Double); other values match with `equals`.
+  - Numbers match by numeric value (as Double); other values match with `equals`
+    on the boxed values, so String "1" does not match `Case 1`. With a Char
+    scrutinee the cases are converted to Char (`Select Txt.CharAt(i)` with
+    `Case "A"`, from the booklet).
   - The first matching `Case` runs, then control leaves the `Select`; there is no
     fall-through. `Case Else` runs if nothing matched.
   - There are no ranges. `Select True` with `Case cond` is the idiom for conditions.
