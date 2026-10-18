@@ -294,7 +294,12 @@ impl Rvalue {
 }
 
 mod lower;
+mod print;
 mod validate;
 
 pub use lower::lower;
+pub use print::{dump, dump_function};
 pub use validate::validate;
+
+#[cfg(test)]
+mod tests;
