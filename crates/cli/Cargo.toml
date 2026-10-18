@@ -1,0 +1,22 @@
+[package]
+name = "ferro-cli"
+description = "The `ferro` command: build, run, repl, check, test, fmt."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "ferro"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+ferro-project = { path = "../project" }
+ferro-syntax = { path = "../syntax" }
+ferro-hir = { path = "../hir" }
+ferro-mir = { path = "../mir" }
+ferro-interp = { path = "../interp" }

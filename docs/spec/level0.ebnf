@@ -1,0 +1,72 @@
+(* FerroBASIC — Level 0 grammar (B4X-compatible subset), ISO EBNF.          *)
+(* Reconstructed from public B4X documentation: verify against recordings.  *)
+(* Keywords and identifiers are case-insensitive.                           *)
+(* NL = end of line; " _" at end of line continues it; "'" starts a comment. *)
+
+program       = { NL } , { member , { NL } } ;
+member        = attribute | region | sub_decl | type_decl ;
+attribute     = "#" , IDENT , ":" , REST_OF_LINE ;
+region        = "#Region" , REST_OF_LINE | "#End" , "Region" ;  (* trivia *)
+
+sub_decl      = [ access ] , "Sub" , IDENT ,
+                [ "(" , [ param , { "," , param } ] , ")" ] ,
+                [ "As" , type_ref ] , NL , block , "End" , "Sub" ;
+access        = "Private" | "Public" ;
+param         = IDENT , [ "(" , ")" ] , [ "As" , type_ref ] ;
+
+type_decl     = "Type" , IDENT , "(" , field , { "," , field } , ")" ;
+field         = IDENT , [ "(" , INT , ")" ] , "As" , type_ref ;
+type_ref      = IDENT , { "." , IDENT } ;
+
+block         = { [ statement ] , NL } ;
+statement     = dim_stmt | if_stmt | select_stmt | for_stmt
+              | foreach_stmt | do_stmt | try_stmt
+              | "Return" , [ expr ] | "Exit" | "Continue"
+              | assign_or_call ;
+simple_stmt   = dim_stmt | assign_or_call | "Return" , [ expr ]
+              | "Exit" | "Continue" ;
+
+dim_stmt      = ( "Dim" | "Private" | "Public" ) ,
+                declarator , { "," , declarator } ;
+declarator    = IDENT , [ "(" , expr_list , ")" ] ,
+                [ "As" , type_ref ] , [ "=" , expr ] ;
+assign_or_call = postfix , [ "=" , expr ] ;
+
+if_stmt       = "If" , expr , "Then" ,
+                ( simple_stmt , [ "Else" , simple_stmt ]
+                | NL , block ,
+                  { "Else" , "If" , expr , "Then" , NL , block } ,
+                  [ "Else" , NL , block ] , "End" , "If" ) ;
+select_stmt   = "Select" , [ "Case" ] , expr , NL , { NL } ,
+                { "Case" , ( "Else" | expr_list ) , NL , block } ,
+                "End" , "Select" ;
+for_stmt      = "For" , IDENT , [ "As" , type_ref ] , "=" , expr ,
+                "To" , expr , [ "Step" , expr ] , NL , block , "Next" ;
+foreach_stmt  = "For" , "Each" , IDENT , [ "As" , type_ref ] ,
+                "In" , expr , NL , block , "Next" ;
+do_stmt       = "Do" , ( "While" | "Until" ) , expr , NL , block , "Loop" ;
+try_stmt      = "Try" , NL , block , "Catch" , NL , block ,
+                "End" , "Try" ;
+
+(* Expressions, from lowest to highest precedence *)
+expr          = and_expr , { "Or" , and_expr } ;
+and_expr      = cmp_expr , { "And" , cmp_expr } ;
+cmp_expr      = concat_expr ,
+                [ ( "=" | "<>" | "<" | ">" | "<=" | ">=" ) , concat_expr ] ;
+concat_expr   = add_expr , { "&" , add_expr } ;
+add_expr      = mul_expr , { ( "+" | "-" ) , mul_expr } ;
+mul_expr      = unary , { ( "*" | "/" | "Mod" ) , unary } ;
+unary         = [ "-" ] , postfix ;
+postfix       = primary , { "." , IDENT | "(" , [ expr_list ] , ")" } ;
+primary       = literal | IDENT | "Me" | "(" , expr , ")"
+              | "Not" , "(" , expr , ")" | smart_string ;
+expr_list     = expr , { "," , expr } ;
+
+(* Lexical *)
+literal       = INT | REAL | STRING | "True" | "False" | "Null" ;
+IDENT         = letter , { letter | digit | "_" } ;
+INT           = digit , { digit } | "0x" , hex , { hex } ;
+REAL          = digit , { digit } , "." , digit , { digit } ,
+                [ ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit } ] ;
+STRING        = '"' , { any_char - '"' } , '"' ;   (* may span lines *)
+smart_string  = '$"' , { any_char | "${" , expr , "}" } , '"$' ;

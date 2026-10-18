@@ -1,0 +1,14 @@
+[package]
+name = "ferro-mir"
+description = "Typed, desugared intermediate representation and lowering from HIR."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ferro-hir = { path = "../hir" }

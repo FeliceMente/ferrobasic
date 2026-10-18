@@ -1,0 +1,13 @@
+[package]
+name = "ferro-project"
+description = "Reader for B4X project files (.b4j/.b4a/.b4i/.b4r) and .b4xlib archives."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]

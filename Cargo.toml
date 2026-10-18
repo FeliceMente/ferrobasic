@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/syntax",
+    "crates/project",
+    "crates/hir",
+    "crates/mir",
+    "crates/interp",
+    "crates/difftest",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+repository = "https://github.com/OWNER/ferrobasic"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[profile.release]
+lto = "thin"

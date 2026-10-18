@@ -1,0 +1,14 @@
+[package]
+name = "ferro-interp"
+description = "Reference interpreter and REPL engine running the MIR."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ferro-mir = { path = "../mir" }
