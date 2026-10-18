@@ -64,8 +64,10 @@ related tests stay `pending-recording`.
       `LastException.Message` (index and number-parse errors), and which JDK.
 - [ ] Default JVM locale on the recording machine (affects `ToLowerCase` /
       `ToUpperCase` for Turkish, Azeri and Lithuanian locales).
-- [ ] Standalone binaries on macOS: whether ad-hoc re-signing works with
-      appended payload bytes (see `docs/spec/cli.md`).
+- [x] Standalone binaries on macOS: re-signing appended payload bytes does
+      not work (`codesign`: "main executable failed strict validation", on
+      Apple Silicon and Intel). The package is embedded with `libsui`
+      instead (see `docs/spec/cli.md`).
 
 Provisional runtime behaviour in `crates/mir` and `crates/interp` (each
 needs a recorded test):

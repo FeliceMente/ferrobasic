@@ -49,8 +49,8 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
 - [x] `ferro check` / `ferro run`: every conformance test with a provisional
       output matches it (`crates/interp/tests/conformance.rs`).
-- [x] `ferro build`: standalone executable for the host (payload appended to `ferro`).
-      Verified on Linux x86_64, glibc and musl (fully static); Windows and
-      macOS are not tested yet.
+- [x] `ferro build`: standalone executable for the host (payload appended to
+      `ferro`; embedded with `libsui` on macOS). Verified on Linux x86_64,
+      glibc and musl (fully static); Windows and macOS are not tested yet.
 - [ ] `ferro-difftest --target interp` and `--target standalone` against
       `.expected` / `.provisional`.

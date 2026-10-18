@@ -129,12 +129,15 @@ it arrives.
 
 ## Standalone binary format
 
-`ferro build` writes the bytes of the running `ferro` executable, followed by
-a payload and a trailer:
+`ferro build` embeds a **package** in a copy of the running `ferro`
+executable. The package is a payload followed by a trailer:
 
 ```text
-[ ferro executable ][ payload ][ payload length: u64 LE ][ magic: "FERROBASIC\0PKG" ][ format version: u16 LE ]
+package = [ payload ][ payload length: u64 LE ][ magic: "FERROBASIC\0PKG" ][ format version: u16 LE ]
 ```
+
+On Linux and Windows the package is appended to the executable. On macOS it
+is embedded with `libsui` instead (see below).
 
 - The **payload** is the checked program as source text. It is the input module,
   or the project header plus main module, as UTF-8 bytes in a small container:
@@ -147,8 +150,8 @@ a payload and a trailer:
   Source rather than MIR keeps the format free of any IR serialisation. The
   program was already fully checked at build time, so re-parsing at start-up
   cannot fail on a well-formed payload.
-- **At start-up** `ferro` reads the end of its own executable
-  (`std::env::current_exe`).
+- **At start-up** `ferro` looks for a package in its own executable: at the
+  end of its file (`std::env::current_exe`), or on macOS through `libsui`.
   - If the trailer is present, it runs the embedded program: every
     command-line argument goes to `AppStart`, and `ferro`'s own CLI is not
     parsed.
@@ -159,14 +162,27 @@ a payload and a trailer:
     falls back to the CLI in place of its program.
 - Linux (ELF) and Windows (PE) ignore appended bytes, so the result runs as is.
   Verified on Linux x86_64; Windows is not tested yet.
-  - **macOS** is *(open)*: appended bytes break the code signature, and arm64
-    refuses unsigned binaries.
-  - Until it is verified, `ferro build` on macOS re-signs ad hoc
-    (`codesign --force --sign -`). If that fails, it reports a precise error
-    rather than writing a binary that will not start.
+- **macOS**: `codesign` rejects a Mach-O file with bytes after its last
+  segment ("main executable failed strict validation"), and Apple Silicon
+  refuses to run unsigned binaries. So the package is embedded with
+  [`libsui`](https://github.com/denoland/sui), the library `deno compile`
+  uses (MIT):
+  - **Apple Silicon**: the package goes in a new Mach-O section
+    (`__SUI,__ferro`) before `__LINKEDIT`, and `libsui` signs the result ad
+    hoc itself.
+  - **Intel**: `libsui` appends the package after its own marker and extends
+    `__LINKEDIT` to cover it. `ferro build` then signs ad hoc with
+    `codesign --force --sign -`, and reports an error if that fails.
+    `libsui` stages a copy at `$TMPDIR/sui_tmp_<pid>` with a call that
+    follows symlinks, so `ferro build` creates that path first, exclusively;
+    if it already exists, the build stops with an error.
+  - At start-up `libsui` finds the package again: through `getsectdata` on
+    Apple Silicon, by scanning the file for its marker on Intel.
+  - The output must pass `codesign --verify --strict` (a test checks this
+    on macOS). Not verified on a Mac yet.
 - **Writing the output**: the binary is staged in a new, uniquely named file
   next to the output (never an existing file or a symlink), signed there on
-  macOS, then renamed over the output. If any step fails, an existing output
+  Intel Macs, then renamed over the output. If any step fails, an existing output
   is left untouched and the staged file is removed.
 - **Dependencies**: the output depends on exactly what `ferro` itself depends on.
   On Linux that is the system C library (glibc), unless `ferro` was built for

@@ -169,7 +169,7 @@ fn execute(text: &str, module: &ferro_hir::Module, args: &[String]) -> ExitCode 
 }
 
 /// Runs the program embedded in this executable, if it has one. `None` only
-/// once its own file has been read and has no trailer: an executable that
+/// once its own file has been read and holds no program: an executable that
 /// cannot be inspected must not fall back to the CLI in place of its program.
 fn run_embedded() -> Option<ExitCode> {
     let fail = |what: &dyn std::fmt::Display| {
@@ -180,8 +180,8 @@ fn run_embedded() -> Option<ExitCode> {
         Ok(exe) => exe,
         Err(error) => return fail(&format_args!("cannot locate own executable: {error}")),
     };
-    let embedded = match standalone::read_embedded(&exe) {
-        Ok(Ok(embedded)) => embedded,
+    let entries = match standalone::embedded_program(&exe) {
+        Ok(Ok(entries)) => entries?,
         Ok(Err(error)) => return fail(&format_args!("{}: {error}", exe.display())),
         Err(error) => {
             return fail(&format_args!(
@@ -190,7 +190,6 @@ fn run_embedded() -> Option<ExitCode> {
             ));
         }
     };
-    let entries = embedded.entries?;
     let source = entries
         .iter()
         .find(|e| e.name == MAIN_ENTRY)
@@ -211,8 +210,8 @@ fn run_embedded() -> Option<ExitCode> {
     })
 }
 
-/// `ferro build`: check the module, then write this executable followed by
-/// the program (`docs/spec/cli.md`).
+/// `ferro build`: check the module, then write this executable with the
+/// program embedded (`docs/spec/cli.md`).
 fn build(path: &Path, out: Option<&Path>) -> ExitCode {
     let (text, _) = match compile(path) {
         Ok(compiled) => compiled,
@@ -223,17 +222,13 @@ fn build(path: &Path, out: Option<&Path>) -> ExitCode {
         None => default_output(path),
     };
     let written = std::env::current_exe().and_then(|exe| {
-        // A `ferro` that is itself standalone contributes only its executable part.
-        let exe_len = match standalone::read_embedded(&exe)? {
-            Ok(embedded) => embedded.exe_len,
-            Err(error) => return Err(std::io::Error::other(error.to_string())),
-        };
         let entries = [standalone::Entry {
             name: MAIN_ENTRY.into(),
             bytes: text.into_bytes(),
         }];
+        let bytes = standalone::standalone_bytes(&exe, &entries)?;
         // Sign the staged file: `out` is replaced only by a finished binary.
-        standalone::write_standalone(&exe, exe_len, &entries, &out, sign_for_macos)
+        standalone::write_standalone(&bytes, &out, sign_for_intel_mac)
     });
     if let Err(error) = written {
         eprintln!("ferro build: cannot write {}: {error}", out.display());
@@ -250,26 +245,27 @@ fn default_output(path: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// On macOS the appended bytes invalidate the code signature, and arm64
-/// refuses unsigned binaries: re-sign ad hoc (`docs/spec/cli.md`, open).
-#[cfg(target_os = "macos")]
-fn sign_for_macos(staged: &Path) -> std::io::Result<()> {
+/// On Intel Macs `libsui` leaves the binary unsigned: sign it ad hoc, and
+/// report a failure rather than writing a binary with a broken signature.
+/// On Apple Silicon `libsui` has already signed it.
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+fn sign_for_intel_mac(staged: &Path) -> std::io::Result<()> {
     let status = std::process::Command::new("codesign")
         .args(["--force", "--sign", "-"])
         .arg(staged)
         .status()
-        .map_err(|e| std::io::Error::other(format!("cannot run codesign to re-sign: {e}")))?;
+        .map_err(|e| std::io::Error::other(format!("cannot run codesign: {e}")))?;
     if status.success() {
         Ok(())
     } else {
         Err(std::io::Error::other(format!(
-            "codesign could not re-sign ({status})"
+            "codesign could not sign ({status})"
         )))
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn sign_for_macos(_staged: &Path) -> std::io::Result<()> {
+#[cfg(not(all(target_os = "macos", not(target_arch = "aarch64"))))]
+fn sign_for_intel_mac(_staged: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

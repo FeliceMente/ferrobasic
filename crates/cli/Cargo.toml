@@ -20,3 +20,8 @@ ferro-syntax = { path = "../syntax" }
 ferro-hir = { path = "../hir" }
 ferro-mir = { path = "../mir" }
 ferro-interp = { path = "../interp" }
+
+# Embeds the program in a Mach-O section, so the result can be code-signed
+# (`docs/spec/cli.md`, "Standalone binary format"). macOS only.
+[target.'cfg(target_os = "macos")'.dependencies]
+libsui = "0.16.4"

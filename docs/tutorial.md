@@ -22,7 +22,7 @@ by its full path. The examples below just write `ferro`.
 
 ```console
 $ ferro version
-ferro 0.0.1
+ferro 0.0.2-dev
 ```
 
 `ferro help` (or `ferro` with no arguments) lists the commands. Three of them
@@ -383,8 +383,10 @@ with the same OS and architecture.
   ```
 
 - Building for another OS or architecture is not supported yet.
-- Windows and macOS builds are not tested yet. On macOS, `ferro build` re-signs
-  the output ad hoc with `codesign`.
+- On macOS the program goes inside the executable rather than after it, so
+  the result can be code-signed. It is signed ad hoc, which is enough to run
+  it on your own Mac.
+- Windows and macOS builds are not tested yet.
 
 ## 9. Exit codes
 

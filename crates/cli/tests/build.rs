@@ -137,14 +137,39 @@ fn exit_codes_and_corrupt_binaries() {
     assert_eq!(out.status.code(), Some(7));
 
     // Damage the payload length in the trailer: the binary must refuse to run
-    // with exit code 2 rather than run something else or crash.
-    let mut bytes = fs::read(&binary).unwrap();
-    let trailer = bytes.len() - 24;
-    bytes[trailer..trailer + 8].copy_from_slice(&u64::MAX.to_le_bytes());
-    fs::write(&binary, &bytes).unwrap();
-    let out = Command::new(&binary).output().unwrap();
-    assert_eq!(out.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("corrupt"));
+    // with exit code 2 rather than run something else or crash. (On macOS the
+    // package is not at the end of the file, and any change breaks the
+    // signature.)
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut bytes = fs::read(&binary).unwrap();
+        let trailer = bytes.len() - 24;
+        bytes[trailer..trailer + 8].copy_from_slice(&u64::MAX.to_le_bytes());
+        fs::write(&binary, &bytes).unwrap();
+        let out = Command::new(&binary).output().unwrap();
+        assert_eq!(out.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("corrupt"));
+    }
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// macOS refuses binaries with a broken signature on Apple Silicon:
+/// the output must pass `codesign`'s strict verification.
+#[cfg(target_os = "macos")]
+#[test]
+fn binaries_are_validly_signed() {
+    let dir = scratch("signed");
+    let binary = build_and_move(&conformance_dir().join("prices_map.bas"), &dir);
+    let verify = Command::new("codesign")
+        .args(["--verify", "--strict", "--verbose=2"])
+        .arg(&binary)
+        .output()
+        .unwrap();
+    assert!(
+        verify.status.success(),
+        "codesign --verify: {}",
+        String::from_utf8_lossy(&verify.stderr)
+    );
     fs::remove_dir_all(&dir).unwrap();
 }
 
