@@ -1,9 +1,17 @@
 (* FerroBASIC — Level 0 grammar (B4X-compatible subset), ISO EBNF.          *)
-(* Reconstructed from public B4X documentation: verify against recordings.  *)
+(* Reconstructed from public B4X documentation; see                         *)
+(* docs/research/level0-semantics.md. Verify against recordings.           *)
 (* Keywords and identifiers are case-insensitive.                           *)
-(* NL = end of line; " _" at end of line continues it; "'" starts a comment. *)
+(* SEP = end of line or ":" (a colon is exactly a line break, also after    *)
+(*       a single-line If: "If c Then a : b" runs b unconditionally).       *)
+(* " _" at end of line continues it; "'" starts a comment up to end of line. *)
+(* Whitespace, comments and continuations are trivia kept in the CST.       *)
 
-program       = { NL } , { member , { NL } } ;
+module        = [ BOM ] , [ header ] , program ;
+header        = { header_line } , "@EndOfDesignText@" , NL ;
+header_line   = KEY , "=" , REST_OF_LINE , NL ;   (* B4J module/project header *)
+
+program       = { SEP } , { member , { SEP } } ;
 member        = attribute | region | sub_decl | type_decl ;
 attribute     = "#" , IDENT , ":" , REST_OF_LINE ;
 region        = "#Region" , REST_OF_LINE | "#End" , "Region" ;  (* trivia *)
@@ -12,13 +20,13 @@ sub_decl      = [ access ] , "Sub" , IDENT ,
                 [ "(" , [ param , { "," , param } ] , ")" ] ,
                 [ "As" , type_ref ] , NL , block , "End" , "Sub" ;
 access        = "Private" | "Public" ;
-param         = IDENT , [ "(" , ")" ] , [ "As" , type_ref ] ;
+param         = IDENT , [ "(" , ")" ] , [ "As" , type_ref , [ "(" , ")" ] ] ;
 
 type_decl     = "Type" , IDENT , "(" , field , { "," , field } , ")" ;
-field         = IDENT , [ "(" , INT , ")" ] , "As" , type_ref ;
+field         = IDENT , [ "(" , expr_list , ")" ] , [ "As" , type_ref ] ;
 type_ref      = IDENT , { "." , IDENT } ;
 
-block         = { [ statement ] , NL } ;
+block         = { [ statement ] , SEP } ;
 statement     = dim_stmt | if_stmt | select_stmt | for_stmt
               | foreach_stmt | do_stmt | try_stmt
               | "Return" , [ expr ] | "Exit" | "Continue"
@@ -26,10 +34,19 @@ statement     = dim_stmt | if_stmt | select_stmt | for_stmt
 simple_stmt   = dim_stmt | assign_or_call | "Return" , [ expr ]
               | "Exit" | "Continue" ;
 
+(* Two declaration shapes, both documented:                               *)
+(*   Dim x As Int = 5            -- As, then initializer                   *)
+(*   Dim a = 1, b = 2 As Int     -- initializers, then one shared As        *)
+(*   Private i, j, k As Int      -- the last As types every name before it  *)
+(* A declarator without As takes the type of the next "As" to its right    *)
+(* in the same statement. With no As at all (Dim x, Dim x = 5) the type   *)
+(* is open: String by old docs, maybe inferred from the initializer.       *)
 dim_stmt      = ( "Dim" | "Private" | "Public" ) ,
                 declarator , { "," , declarator } ;
-declarator    = IDENT , [ "(" , expr_list , ")" ] ,
-                [ "As" , type_ref ] , [ "=" , expr ] ;
+declarator    = IDENT , [ "(" , [ expr_list ] , ")" ] ,
+                ( [ "As" , type_ref ] , [ "=" , expr ]
+                | "=" , expr , [ "As" , type_ref ] ) ;
+
 assign_or_call = postfix , [ "=" , expr ] ;
 
 if_stmt       = "If" , expr , "Then" ,
@@ -37,19 +54,26 @@ if_stmt       = "If" , expr , "Then" ,
                 | NL , block ,
                   { "Else" , "If" , expr , "Then" , NL , block } ,
                   [ "Else" , NL , block ] , "End" , "If" ) ;
-select_stmt   = "Select" , [ "Case" ] , expr , NL , { NL } ,
-                { "Case" , ( "Else" | expr_list ) , NL , block } ,
+(* "Select Case expr" is VB syntax; whether B4X rejects it is open.       *)
+select_stmt   = "Select" , expr , SEP , { SEP } ,
+                { "Case" , ( "Else" | expr_list ) , SEP , block } ,
                 "End" , "Select" ;
 for_stmt      = "For" , IDENT , [ "As" , type_ref ] , "=" , expr ,
-                "To" , expr , [ "Step" , expr ] , NL , block , "Next" ;
+                "To" , expr , [ "Step" , expr ] , SEP , block , "Next" ;
 foreach_stmt  = "For" , "Each" , IDENT , [ "As" , type_ref ] ,
-                "In" , expr , NL , block , "Next" ;
-do_stmt       = "Do" , ( "While" | "Until" ) , expr , NL , block , "Loop" ;
-try_stmt      = "Try" , NL , block , "Catch" , NL , block ,
+                "In" , expr , SEP , block , "Next" ;
+(* No "Loop While", "Loop Until" or bare "Do ... Loop" in B4X.            *)
+do_stmt       = "Do" , ( "While" | "Until" ) , expr , SEP , block , "Loop" ;
+try_stmt      = "Try" , SEP , block , "Catch" , SEP , block ,
                 "End" , "Try" ;
 
-(* Expressions, from lowest to highest precedence *)
-expr          = and_expr , { "Or" , and_expr } ;
+(* Expressions, from lowest to highest precedence.                        *)
+(* Documented: * / Mod above + -; comparisons below arithmetic; And/Or     *)
+(* short-circuit. NOT settled: where "&" sits, and And versus Or. The      *)
+(* levels below are a provisional choice (VB order) that the parser must   *)
+(* keep in one table so a recording can move them; see open-questions.md. *)
+expr          = or_expr ;
+or_expr       = and_expr , { "Or" , and_expr } ;
 and_expr      = cmp_expr , { "And" , cmp_expr } ;
 cmp_expr      = concat_expr ,
                 [ ( "=" | "<>" | "<" | ">" | "<=" | ">=" ) , concat_expr ] ;
@@ -58,15 +82,25 @@ add_expr      = mul_expr , { ( "+" | "-" ) , mul_expr } ;
 mul_expr      = unary , { ( "*" | "/" | "Mod" ) , unary } ;
 unary         = [ "-" ] , postfix ;
 postfix       = primary , { "." , IDENT | "(" , [ expr_list ] , ")" } ;
+(* Not(x), IIf(c, a, b), Array(...), CreateMap(k: v, ...) are ordinary     *)
+(* call syntax resolved by name in hir; Array As T (...) is special.       *)
 primary       = literal | IDENT | "Me" | "(" , expr , ")"
-              | "Not" , "(" , expr , ")" | smart_string ;
+              | smart_string | array_expr | createmap_expr ;
+array_expr    = "Array" , [ "As" , type_ref ] , "(" , [ expr_list ] , ")" ;
+createmap_expr = "CreateMap" , "(" ,
+                 [ expr , ":" , expr , { "," , expr , ":" , expr } ] , ")" ;
 expr_list     = expr , { "," , expr } ;
 
 (* Lexical *)
 literal       = INT | REAL | STRING | "True" | "False" | "Null" ;
-IDENT         = letter , { letter | digit | "_" } ;
+IDENT         = ( letter | "_" ) , { letter | digit | "_" } ;
 INT           = digit , { digit } | "0x" , hex , { hex } ;
 REAL          = digit , { digit } , "." , digit , { digit } ,
                 [ ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit } ] ;
-STRING        = '"' , { any_char - '"' } , '"' ;   (* may span lines *)
-smart_string  = '$"' , { any_char | "${" , expr , "}" } , '"$' ;
+STRING        = '"' , { any_char - '"' } , '"' ;   (* no escapes; may span lines *)
+(* Placeholder: "$" [formatter] "{" expr "}". formatter is empty, digits   *)
+(* "N" or "N.M", or a name (date, time, datetime, xml), case-insensitive.  *)
+(* How to write a literal "${" or '"$' is open.                           *)
+smart_string  = '$"' , { any_char | placeholder } , '"$' ;
+placeholder   = "$" , [ formatter ] , "{" , expr , "}" ;
+formatter     = digit , { digit } , [ "." , digit , { digit } ] | IDENT ;

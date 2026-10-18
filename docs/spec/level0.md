@@ -1,17 +1,23 @@
 # Language specification — Level 0
 
-Level 0 covers single-module console programs, like a B4J console app: enough
-for algorithms, tests and the REPL, with no UI and no events.
+Level 0 covers single-module console programs, like a B4J non-UI app: enough
+for algorithms, tests and the REPL, with no UI, no classes and no events.
 
-The grammar is in [level0.ebnf](level0.ebnf). It is reconstructed from the
-public B4X documentation and is the parser's starting point; the source of truth
-remains the conformance corpus recorded from the original toolchain.
+- Grammar: [level0.ebnf](level0.ebnf).
+- Built-in keywords and library members: [level0-builtins.md](level0-builtins.md).
+- How programs are run and built: [cli.md](cli.md).
+- Where each rule comes from: [../research/level0-semantics.md](../research/level0-semantics.md).
+
+The source of truth remains the conformance corpus recorded from the original
+toolchain. Rules marked *(open)* are not settled. Implement them as stated, keep
+them in one place so a recording can change them, and do not add tests that
+depend on them, except pending ones.
 
 ## Language levels
 
 | Level | Contents | Milestone |
 | --- | --- | --- |
-| 0 | Code modules, `Sub`, `Dim`/`Private`/`Public`, primitive types, `String`, arrays, `Type`, `If`, `Select`, `For`, `For Each`, `Do`, `Try`/`Catch`, `List`, `Map`, `Log`, smart strings | M0–M1 |
+| 0 | Code module, `Sub`, `Dim`/`Private`/`Public`, primitive types, `String`, arrays, `Type`, `If`, `Select`, `For`, `For Each`, `Do`, `Try`/`Catch`, `List`, `Map`, `Log`, smart strings | M0–M1 |
 | 1 | Classes (`Class_Globals`, `Initialize`, `Me`), multiple modules, `IsInitialized`, name-bound events | M2 |
 | 2 | `Sleep`, `Wait For`, resumable subs, `CallSubDelayed` | M2 |
 | 3 | Platform libraries, Java and native interop | M3+ |
@@ -19,8 +25,7 @@ remains the conformance corpus recorded from the original toolchain.
 
 ## Sample program
 
-Level 0 must compile and run this program (also in
-`tests/conformance/level0/prices_map.bas`):
+Level 0 must run this program (`tests/conformance/level0/prices_map.bas`):
 
 ```vb
 Sub Process_Globals
@@ -40,33 +45,194 @@ Sub AppStart (Args() As String)
 End Sub
 ```
 
+## Program structure
+
+- A program is one code module: the members of the main module of a B4J
+  non-UI project.
+- `Sub Process_Globals` (optional) declares module variables. It runs once,
+  before anything else.
+- `Sub AppStart (Args() As String)` is the entry point. It is called after
+  `Process_Globals` with the command-line arguments. The program ends when
+  `AppStart` returns, with exit code 0.
+- A program without `AppStart` is rejected with a diagnostic.
+- `ExitApplication` / `ExitApplication2(code)` end the program at once.
+- `#Region` / `#End Region` lines are trivia. Project attributes (`#Name: value`)
+  are parsed and kept. Level 0 ignores them, except as listed in [cli.md](cli.md).
+- Unsupported constructs get a diagnostic naming the construct and the level
+  that adds it. Examples are `Class_Globals`, `Wait For`, `Sleep`, `#If`, and a
+  library other than the core one.
+
 ## Types
 
-| Type | Representation | JVM | LLVM |
-| --- | --- | --- | --- |
-| Boolean | true/false | `boolean` | `i1` (`i8` in memory) |
-| Byte | signed 8-bit | `byte` | `i8` |
-| Short | signed 16-bit | `short` | `i16` |
-| Int | signed 32-bit | `int` | `i32` |
-| Long | signed 64-bit | `long` | `i64` |
-| Float | IEEE 754, 32-bit | `float` | `float` |
-| Double | IEEE 754, 64-bit | `double` | `double` |
-| Char | UTF-16 | `char` | `i16` |
-| String | immutable | `java.lang.String` | pointer to a refcounted runtime string |
-| Object | reference | `Object` | pointer with a type header |
+| Type | Representation | Default value | JVM | LLVM |
+| --- | --- | --- | --- | --- |
+| Boolean | true/false | `False` | `boolean` | `i1` (`i8` in memory) |
+| Byte | signed 8-bit | 0 | `byte` | `i8` |
+| Short | signed 16-bit | 0 | `short` | `i16` |
+| Int | signed 32-bit | 0 | `int` | `i32` |
+| Long | signed 64-bit | 0 | `long` | `i64` |
+| Float | IEEE 754, 32-bit | 0 | `float` | `float` |
+| Double | IEEE 754, 64-bit | 0 | `double` | `double` |
+| Char | UTF-16 code unit | `Chr(0)` | `char` | `i16` |
+| String | immutable UTF-16 text | `""` | `java.lang.String` | pointer to a refcounted runtime string |
+| Object | any value or `Null` | `Null` | `Object` | pointer with a type header |
+| List, Map | reference to a collection, uninitialised by default | uninitialised | wrapper | runtime object |
+| arrays `T()` | fixed size, zero-based, any rank | per element | `T[]` | runtime object |
+| `Type` records | reference, fields with defaults | fields at defaults | class | runtime object |
 
-## Rules
+- Primitives (the numbers, `Boolean`, `Char`) are copied on assignment and
+  when passed. Everything else, `String` included, copies the reference.
+- `Object` holds a boxed value. The box remembers its type: `Int` 1 and
+  `Double` 1 stored in a `Map` are different keys. Which boxed type a numeric
+  literal gets is *(open)*. Provisionally, an integer literal that fits is
+  `Int`, a real literal is `Double`.
 
-- **Lexical**: keywords and identifiers are case-insensitive. `'` starts a
-  comment; ` _` at the end of a line continues it.
-- **Conversions**: numbers and strings convert in assignments and calls; the
-  checker inserts `Convert(from, to)` into the MIR.
-- **Strings**: `=` compares by value; `&` concatenates, converting operands to strings.
-- **Scope**: `Process_Globals` is module-level; a variable declared with `Dim`
-  in a Sub is visible in the whole Sub (to verify).
-- **Uninitialized objects**: `List` and `Map` need `Initialize`; using them
-  before is a runtime error, as in B4X.
-- **Number formatting**: number-to-string conversion is observable behaviour and
-  must match B4X exactly.
+## Declarations and scope
+
+- `Dim`, `Private` and `Public` in a Sub all declare a local. In
+  `Process_Globals` they declare module variables. `Private` and `Public` only
+  matter with several modules (Level 1).
+- Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
+  A name without `As` takes the type of the next `As` to its right in the same
+  statement.
+- With no `As` at all, the type is *(open)*. Provisionally it is `String`.
+- Arrays: `Dim a(10) As Int`, `Dim m(3, 4) As Double`. The bounds are
+  expressions, evaluated when the `Dim` runs. `Dim a() As Int` is an empty array.
+- **Scope is the whole Sub.** Every local is hoisted to the top of its Sub and
+  is visible from any statement in it, whatever block declares it. Each time a
+  `Dim` statement executes, its variables are reset: to the initialiser if
+  there is one, otherwise to the default value. For `List`, `Map`, arrays and
+  `Type` records this means a fresh object.
+- Locals start at their default value on every call.
+- The counter of `For i = …` is implicitly declared as `Int` if it was not
+  declared before. Other undeclared names are *(open)*. Provisionally they are
+  a compile error.
+- Two declarations of the same name in one Sub: *(open)*. Provisionally they
+  are allowed if the types match, and rejected otherwise.
+
+## Conversions
+
+Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
+
+| From → to | Rule |
+| --- | --- |
+| number → wider number | Java widening. Exact for Byte/Short/Int → Int/Long/Double, Float → Double and every integer → Float/Double whose value fits the mantissa; otherwise rounded to nearest (Int 16777217 → Float 16777216, Long 9007199254740993 → Double 9007199254740992). |
+| number → narrower integer | Java narrowing. Double → Int truncates toward zero *(open: forum level)*; out-of-range values follow Java rules (NaN → 0, saturating). Long → Int keeps the low 32 bits. |
+| number → String | `NumberToString`, see below |
+| Boolean → String | `true` / `false` (lower case) |
+| String → number | parsed as a Java `double` literal, then narrowed. An unparsable string raises `NumberFormatException`. |
+| String → Boolean | only `"true"` / `"false"` (case-sensitive), else a runtime error |
+| String → Char | first character, or `Chr(0)` for an empty string |
+| Object → T | unbox. A number box converts to any numeric type; a String converts as above; otherwise a runtime `ClassCastException`. |
+| Null → String | `"null"` when converted for output |
+
+### Number to string
+
+This is observable behaviour and must match exactly:
+
+- `Byte`, `Short`, `Int`, `Long`: plain decimal, `-` for negatives.
+- `Double`: the shortest decimal that reads back as the same double, in Java
+  `Double.toString` format (JDK 19 and later), and then a trailing `.0` is
+  removed:
+  - plain notation when 1e-3 ≤ |x| < 1e7: `2.7`, `3` (not `3.0`), `0.001`;
+  - otherwise `d.dddE±n` with at least one digit after the point: `1.0E7`,
+    `1.0E-4`, `1.2345E10` (the `.0` before `E` stays);
+  - `NaN`, `Infinity`, `-Infinity`, and `-0.0` → `-0`.
+- `Float`: widened to Double first, so `1.1` as a Float prints `1.100000023841858`.
+
+## Operators
+
+From lowest to highest precedence. Levels marked *(open)* are provisional.
+
+| Level | Operators | Notes |
+| --- | --- | --- |
+| 1 | `Or` | short-circuit; *(open)* relative to `And` |
+| 2 | `And` | short-circuit |
+| 3 | `=` `<>` `<` `>` `<=` `>=` | not chainable |
+| 4 | `&` | *(open)* position |
+| 5 | `+` `-` | |
+| 6 | `*` `/` `Mod` | |
+| 7 | unary `-` | |
+
+- `Not(x)` is a function. Bitwise operations are the `Bit` functions; there are
+  no bitwise operators.
+- **Arithmetic type**: if both operands are integers, the result is the wider of
+  `Int` and `Long` (`Byte` and `Short` widen to `Int`), with Java wrap-around on
+  overflow. If either operand is `Float` or `Double`, the result is `Double`.
+  A String operand of `+ - * Mod` is parsed as a number.
+- `/` **always returns Double**, even for two integers: `55 / 10` is `5.5`.
+- `Mod` is the Java remainder: its sign follows the dividend (`-1 Mod 24` is `-1`).
+- Integer division by zero (`Mod`) raises `ArithmeticException`. Double
+  division by zero gives `Infinity` or `NaN`.
+- `&` converts both sides to String and concatenates.
+- Comparisons:
+  - two numbers compare numerically, as Double;
+  - two Strings compare by value, case-sensitive; `<` and `>` on Strings are
+    *(open)*;
+  - `x = Null` / `x <> Null` test for null;
+  - mixing a String and a number in a comparison is *(open)*.
+
+## Statements
+
+- **`:`** separates statements exactly like a line break. After a single-line
+  `If c Then a : b`, only `a` is conditional.
+- **`If`**: single line `If c Then s [Else s]`, or the block form with `Else If`
+  (two words) and `Else`.
+- **`Select expr`**: each `Case` holds a list of expressions, compared in order.
+  - Numbers match by numeric value (as Double); other values match with `equals`.
+  - The first matching `Case` runs, then control leaves the `Select`; there is no
+    fall-through. `Case Else` runs if nothing matched.
+  - There are no ranges. `Select True` with `Case cond` is the idiom for conditions.
+- **`For i = a To b [Step s]`**:
+  - `a`, `b` and `s` are evaluated once, before the first iteration *(open)*;
+    `s` defaults to 1;
+  - the loop runs while `i <= b` (positive step) or `i >= b` (negative step);
+  - after `Next`, `i` is incremented by `s`;
+  - the value of `i` after the loop is *(open)*.
+- **`For Each x [As T] In c`**: iterates arrays, `List`, `Map.Keys` and
+  `Map.Values` in order (insertion order for a `Map`). Changing a collection
+  while iterating it is *(open)*.
+- **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
+  `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
+- **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing
+  `Select`** if that is closer.
+- **`Continue`** jumps to the next iteration of the innermost loop.
+- **`Return [expr]`** leaves the Sub. A Sub with an `As` type that falls off its
+  end returns that type's default value *(open)*.
+- **`Try … Catch … End Try`** catches every runtime error raised in the `Try`
+  block, including from called Subs. `LastException` then holds the innermost
+  cause. `LastException.Message` is `<kind>`, then `": "` and the message when
+  there is one, e.g. `java.lang.RuntimeException: Object should first be
+  initialized (List).`. It is observable output; messages produced by the JDK
+  itself (index and parse errors) are *(open)*.
+- **Uncaught runtime errors**: the program stops. A diagnostic goes to stderr,
+  with the error type and the source line, and the exit code is non-zero
+  *(open: B4J's exact output and exit code)*. Only the error type and the fact
+  that the program stopped are compared.
+
+## Strings
+
+- Literals: `"..."`, with no escape sequences; they may span lines. `QUOTE`,
+  `CRLF` (a line feed, `Chr(10)`) and `TAB` are constants.
+- Smart strings `$"..."$` may span lines and contain `"`. A placeholder is
+  `$[formatter]{expr}`:
+  - no formatter: the value converted as by `&`;
+  - `N` or `N.M`: `NumberFormat(value, N, M)`. With no `.M`, the fraction digits
+    are unlimited. If the value is not a number, the result is `NaN`;
+  - `xml`: escapes `"` `'` `<` `>` `&`;
+  - `date`, `time`, `datetime`: Level 1 (they need `DateTime`);
+  - formatter names are case-insensitive.
+- `NumberFormat(x, minInt, maxFrac)`:
+  - US locale, with three-digit grouping by `,`;
+  - rounding is half-even, on the decimal value of the double;
+  - for example `NumberFormat(12345.6789, 0, 2)` is `12,345.68`.
+- String members are listed in [level0-builtins.md](level0-builtins.md).
+  Indices are zero-based UTF-16 positions.
+
+## Output
+
+`Log(x)` writes `x`, converted to String, plus `\n` to stdout. `LogError` writes
+to stderr. The conformance tests compare stdout byte for byte, after the
+normalisation in [compatibility-testing.md](../compatibility-testing.md#normalization).
 
 Unverified points are listed in [../open-questions.md](../open-questions.md#language).

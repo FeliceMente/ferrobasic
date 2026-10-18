@@ -42,10 +42,32 @@ tests/conformance/level0/
   <name>.bas          program body (code module, B4J console)
   <name>.meta.toml    status, level, features, and recording metadata
   <name>.expected     recorded output (written only by tools/recorder)
+  <name>.provisional  hand-derived output, used only while there is no .expected
 ```
 
 `status` in `.meta.toml` is one of `pending-recording`, `recorded`,
 `deviation` (see `docs/deviations.md`) or `negative` (must be rejected).
+A test whose program must stop on an uncaught error names its kind in
+`uncaught_error` (for example `"java.lang.RuntimeException"`).
+
+### Provisional outputs
+
+While the recorder does not exist, a test may carry a `<name>.provisional`
+file: its expected stdout, derived by hand from the sources in
+[research/level0-semantics.md](research/level0-semantics.md). Rules:
+
+- Only for behaviour the research marks as settled by `source`, `docs` or
+  `forum`; the basis and the links go in a `[provisional]` table of the
+  `.meta.toml`. Behaviour marked *open* gets no provisional output: the test
+  stays pending with no expectation.
+- A `.provisional` file never overrides an `.expected` one. When the recorder
+  writes `<name>.expected`, it deletes `<name>.provisional` and the
+  `[provisional]` table; a disagreement between the two is reported, and the
+  research and specs are fixed to match the recording.
+- The report counts passes against provisional outputs separately from passes
+  against recordings. Only the latter count for a milestone gate from M2 on.
+- Values computed by running Java code from the open-source runtime (for
+  example number formatting) are `source` basis; record the JDK version used.
 
 ## Where test programs come from
 

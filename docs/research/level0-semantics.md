@@ -1,0 +1,241 @@
+# Level 0 semantics: findings from public sources
+
+Research notes answering the Level 0 entries of
+[open-questions.md](../open-questions.md#language) from public sources only.
+**None of this is confirmed by a recording.** Conformance tests stay
+`pending-recording` until `tools/recorder` runs them on the original toolchain;
+a recording always overrides what is written here.
+
+October 2026.
+
+## Sources
+
+| Tag | Source | Notes |
+| --- | --- | --- |
+| `jcore` | [AnywhereSoftware/B4J](https://github.com/AnywhereSoftware/B4J) `jCore/`, commit `e26e645a611dd24c2034fbbeaf11ba26b70dee8b` | Apache-2.0 source of the B4J core runtime library. Settles runtime behaviour; says nothing about how the compiler calls it. |
+| `booklet` | *B4X Language* booklet v2.5, in [Booklets.zip](https://www.b4x.com/android/files/Booklets.zip) ([forum thread](https://www.b4x.com/android/forum/threads/b4x-documentation-booklets.88985/)) | Official documentation by Klaus Christl. |
+| `coreref` | [B4J Core library reference](https://www.b4x.com/b4j/help/core.html) | Official keyword reference. |
+| `forum` | B4X forum threads, linked per finding | Statements by Erel (B4X author) are marked as such. |
+
+Confidence levels used below:
+
+- **source**: read in the runtime source code;
+- **docs**: stated by the official booklet or reference;
+- **forum**: stated on the forum (Erel or experienced users);
+- **open**: not settled.
+
+Links into `jcore` are relative to
+`https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/`.
+
+## Findings
+
+### Number-to-string conversion (source)
+
+[`BA.NumberToString`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L415-L434):
+
+- `Int`, `Long` (and so `Byte`, `Short`): `String.valueOf`, i.e. plain decimal.
+- `Double`: Java `Double.toString(value)`, then a trailing `.0` is removed.
+  So `3.0` → `3`, `2.7` → `2.7`, `1e20` → `1.0E20` (the `.0` before `E` stays),
+  `0.0001` → `1.0E-4`, `1e7` → `1.0E7`, `NaN` → `NaN`, `-0.0` → `-0`.
+- `Float`: widened to `double` first, so `1.1` as `Float` → `1.100000023841858`.
+- Java's `Double.toString` algorithm changed in JDK 19 (shortest decimal that
+  round-trips, JDK-4511638). B4J's install page recommends OpenJDK 19
+  ([b4j.html](https://www.b4x.com/b4j.html)), so JDK ≥ 19 behaviour is the
+  target. Rule recap: scientific notation when |x| < 1e-3 or |x| ≥ 1e7,
+  otherwise plain decimal with at least one fractional digit.
+- That the compiler routes numeric `&`, `Log(number)` and number-to-String
+  assignments through `NumberToString` is **forum** level (inferred from
+  generated Java quoted on the forum); to be confirmed by recording.
+
+Other values go through [`BA.ObjectToString`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L511-L513)
+= `String.valueOf`, so Booleans print `true` / `false` (lower case) and `Null`
+prints `null`. `Log(Null)` prints `null` ([`BA.Log`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L369-L371));
+`Log` writes to stdout with a trailing newline.
+
+An uninitialised `List`/`Map` prints as `(List) Not initialized` /
+`(Map) Not initialized` (the `@ShortName`), and an initialised one as `(ArrayList) [1, 2]` / `(MyMap) {a=1}`
+([`AbsObjectWrapper.toString`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/AbsObjectWrapper.java#L104-L130)).
+Exact type names need a recording.
+
+### Smart strings (docs, forum, source)
+
+- `$"..."$`, multi-line, no escaping of `"` inside (**docs**, booklet §4.10.4).
+- Placeholder: `$[formatter]{ expr }`. Erel: the compiler turns
+  `$"x is ${x}"$` into `"x is " & x`
+  ([forum, Erel](https://www.b4x.com/android/forum/threads/50135/)), so an
+  unformatted placeholder converts like `&` does (**forum**).
+- Formatters are case-insensitive and lower-cased by the compiler
+  ([`Common.SmartStringFormatter`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Common.java#L791-L846), **source**):
+  - empty → `ObjectToString`;
+  - `date`, `time`, `datetime` → `DateTime` (not Level 0);
+  - `xml` → escapes `"` `'` `<` `>` `&` as `&quot; &#39; &lt; &gt; &amp;`;
+  - `N` or `N.M` → `NumberFormat(value, N, M)` (no `.M`: unlimited fractions),
+    `NaN` if the value is not a number. `NumberFormat` is Java
+    `NumberFormat.getInstance(Locale.US)` with grouping on, so
+    `$1.2{12345.678}` → `12,345.68` ([`Common.NumberFormat`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Common.java#L125-L131)).
+    Java's default rounding mode for it is HALF_EVEN.
+- **open**: how to write a literal `${` or `"$` inside a smart string.
+
+### Map (source)
+
+- `Initialize` creates a `MyMap` wrapping a `LinkedHashMap`: iteration over
+  `Keys` / `Values` is in **insertion order**; re-putting an existing key keeps
+  its position ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java#L57-L59), [L225-L227](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java#L225-L227)).
+- Keys compare with Java `equals`: string keys are case-sensitive, and boxed
+  numbers of different types are different keys (`Int` 1 ≠ `Double` 1.0).
+  Which boxed type a numeric literal key gets is compiler behaviour (**open**).
+- `Put` returns the previous value or `Null`; `Get` of a missing key returns
+  `Null`; `GetDefault` returns the default when the stored value is `Null`.
+
+### List (source)
+
+- `Initialize` creates a `java.util.ArrayList`. `Get`/`Set`/`RemoveAt` out of
+  range throw Java `IndexOutOfBoundsException` (catchable with `Try`).
+- `Sort` requires all numbers or all strings
+  ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java)).
+
+### Uninitialised objects (source)
+
+Any member call on an uninitialised `List`/`Map` throws a `RuntimeException`
+with the message `Object should first be initialized (List).` (or `(Map).`)
+([`AbsObjectWrapper.getObject`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/AbsObjectWrapper.java#L41-L52)).
+`IsInitialized` returns whether the wrapped object is non-null.
+
+### Try / Catch and LastException (source, docs)
+
+- `Catch` catches any exception; there is no typed catch (**docs**, coreref).
+- `LastException` is the innermost cause of the caught exception
+  ([`BA.setLastException`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L403-L407)).
+  `LastException.Message` is the exception's Java `toString()`, not its
+  `getMessage()` ([`B4AException.getMessage`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/B4AException.java#L40-L42)):
+  the class name, then `": "` and the message if there is one, for example
+  `java.lang.RuntimeException: Object should first be initialized (List).`.
+  A program that logs it puts that text on stdout. Messages that come from the
+  JDK itself (index errors, parse errors) depend on the JDK version: **open**.
+
+### Operators and precedence (docs, forum, open)
+
+- Arithmetic: `*`, `/`, `Mod` bind tighter than `+`, `-` (**docs**, booklet §4.1.1).
+  There is no power operator: `Power(x, y)` is a function.
+- Relational: `=`, `<>`, `<`, `>`, `<=`, `>=` (**docs**). A user-posted table
+  puts comparisons below arithmetic
+  ([forum](https://b4x.com/android/forum/threads/x-y-mod-x-solved.120609/)).
+- `And`, `Or` are boolean and **short-circuit**, left to right (**docs**,
+  booklet §4.3.1.1). `Not` is a function, `Not(x)`, not a prefix operator
+  (**docs**). Bitwise operations are `Bit.And`, `Bit.Or`, … functions.
+- `&` concatenates; `+` is arithmetic only (**forum**). Precedence of `&`
+  relative to `+` and to comparisons is **open**: the only evidence is
+  `"This " & 2 + 2 & " is a test"` being rejected in 2011 while
+  `"This " & (2 + 2) & ...` works
+  ([forum](https://www.b4x.com/android/forum/threads/bug-concatenating-strings.8701/)),
+  which does not determine the order. Needs a recorded test.
+- The relative precedence of `And` versus `Or`, and of both versus comparisons,
+  is not stated in official docs (**open**). The user table above
+  contradicts common practice and is not reliable.
+
+### Division (forum, Erel)
+
+`/` always performs floating-point division, even between two `Int`s:
+`55 / 10` is `5.5`; assigning it to an `Int` truncates it to `5`
+([forum, Erel](https://www.b4x.com/android/forum/threads/interger-division.38133/),
+[forum](https://www.b4x.com/android/forum/threads/how-to-do-division-of-two-ints-as-integer-division-instead-of-floating-point-division.158469/)).
+The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
+`Floor(a / b)`. Division by zero in Double is not an error (`Infinity`/`NaN`;
+[forum](https://www.b4x.com/android/forum/threads/divide-by-zero-not-an-error.142795/)).
+**open**: the exact rule for converting a Double back to `Int`
+(truncation toward zero is Java's `(int)` cast, as reported on the forum).
+
+### Statements
+
+- **`:`** separates statements on one line, exactly like a line break. So
+  `If b = 0 Then a = 0 : c = 1` puts only `a = 0` under the `If`; `c = 1`
+  always runs (**docs**, booklet §4.3.1). `Sub` and `End Sub` cannot share a line.
+- **`Select`**: written `Select expr`, not `Select Case expr`
+  ([forum](https://www.b4x.com/android/forum/threads/select-case-help.42378/));
+  whether `Select Case` is a compile error is **open**. `Case` takes a
+  comma-separated list of expressions; ranges (`Case 1 To 4`) are not
+  supported (**docs**, booklet §4.3.3; Erel on the
+  [forum](https://www.b4x.com/android/forum/threads/using-to-in-select-cases.137312/)).
+  `Select True` with `Case x < 16` is the idiom for conditions. Matching:
+  numbers compare as `double`, other values with `equals`
+  ([`BA.switchObjectToInt`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L514-L533),
+  **source**; that the compiler uses it is **forum** level).
+- **`Exit`** leaves the innermost loop; **inside a `Select` block it leaves the
+  `Select`** (**docs**, coreref). `Continue` goes to the next iteration of the
+  innermost loop (**docs**).
+- **`Do`**: only `Do While cond … Loop` and `Do Until cond … Loop`. `Loop While`,
+  `Loop Until` and a bare `Do … Loop` are not supported (**docs**, booklet
+  §4.4.3; Erel on the [forum](https://www.b4x.com/android/forum/threads/while-or-until-at-end-of-do-loop-bug-wish.49474/)).
+  Infinite loops are written `Do While True`.
+- **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
+  is implicitly declared as `Int` (**docs**, coreref). Test is `i <= b` for a
+  positive step and `i >= b` for a negative step. **open**: whether `b` and
+  `s` are evaluated once (expected, as in VB), and the value of `i` after the loop.
+- **`If`**: single line `If c Then stmt [Else stmt]`; block form with
+  `Else If` (two words) (**docs**).
+- **`IIf(cond, a, b)`** exists in current versions and evaluates only the chosen
+  branch (**docs**, booklet §4.3.2). Not in the Level 0 grammar yet.
+
+### Declarations and scope
+
+- `Dim` is kept for compatibility; `Private` / `Public` are preferred
+  (**docs**). In a Sub, all three declare a local.
+- **Shared type**: `Private i, j, k As Int` declares all three as `Int`
+  (**docs**, booklet §2.3.1).
+- **Initialiser before `As`**: `Dim a = 1, b = 2, c = 3 As Int` and
+  `Private txt = "test" As String, value = 1.05 As Double` are valid
+  (**docs**, booklet §2.3.1 and coreref). The form `Dim x As Int = 5` is valid too.
+- **Scope**: a variable declared anywhere in a Sub (including inside an `If`
+  or loop) is visible in the whole Sub; the declaration is hoisted to the top
+  of the Sub, and re-executing the `Dim` resets the variable to its default or
+  initial value. For object types it creates a new instance
+  ([forum](https://www.b4x.com/android/forum/threads/best-coding.108735/),
+  [forum](https://www.b4x.com/android/forum/threads/easy-dim.20927/)).
+  **forum** level; needs a recorded test.
+- Primitives (numbers, `Boolean`, `Char`) are passed by value; everything else,
+  including `String` and arrays, by reference copy (**docs**, booklet §2.1).
+- Local variables get their default value on every call (**docs**, booklet §2.6.3).
+- Undeclared non-loop variables: the forum says they default to `String`, with
+  an IDE warning
+  ([forum](https://www.b4x.com/android/forum/threads/can-you-use-a-variable-without-declaring.27855/)).
+  **open**; current compilers may reject them.
+
+### Types (docs)
+
+Ranges in booklet §2.1 match the table in [spec/level0.md](../spec/level0.md#types)
+(Java primitives). B4R differs (Int is 16-bit, Double is 32-bit) and is
+out of scope for Level 0.
+
+## Impact on the Level 0 spec
+
+Applied to [spec/level0.ebnf](../spec/level0.ebnf), [spec/level0.md](../spec/level0.md),
+[spec/level0-builtins.md](../spec/level0-builtins.md) and the conformance tests:
+
+1. `level0.ebnf`:
+   - add `:` as a statement separator;
+   - allow `IDENT [= expr]` declarators sharing a final `As type`;
+   - drop the `[ "Case" ]` after `Select` until a recording settles it;
+   - leave `Not` as an ordinary function call, not a primary;
+   - add `IIf`.
+2. `level0.md`: replace "(to verify)" on scope with the hoisting rule; add `/`
+   always Double; document `Exit` inside `Select`.
+3. Runtime spec: `NumberToString`, `ObjectToString`, `NumberFormat`, smart
+   string formatters, `Map` insertion order and key equality, `List` and the
+   uninitialised-object error, as above.
+4. New pending tests: precedence of `&`, `And`/`Or`, `Exit` inside `Select`
+   inside a loop, `Dim` inside a loop, Float-to-string, Double formatting edge
+   cases (`1e7`, `0.001`, `-0.0`), `/` between Ints assigned to Int.
+
+## Expected output of the existing tests (not a recording)
+
+From the rules above; now kept as `.provisional` files next to the tests.
+Double formatting and `NumberFormat` results were checked by running the
+`jCore` code paths on OpenJDK 21.0.12:
+
+- `prices_map.bas`: `1.2 + 1.5` is `2.7` in IEEE double, so
+  `Big breakfast` then `Total: 2.7`.
+- `control_flow.bas`:
+  - the loop runs i = 10, 5, 0 and prints `ten`, `five`, `other: 0`;
+  - `n` goes 7, 14, 21 and exits at 21, printing `n = 21`;
+  - the `Try` prints `caught uninitialized list`;
+  - `Square(12)` prints `144`.
