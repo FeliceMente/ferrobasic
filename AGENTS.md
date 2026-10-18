@@ -84,7 +84,8 @@ cargo run -p ferro-difftest -- --target interp   # compare against recordings (o
 1. `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
    `cargo test --workspace` all pass.
 2. New behaviour has conformance tests; open questions and deviations are recorded.
-3. Docs in `docs/` reflect any design change.
+3. Docs in `docs/` reflect any design change; `docs/tutorial.md` shows real
+   `ferro` output, so re-run its examples when CLI behaviour changes.
 
 ## Commits and PRs
 

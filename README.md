@@ -8,8 +8,11 @@ iOS, WebAssembly and microcontrollers such as the Raspberry Pi Pico. It comes
 with a reference interpreter, a REPL and a Language Server, so you can use
 VS Code or any LSP-capable editor instead of a dedicated IDE.
 
-> **Status: pre-alpha (milestone M0).** Nothing works yet beyond the project
-> skeleton. See [`docs/roadmap.md`](docs/roadmap.md).
+> **Status: pre-alpha (milestone M0 → M1).** Level 0 programs (one module,
+> language core, `List`/`Map`) can be checked, run with the reference
+> interpreter and built into standalone executables for the host. Start with
+> the [tutorial](docs/tutorial.md); see [`docs/roadmap.md`](docs/roadmap.md)
+> for what comes next.
 
 FerroBASIC is an independent project. It is not affiliated with or endorsed by
 Anywhere Software, the maker of B4X. "B4X", "B4A", "B4i", "B4J" and "B4R" are
@@ -76,6 +79,7 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 
 ## Documentation
 
+- [Tutorial: the `ferro` command line](docs/tutorial.md)
 - [Architecture](docs/architecture.md)
 - [Porting existing B4X projects](docs/porting.md)
 - [Language spec, Level 0](docs/spec/level0.md), [grammar](docs/spec/level0.ebnf) and [built-ins](docs/spec/level0-builtins.md)
