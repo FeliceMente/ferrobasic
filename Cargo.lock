@@ -42,6 +42,7 @@ name = "ferro-mir"
 version = "0.0.1"
 dependencies = [
  "ferro-hir",
+ "ferro-syntax",
 ]
 
 [[package]]

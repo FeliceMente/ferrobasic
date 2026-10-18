@@ -12,3 +12,4 @@ workspace = true
 
 [dependencies]
 ferro-hir = { path = "../hir" }
+ferro-syntax = { path = "../syntax" }
