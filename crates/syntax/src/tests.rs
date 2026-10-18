@@ -201,6 +201,15 @@ fn precedence() {
 }
 
 #[test]
+fn assigning_a_comparison() {
+    // B4X compiles this to `_bluetoothstate = _newstate == _admin.STATE_ON;`.
+    assert_eq!(
+        sexpr("NewState = Admin.STATE_ON"),
+        "(= NewState Admin.STATE_ON)"
+    );
+}
+
+#[test]
 fn rejected_vb_forms() {
     let errors = parse_errors(&in_sub(
         "Dim n As Int = 0\nDo\n  n = n + 1\nLoop While n < 3",

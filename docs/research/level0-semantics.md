@@ -135,6 +135,10 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `"This " & (2 + 2) & ...` works
   ([forum](https://www.b4x.com/android/forum/threads/bug-concatenating-strings.8701/)),
   which does not determine the order. Needs a recorded test.
+- In a statement `x = a = b`, the first `=` is the assignment and the rest is
+  one comparison (**generated**): `BluetoothState = NewState = Admin.STATE_ON`
+  compiles to `_bluetoothstate = _newstate==_admin.STATE_ON;`. No source shows
+  a real chain such as `a < b < c` or `If a = b = c`: **open**.
 - The relative precedence of `And` versus `Or`, and of both versus comparisons,
   is not stated in official docs (**open**). The user table above
   contradicts common practice and is not reliable.
