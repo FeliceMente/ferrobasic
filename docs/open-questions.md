@@ -81,8 +81,9 @@ needs a recorded test):
 - [ ] How a variable of type `Exception` and an array print.
 - [ ] Exact texts of JDK-generated messages (`ClassCastException`,
       `IndexOutOfBoundsException`, …) seen through `LastException.Message`.
-- [ ] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class);
-      whether to keep them, since they contain the product's package name.
+- [x] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class),
+      even though they contain the product's package name: kept for
+      compatibility, since it is program output, not a FerroBASIC message.
 - [ ] A List or Map used as a Map key: compared by identity in FerroBASIC.
 
 Provisional type-checking rules in `crates/hir` (each needs a recorded test):
