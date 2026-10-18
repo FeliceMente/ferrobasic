@@ -106,9 +106,12 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
 - `Catch` catches any exception; there is no typed catch (**docs**, coreref).
 - `LastException` is the innermost cause of the caught exception
   ([`BA.setLastException`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L403-L407)).
-  `LastException.Message` is the Java message; per
-  [compatibility-testing.md](../compatibility-testing.md#the-oracle) messages are
-  not compared, only the exception type.
+  `LastException.Message` is the exception's Java `toString()`, not its
+  `getMessage()` ([`B4AException.getMessage`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/B4AException.java#L40-L42)):
+  the class name, then `": "` and the message if there is one, for example
+  `java.lang.RuntimeException: Object should first be initialized (List).`.
+  A program that logs it puts that text on stdout. Messages that come from the
+  JDK itself (index errors, parse errors) depend on the JDK version: **open**.
 
 ### Operators and precedence (docs, forum, open)
 

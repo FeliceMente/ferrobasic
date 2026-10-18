@@ -51,6 +51,10 @@ related tests stay `pending-recording`.
 - [ ] Output and exit code of a B4J non-UI program that stops on an uncaught error.
 - [ ] `AppType` value of a non-UI `.b4j` project.
 - [ ] Whether `LogDebug` prints in release mode (provisionally not).
+- [ ] Exact text of JDK-generated exception messages seen through
+      `LastException.Message` (index and number-parse errors), and which JDK.
+- [ ] Default JVM locale on the recording machine (affects `ToLowerCase` /
+      `ToUpperCase` for Turkish, Azeri and Lithuanian locales).
 - [ ] Standalone binaries on macOS: whether ad-hoc re-signing works with
       appended payload bytes (see `docs/spec/cli.md`).
 

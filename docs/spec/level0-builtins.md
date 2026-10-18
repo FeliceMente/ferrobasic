@@ -63,7 +63,7 @@ Strings are immutable; every member returns a new value.
 | `Length As Int` | number of UTF-16 code units |
 | `Replace(Target, Replacement) As String` | replaces all occurrences, literally (not a regex) |
 | `SubString(BeginIndex)`, `SubString2(BeginIndex, EndIndex)` | end exclusive; out of range → `StringIndexOutOfBoundsException` |
-| `ToLowerCase`, `ToUpperCase` | locale-independent |
+| `ToLowerCase`, `ToUpperCase` | Java's no-argument versions, which use the JVM default locale. FerroBASIC uses the Unicode default (root-locale) mapping, which equals Java for every locale except Turkish, Azeri and Lithuanian (`"I"` → `ı` in Turkish); *(open)* which locale the reference recordings use. |
 | `Trim As String` | Java `trim`: removes code units ≤ U+0020 at both ends |
 
 `GetBytes(Charset)` returns `Byte()` and is Level 0 only for `"UTF8"`/`"UTF-8"`.
@@ -90,10 +90,12 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 | `Clear`, `Size As Int` | |
 | `IndexOf(Item) As Int` | `equals` comparison, so boxed types matter |
 | `SubList(BeginIndex, EndIndex) As List` | a read-only view |
-| `Sort(Ascending As Boolean)`, `SortCaseInsensitive(Ascending As Boolean)` | items must all be numbers or all be strings; stable sort |
+| `Sort(Ascending As Boolean)` | Java `Comparable` order, stable. Items must all have the same boxed type: all `String`s, or all numbers of one type. Mixing types, e.g. `Int` and `Double`, raises `ClassCastException`. |
+| `SortCaseInsensitive(Ascending As Boolean)` | compares the items' `toString()` with `compareToIgnoreCase`, stable. Numbers are therefore sorted as text: `2, 10` → `10, 2`, and a boxed Double `1` compares as `"1.0"`. |
 
-`SortType` and `SortTypeCaseInsensitive` need `Type` records and are Level 0.
-They sort by the named field.
+`SortType(FieldName, Ascending)` and `SortTypeCaseInsensitive(FieldName, Ascending)`
+apply the same two rules to the named field of `Type` records (the field name
+is case-sensitive).
 
 ## Map
 

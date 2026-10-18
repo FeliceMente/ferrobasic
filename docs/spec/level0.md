@@ -116,7 +116,7 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 
 | From → to | Rule |
 | --- | --- |
-| number → wider number | exact (Int → Long, Int → Double, Float → Double…) |
+| number → wider number | Java widening. Exact for Byte/Short/Int → Int/Long/Double, Float → Double and every integer → Float/Double whose value fits the mantissa; otherwise rounded to nearest (Int 16777217 → Float 16777216, Long 9007199254740993 → Double 9007199254740992). |
 | number → narrower integer | Java narrowing. Double → Int truncates toward zero *(open: forum level)*; out-of-range values follow Java rules (NaN → 0, saturating). Long → Int keeps the low 32 bits. |
 | number → String | `NumberToString`, see below |
 | Boolean → String | `true` / `false` (lower case) |
@@ -201,7 +201,10 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   end returns that type's default value *(open)*.
 - **`Try … Catch … End Try`** catches every runtime error raised in the `Try`
   block, including from called Subs. `LastException` then holds the innermost
-  cause. `LastException.Message` is not compared by the conformance tests.
+  cause. `LastException.Message` is `<kind>`, then `": "` and the message when
+  there is one, e.g. `java.lang.RuntimeException: Object should first be
+  initialized (List).`. It is observable output; messages produced by the JDK
+  itself (index and parse errors) are *(open)*.
 - **Uncaught runtime errors**: the program stops. A diagnostic goes to stderr,
   with the error type and the source line, and the exit code is non-zero
   *(open: B4J's exact output and exit code)*. Only the error type and the fact

@@ -165,14 +165,18 @@ a payload and a trailer:
 
 The first implementation is done when, on Linux x86_64 and in CI:
 
-1. `ferro check` parses every `tests/conformance/level0/*.bas` with no errors,
-   and prints each file back byte-identical from the CST.
-2. `ferro run` on every Level 0 test produces output identical to its
-   `.expected` file or, while none is recorded, its `.provisional` file
+1. Every `tests/conformance/level0/*.bas`, negative tests included, parses
+   into a CST that prints back byte-identical.
+2. `ferro check` passes, with no errors, on every test whose status is not
+   `negative`.
+3. The negative tests are rejected by `ferro check` with exit code 3.
+4. `ferro run` on every test that has an `.expected` file or, while none is
+   recorded, a `.provisional` file produces identical stdout, and the uncaught
+   error named in `uncaught_error` when there is one
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
-3. For every such test, `ferro build` produces a binary whose stdout and exit
-   code are identical to `ferro run`'s. The binary must also keep working after
-   the build tree and `ferro` itself are removed.
-4. The negative tests are rejected by `ferro check` with exit code 3.
-5. `cargo fmt`, `cargo clippy -D warnings` and `cargo test` pass. There is no
+   Tests with neither file, such as `precedence_open`, are only checked.
+5. For every test in point 4, `ferro build` produces a binary whose stdout and
+   exit code are identical to `ferro run`'s. The binary must also keep working
+   after the build tree and `ferro` itself are removed.
+6. `cargo fmt`, `cargo clippy -D warnings` and `cargo test` pass. There is no
    `unsafe` code.
