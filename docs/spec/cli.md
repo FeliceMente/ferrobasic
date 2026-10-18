@@ -173,6 +173,9 @@ is embedded with `libsui` instead (see below).
   - **Intel**: `libsui` appends the package after its own marker and extends
     `__LINKEDIT` to cover it. `ferro build` then signs ad hoc with
     `codesign --force --sign -`, and reports an error if that fails.
+    `libsui` stages a copy at `$TMPDIR/sui_tmp_<pid>` with a call that
+    follows symlinks, so `ferro build` creates that path first, exclusively;
+    if it already exists, the build stops with an error.
   - At start-up `libsui` finds the package again: through `getsectdata` on
     Apple Silicon, by scanning the file for its marker on Intel.
   - The output must pass `codesign --verify --strict` (a test checks this

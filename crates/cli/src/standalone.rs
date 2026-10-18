@@ -188,6 +188,8 @@ pub fn standalone_bytes(exe: &Path, entries: &[Entry]) -> io::Result<Vec<u8>> {
 #[cfg(target_os = "macos")]
 pub fn standalone_bytes(exe: &Path, entries: &[Entry]) -> io::Result<Vec<u8>> {
     let sui = |e: libsui::Error| io::Error::other(e.to_string());
+    #[cfg(not(target_arch = "aarch64"))]
+    let _reserved = ReservedLibsuiTemp::create()?;
     let macho = libsui::Macho::from(std::fs::read(exe)?)
         .map_err(sui)?
         .write_section(SECTION, package(entries))
@@ -198,6 +200,42 @@ pub fn standalone_bytes(exe: &Path, entries: &[Entry]) -> io::Result<Vec<u8>> {
     #[cfg(not(target_arch = "aarch64"))]
     macho.build(&mut bytes).map_err(sui)?;
     Ok(bytes)
+}
+
+/// On Intel, `libsui` 0.16.4 copies the executable to
+/// `temp_dir()/sui_tmp_<pid>` with `File::create`, which follows symlinks and
+/// truncates. With a shared `TMPDIR` such as `/tmp`, another user could plant
+/// a symlink there and make `ferro build` overwrite a file of the builder.
+/// Creating the path first with `create_new` (which refuses symlinks and
+/// existing files) makes `libsui` open our own regular file; in a sticky
+/// directory nobody else can replace it.
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+struct ReservedLibsuiTemp(PathBuf);
+
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+impl ReservedLibsuiTemp {
+    fn create() -> io::Result<Self> {
+        let path = std::env::temp_dir().join(format!("sui_tmp_{}", std::process::id()));
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|e| {
+                io::Error::new(
+                    e.kind(),
+                    format!("cannot create temporary file {}: {e}", path.display()),
+                )
+            })?;
+        Ok(Self(path))
+    }
+}
+
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+impl Drop for ReservedLibsuiTemp {
+    /// `libsui` removes the file itself; this covers its error paths.
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 /// What the end of an executable holds.
