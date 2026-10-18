@@ -227,6 +227,48 @@ fn rejected_vb_forms() {
 }
 
 #[test]
+fn empty_typed_array_literal() {
+    let root = parse_ok(&in_sub(
+        "Dim xs() As Int = Array As Int()\nDim ys() As String",
+    ));
+    let array = root.descendants().find(|n| n.kind() == ARRAY_EXPR).unwrap();
+    let element_type = array.children().find(|n| n.kind() == TYPE_REF).unwrap();
+    assert_eq!(element_type.text().to_string().trim(), "Int");
+    assert!(array.children().any(|n| n.kind() == ARG_LIST));
+}
+
+#[test]
+fn sub_header_needs_a_line_break() {
+    let errors = parse_errors("Sub A : Log(1) : End Sub\n");
+    assert!(
+        errors.iter().any(|e| e.contains("line break")),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn unterminated_block_does_not_swallow_the_next_sub() {
+    let text = "Sub A\nIf True Then\nLog(1)\nSub B\nLog(2)\nEnd Sub\n";
+    let errors = parse_errors(text);
+    assert!(errors.iter().any(|e| e.contains("End If")), "{errors:?}");
+    let root = parse(text).syntax();
+    assert_eq!(count(&root, SUB_DECL), 2);
+    let b = root
+        .children()
+        .filter(|n| n.kind() == SUB_DECL)
+        .nth(1)
+        .unwrap();
+    assert!(b.text().to_string().contains("Log(2)"));
+}
+
+#[test]
+fn unicode_text_round_trips() {
+    parse_ok(&in_sub(
+        "Log($\"café ${x} €\"$)\nLog(\"naïve\") ' commento è ok",
+    ));
+}
+
+#[test]
 fn error_recovery_keeps_parsing() {
     let text = "Sub A\n  x = = 1\n  Log(2)\nEnd Sub\nGarbage here\nSub B\n  If x Then\nEnd Sub\n";
     let errors = parse_errors(text);
@@ -239,7 +281,7 @@ fn error_recovery_keeps_parsing() {
 fn every_prefix_of_a_program_round_trips() {
     // Truncated input must never panic or lose text.
     let text = in_sub(
-        "Dim t As Double = 0\nFor Each K As String In P.Keys\n  t = t + P.Get(K)\nNext\nIf t > 2 Then Log(\"big\")\nLog($\"Total: ${t}\"$)",
+        "Dim t As Double = 0\nFor Each K As String In P.Keys\n  t = t + P.Get(K)\nNext\nIf t > 2 Then Log(\"büg\")\nLog($\"Tötal: ${t} €\"$)",
     );
     for (i, _) in text.char_indices() {
         let prefix = &text[..i];

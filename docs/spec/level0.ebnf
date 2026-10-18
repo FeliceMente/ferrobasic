@@ -80,8 +80,10 @@ try_stmt      = "Try" , SEP , block , "Catch" , SEP , block ,
 expr          = or_expr ;
 or_expr       = and_expr , { "Or" , and_expr } ;
 and_expr      = cmp_expr , { "And" , cmp_expr } ;
+(* Chains such as a < b < c parse left-associatively; whether B4X        *)
+(* accepts them is open, and rejecting valid code is worse than accepting.*)
 cmp_expr      = concat_expr ,
-                [ ( "=" | "<>" | "<" | ">" | "<=" | ">=" ) , concat_expr ] ;
+                { ( "=" | "<>" | "<" | ">" | "<=" | ">=" ) , concat_expr } ;
 concat_expr   = add_expr , { "&" , add_expr } ;
 add_expr      = mul_expr , { ( "+" | "-" ) , mul_expr } ;
 mul_expr      = unary , { ( "*" | "/" | "Mod" ) , unary } ;

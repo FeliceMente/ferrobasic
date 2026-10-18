@@ -300,7 +300,12 @@ impl Parser<'_> {
         if self.eat(AS_KW) {
             self.type_ref();
         }
-        self.expect_sep();
+        // A `Sub` header must end its line: `Sub A : ... : End Sub` is rejected.
+        if self.at(COLON) {
+            self.error("a `Sub` declaration must be followed by a line break");
+        } else {
+            self.expect_sep();
+        }
         self.block();
         self.expect_end(SUB_KW, "Sub");
         self.finish();
@@ -350,13 +355,17 @@ impl Parser<'_> {
 
     /// `Name{.Name}`, optionally followed by `()` for an array type.
     fn type_ref(&mut self) {
+        self.type_ref_with(true);
+    }
+
+    fn type_ref_with(&mut self, array_suffix: bool) {
         self.start(TYPE_REF);
         if self.expect(IDENT, "a type name") {
             while self.at(DOT) && self.nth(1) == Some(IDENT) {
                 self.bump();
                 self.bump();
             }
-            if self.at(L_PAREN) && self.nth(1) == Some(R_PAREN) {
+            if array_suffix && self.at(L_PAREN) && self.nth(1) == Some(R_PAREN) {
                 self.bump();
                 self.bump();
             }
@@ -385,6 +394,11 @@ impl Parser<'_> {
                 break;
             }
             self.statement();
+            // A nested block left open by a missing `End`/`Next`/`Loop` stops
+            // at the next Sub: leave that Sub to the module level.
+            if self.at_sub_start() {
+                break;
+            }
             self.expect_sep();
         }
         self.finish();
@@ -764,7 +778,8 @@ impl Parser<'_> {
                 self.start(ARRAY_EXPR);
                 self.bump();
                 self.bump();
-                self.type_ref();
+                // The element type: `()` after it is the (possibly empty) value list.
+                self.type_ref_with(false);
                 if self.at(L_PAREN) {
                     self.arg_list();
                 } else {

@@ -148,7 +148,7 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 | --- | --- | --- |
 | 1 | `Or` | short-circuit; *(open)* relative to `And` |
 | 2 | `And` | short-circuit |
-| 3 | `=` `<>` `<` `>` `<=` `>=` | not chainable |
+| 3 | `=` `<>` `<` `>` `<=` `>=` | left-associative; whether B4X accepts a chain like `a < b < c` is *(open)*, so the parser accepts it |
 | 4 | `&` | *(open)* position |
 | 5 | `+` `-` | |
 | 6 | `*` `/` `Mod` | |

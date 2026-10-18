@@ -268,11 +268,12 @@ fn line_len(text: &str) -> usize {
 
 /// Length of `$`, an optional formatter (`2`, `1.2`, `xml`…) and `{`.
 fn placeholder_start_len(text: &str) -> Option<usize> {
-    let fmt = text[1..]
+    let after = text.strip_prefix('$')?;
+    let fmt = after
         .bytes()
         .take_while(|b| b.is_ascii_alphanumeric() || *b == b'.')
         .count();
-    (text.starts_with('$') && text[1 + fmt..].starts_with('{')).then_some(fmt + 2)
+    after[fmt..].starts_with('{').then_some(fmt + 2)
 }
 
 /// Length of literal text before the next `"$` or placeholder.
@@ -440,6 +441,22 @@ mod tests {
                 (STRING, "\"}\""),
                 (R_PAREN, ")"),
                 (PLACEHOLDER_END, "}"),
+                (SMART_STRING_END, "\"$"),
+            ]
+        );
+    }
+
+    #[test]
+    fn smart_strings_with_non_ascii_text() {
+        assert_eq!(
+            significant("$\"café ${x} €$\"$"),
+            [
+                (SMART_STRING_START, "$\""),
+                (SMART_STRING_TEXT, "café "),
+                (PLACEHOLDER_START, "${"),
+                (IDENT, "x"),
+                (PLACEHOLDER_END, "}"),
+                (SMART_STRING_TEXT, " €$"),
                 (SMART_STRING_END, "\"$"),
             ]
         );
