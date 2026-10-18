@@ -32,7 +32,7 @@ work at Level 0:
 | --- | --- |
 | `ferro check <file>` | parses and type-checks the program and prints any errors |
 | `ferro run <file> [-- <args>...]` | checks it, then runs it with the interpreter |
-| `ferro build <file> [-o <output>]` | checks it, then writes a standalone executable |
+| `ferro build <file> [-o <output>]` | checks it, then bundles it with the interpreter into a standalone executable |
 
 `repl`, `test` and `fmt` are listed but not implemented yet.
 
@@ -366,6 +366,12 @@ $ echo $?
 The executable needs neither FerroBASIC nor a JVM. It is `ferro` itself, with
 the checked program appended (about 1.4 MB). You can copy it to another machine
 with the same OS and architecture.
+
+> **Note:** at Level 0, `ferro build` *bundles* rather than compiles. The
+> executable is the `ferro` interpreter plus your program's checked source,
+> which is parsed and interpreted at start-up exactly as `ferro run` does. So
+> it runs at interpreter speed, and the source can be recovered from the file.
+> Native code generation (M4) will replace this behind the same command.
 
 - On Linux it depends only on the system C library.
 - For a fully static Linux binary, build `ferro` for musl first:

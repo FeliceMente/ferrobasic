@@ -62,13 +62,19 @@ Running and building a Level 0 program:
 ```sh
 ferro check prog.bas              # parse and type-check
 ferro run prog.bas -- a b         # run with the reference interpreter
-ferro build prog.bas -o prog      # standalone executable for this machine
+ferro build prog.bas -o prog      # bundle into a standalone executable
 ./prog a b
 ```
 
 A standalone binary is `ferro` with the program appended: it needs neither
 FerroBASIC nor a JVM, only the system C library (or nothing at all when
 `ferro` is built for `x86_64-unknown-linux-musl`).
+
+> **Note:** at Level 0, `ferro build` *bundles* rather than compiles. The
+> executable is the `ferro` interpreter plus the program's checked source,
+> which is parsed and interpreted at start-up exactly as `ferro run` does. So
+> it runs at interpreter speed, and the source can be recovered from the file.
+> Native code generation (M4) will replace this behind the same command.
 
 ## Working with AI coding agents
 
