@@ -1,9 +1,11 @@
 //! `ferro`: the FerroBASIC command-line tool.
 //!
-//! Status: `check` parses and type-checks a module; the other commands are
-//! stubs. See `docs/spec/cli.md`.
+//! `check`, `run` and `build` work for Level 0 modules; `repl`, `test` and
+//! `fmt` are stubs. See `docs/spec/cli.md`.
 
-use std::path::Path;
+mod standalone;
+
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str = "\
@@ -13,8 +15,8 @@ Usage: ferro <command> [args]
 
 Commands:
   check <file>      Parse and type-check a module
-  build <project>   Build a B4X project (.b4j/.b4a/.b4i/.b4r)
   run <file> [-- <args>...]  Run with the reference interpreter
+  build <file> [-o <output>]  Write a standalone executable for this machine
   repl              Start the interactive REPL
   test              Run conformance tests
   fmt <file>        Format source files
@@ -25,7 +27,15 @@ Commands:
 const EXIT_USAGE: u8 = 2;
 const EXIT_COMPILE_ERRORS: u8 = 3;
 
+/// Name of the program inside a standalone binary's payload.
+const MAIN_ENTRY: &str = "main.bas";
+
 fn main() -> ExitCode {
+    // A standalone binary runs its embedded program, with every argument
+    // passed to `AppStart`; only a plain `ferro` parses its own CLI.
+    if let Some(code) = run_embedded() {
+        return code;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("version" | "--version" | "-V") => {
@@ -56,7 +66,12 @@ fn main() -> ExitCode {
             [file, sep, program_args @ ..] if sep == "--" => run(Path::new(file), program_args),
             _ => usage_error("ferro run: expected `ferro run <file> [-- <args>...]`"),
         },
-        Some(cmd @ ("build" | "repl" | "test" | "fmt")) => {
+        Some("build") => match &args[1..] {
+            [file] => build(Path::new(file), None),
+            [file, flag, out] if flag == "-o" => build(Path::new(file), Some(Path::new(out))),
+            _ => usage_error("ferro build: expected `ferro build <file> [-o <output>]`"),
+        },
+        Some(cmd @ ("repl" | "test" | "fmt")) => {
             eprintln!("ferro {cmd}: not implemented yet (milestone M1)");
             ExitCode::from(EXIT_USAGE)
         }
@@ -85,7 +100,13 @@ fn read_source(path: &Path) -> Result<String, ExitCode> {
 /// exit code to stop with.
 fn compile(path: &Path) -> Result<(String, ferro_hir::Module), ExitCode> {
     let text = read_source(path)?;
-    let parse = ferro_syntax::parse(&text);
+    let module = compile_text(path, &text)?;
+    Ok((text, module))
+}
+
+/// [`compile`] on source already in memory; `path` names it in diagnostics.
+fn compile_text(path: &Path, text: &str) -> Result<ferro_hir::Module, ExitCode> {
+    let parse = ferro_syntax::parse(text);
     // Type checking runs only on a tree without syntax errors.
     let (module, errors): (_, Vec<(ferro_syntax::TextRange, String)>) = if parse.errors().is_empty()
     {
@@ -101,10 +122,10 @@ fn compile(path: &Path) -> Result<(String, ferro_hir::Module), ExitCode> {
         (None, errors)
     };
     for (range, message) in &errors {
-        eprint!("{}", render_error(path, &text, *range, message));
+        eprint!("{}", render_error(path, text, *range, message));
     }
     match module {
-        Some(module) if errors.is_empty() => Ok((text, module)),
+        Some(module) if errors.is_empty() => Ok(module),
         _ => {
             eprintln!("{} error(s)", errors.len());
             Err(ExitCode::from(EXIT_COMPILE_ERRORS))
@@ -122,16 +143,21 @@ fn check(path: &Path) -> ExitCode {
 /// `ferro run`: compile, then interpret. An uncaught runtime error is printed
 /// the way B4J prints it (`docs/spec/cli.md`); stdout written before it is kept.
 fn run(path: &Path, args: &[String]) -> ExitCode {
-    let (text, module) = match compile(path) {
-        Ok(compiled) => compiled,
-        Err(code) => return code,
-    };
-    let program = ferro_mir::lower(&module);
+    match compile(path) {
+        Ok((text, module)) => execute(&text, &module, args),
+        Err(code) => code,
+    }
+}
+
+/// Lowers and interprets a checked module; shared by `ferro run` and
+/// standalone binaries, so both behave identically.
+fn execute(text: &str, module: &ferro_hir::Module, args: &[String]) -> ExitCode {
+    let program = ferro_mir::lower(module);
     let stdout = std::io::stdout();
     let stderr = std::io::stderr();
     let outcome = ferro_interp::run(&program, args, &mut stdout.lock(), &mut stderr.lock());
     if let Some(error) = &outcome.error {
-        let (line, _) = line_and_column(&text, usize::from(error.range.start()));
+        let (line, _) = line_and_column(text, usize::from(error.range.start()));
         eprintln!("Error occurred on line: {line} (Main)");
         if error.message.is_empty() {
             eprintln!("{}", error.kind);
@@ -140,6 +166,105 @@ fn run(path: &Path, args: &[String]) -> ExitCode {
         }
     }
     ExitCode::from(exit_status(outcome.exit_code))
+}
+
+/// Runs the program embedded in this executable, if it has one. `None` for a
+/// plain `ferro` (or when its own file cannot be read: then it is the CLI).
+fn run_embedded() -> Option<ExitCode> {
+    let exe = std::env::current_exe().ok()?;
+    let embedded = match standalone::read_embedded(&exe).ok()? {
+        Ok(embedded) => embedded,
+        Err(error) => {
+            eprintln!("{}: {error}", exe.display());
+            return Some(ExitCode::from(EXIT_USAGE));
+        }
+    };
+    let entries = embedded.entries?;
+    let source = entries
+        .iter()
+        .find(|e| e.name == MAIN_ENTRY)
+        .and_then(|e| String::from_utf8(e.bytes.clone()).ok());
+    let Some(text) = source else {
+        eprintln!(
+            "{}: embedded program is corrupt: no {MAIN_ENTRY}",
+            exe.display()
+        );
+        return Some(ExitCode::from(EXIT_USAGE));
+    };
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // The program was checked at build time; a failure here means the payload
+    // does not come from a matching `ferro build`.
+    Some(match compile_text(Path::new(MAIN_ENTRY), &text) {
+        Ok(module) => execute(&text, &module, &args),
+        Err(_) => ExitCode::from(EXIT_USAGE),
+    })
+}
+
+/// `ferro build`: check the module, then write this executable followed by
+/// the program (`docs/spec/cli.md`).
+fn build(path: &Path, out: Option<&Path>) -> ExitCode {
+    let (text, _) = match compile(path) {
+        Ok(compiled) => compiled,
+        Err(code) => return code,
+    };
+    let out = match out {
+        Some(out) => out.to_path_buf(),
+        None => default_output(path),
+    };
+    let written = std::env::current_exe().and_then(|exe| {
+        // A `ferro` that is itself standalone contributes only its executable part.
+        let exe_len = match standalone::read_embedded(&exe)? {
+            Ok(embedded) => embedded.exe_len,
+            Err(error) => return Err(std::io::Error::other(error.to_string())),
+        };
+        let entries = [standalone::Entry {
+            name: MAIN_ENTRY.into(),
+            bytes: text.into_bytes(),
+        }];
+        standalone::write_standalone(&exe, exe_len, &entries, &out)
+    });
+    if let Err(error) = written {
+        eprintln!("ferro build: cannot write {}: {error}", out.display());
+        return ExitCode::from(EXIT_USAGE);
+    }
+    if let Err(message) = sign_for_macos(&out) {
+        let _ = std::fs::remove_file(&out);
+        eprintln!("ferro build: {message}");
+        return ExitCode::from(EXIT_USAGE);
+    }
+    ExitCode::SUCCESS
+}
+
+/// `prices_map.bas` → `./prices_map` (`.exe` on Windows).
+fn default_output(path: &Path) -> PathBuf {
+    let stem = path.file_stem().unwrap_or(path.as_os_str());
+    let mut name = stem.to_os_string();
+    name.push(std::env::consts::EXE_SUFFIX);
+    PathBuf::from(name)
+}
+
+/// On macOS the appended bytes invalidate the code signature, and arm64
+/// refuses unsigned binaries: re-sign ad hoc (`docs/spec/cli.md`, open).
+#[cfg(target_os = "macos")]
+fn sign_for_macos(out: &Path) -> Result<(), String> {
+    let status = std::process::Command::new("codesign")
+        .args(["--force", "--sign", "-"])
+        .arg(out)
+        .status()
+        .map_err(|e| format!("cannot run codesign to re-sign {}: {e}", out.display()))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "codesign could not re-sign {} ({status})",
+            out.display()
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn sign_for_macos(_out: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 /// A process exit status from an `ExitApplication2` code: the low 8 bits,
