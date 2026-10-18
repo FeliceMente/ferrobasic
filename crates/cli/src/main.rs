@@ -16,7 +16,7 @@ Usage: ferro <command> [args]
 Commands:
   check <file>      Parse and type-check a module
   run <file> [-- <args>...]  Run with the reference interpreter
-  build <file> [-o <output>]  Write a standalone executable for this machine
+  build <file> [-o <output>]  Bundle the program into a standalone executable
   repl              Start the interactive REPL
   test              Run conformance tests
   fmt <file>        Format source files
