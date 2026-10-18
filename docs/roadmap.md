@@ -51,6 +51,7 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
       output matches it (`crates/interp/tests/conformance.rs`).
 - [x] `ferro build`: standalone executable for the host (payload appended to
       `ferro`; embedded with `libsui` on macOS). Verified on Linux x86_64,
-      glibc and musl (fully static); Windows and macOS are not tested yet.
+      glibc and musl (fully static), and on macOS: arm64, and x86_64 through
+      Rosetta. Windows is not tested yet.
 - [ ] `ferro-difftest --target interp` and `--target standalone` against
       `.expected` / `.provisional`.
