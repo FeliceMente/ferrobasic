@@ -22,7 +22,7 @@ by its full path. The examples below just write `ferro`.
 
 ```console
 $ ferro version
-ferro 0.0.1
+ferro 0.0.2-dev
 ```
 
 `ferro help` (or `ferro` with no arguments) lists the commands. Three of them
