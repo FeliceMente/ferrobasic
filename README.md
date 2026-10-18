@@ -54,6 +54,19 @@ cargo test --workspace
 cargo run -p ferro-cli -- --help
 ```
 
+Running and building a Level 0 program:
+
+```sh
+ferro check prog.bas              # parse and type-check
+ferro run prog.bas -- a b         # run with the reference interpreter
+ferro build prog.bas -o prog      # standalone executable for this machine
+./prog a b
+```
+
+A standalone binary is `ferro` with the program appended: it needs neither
+FerroBASIC nor a JVM, only the system C library (or nothing at all when
+`ferro` is built for `x86_64-unknown-linux-musl`).
+
 ## Working with AI coding agents
 
 Agent instructions live in [`AGENTS.md`](AGENTS.md), which Claude Code, Codex,

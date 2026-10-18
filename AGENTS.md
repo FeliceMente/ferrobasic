@@ -75,6 +75,7 @@ cargo test --workspace
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p ferro-cli -- run tests/conformance/level0/<file>.bas
+cargo run -p ferro-cli -- build tests/conformance/level0/<file>.bas -o /tmp/prog
 cargo run -p ferro-difftest -- --target interp   # compare against recordings (once implemented)
 ```
 
