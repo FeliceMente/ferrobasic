@@ -168,15 +168,26 @@ fn execute(text: &str, module: &ferro_hir::Module, args: &[String]) -> ExitCode 
     ExitCode::from(exit_status(outcome.exit_code))
 }
 
-/// Runs the program embedded in this executable, if it has one. `None` for a
-/// plain `ferro` (or when its own file cannot be read: then it is the CLI).
+/// Runs the program embedded in this executable, if it has one. `None` only
+/// once its own file has been read and has no trailer: an executable that
+/// cannot be inspected must not fall back to the CLI in place of its program.
 fn run_embedded() -> Option<ExitCode> {
-    let exe = std::env::current_exe().ok()?;
-    let embedded = match standalone::read_embedded(&exe).ok()? {
-        Ok(embedded) => embedded,
+    let fail = |what: &dyn std::fmt::Display| {
+        eprintln!("{what}");
+        Some(ExitCode::from(EXIT_USAGE))
+    };
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(error) => return fail(&format_args!("cannot locate own executable: {error}")),
+    };
+    let embedded = match standalone::read_embedded(&exe) {
+        Ok(Ok(embedded)) => embedded,
+        Ok(Err(error)) => return fail(&format_args!("{}: {error}", exe.display())),
         Err(error) => {
-            eprintln!("{}: {error}", exe.display());
-            return Some(ExitCode::from(EXIT_USAGE));
+            return fail(&format_args!(
+                "{}: cannot read own executable: {error}",
+                exe.display()
+            ));
         }
     };
     let entries = embedded.entries?;
@@ -221,15 +232,11 @@ fn build(path: &Path, out: Option<&Path>) -> ExitCode {
             name: MAIN_ENTRY.into(),
             bytes: text.into_bytes(),
         }];
-        standalone::write_standalone(&exe, exe_len, &entries, &out)
+        // Sign the staged file: `out` is replaced only by a finished binary.
+        standalone::write_standalone(&exe, exe_len, &entries, &out, sign_for_macos)
     });
     if let Err(error) = written {
         eprintln!("ferro build: cannot write {}: {error}", out.display());
-        return ExitCode::from(EXIT_USAGE);
-    }
-    if let Err(message) = sign_for_macos(&out) {
-        let _ = std::fs::remove_file(&out);
-        eprintln!("ferro build: {message}");
         return ExitCode::from(EXIT_USAGE);
     }
     ExitCode::SUCCESS
@@ -246,24 +253,23 @@ fn default_output(path: &Path) -> PathBuf {
 /// On macOS the appended bytes invalidate the code signature, and arm64
 /// refuses unsigned binaries: re-sign ad hoc (`docs/spec/cli.md`, open).
 #[cfg(target_os = "macos")]
-fn sign_for_macos(out: &Path) -> Result<(), String> {
+fn sign_for_macos(staged: &Path) -> std::io::Result<()> {
     let status = std::process::Command::new("codesign")
         .args(["--force", "--sign", "-"])
-        .arg(out)
+        .arg(staged)
         .status()
-        .map_err(|e| format!("cannot run codesign to re-sign {}: {e}", out.display()))?;
+        .map_err(|e| std::io::Error::other(format!("cannot run codesign to re-sign: {e}")))?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!(
-            "codesign could not re-sign {} ({status})",
-            out.display()
-        ))
+        Err(std::io::Error::other(format!(
+            "codesign could not re-sign ({status})"
+        )))
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn sign_for_macos(_out: &Path) -> Result<(), String> {
+fn sign_for_macos(_staged: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

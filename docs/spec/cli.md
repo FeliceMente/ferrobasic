@@ -155,6 +155,8 @@ a payload and a trailer:
   - If the trailer is absent, it behaves as the normal CLI.
   - A trailer whose version it does not know, or whose length is impossible,
     exits with code 2.
+  - So does an executable that cannot locate or read its own file: it never
+    falls back to the CLI in place of its program.
 - Linux (ELF) and Windows (PE) ignore appended bytes, so the result runs as is.
   Verified on Linux x86_64; Windows is not tested yet.
   - **macOS** is *(open)*: appended bytes break the code signature, and arm64
@@ -162,6 +164,10 @@ a payload and a trailer:
   - Until it is verified, `ferro build` on macOS re-signs ad hoc
     (`codesign --force --sign -`). If that fails, it reports a precise error
     rather than writing a binary that will not start.
+- **Writing the output**: the binary is staged in a new, uniquely named file
+  next to the output (never an existing file or a symlink), signed there on
+  macOS, then renamed over the output. If any step fails, an existing output
+  is left untouched and the staged file is removed.
 - **Dependencies**: the output depends on exactly what `ferro` itself depends on.
   On Linux that is the system C library (glibc), unless `ferro` was built for
   `*-linux-musl`, which makes the output fully static (verified with

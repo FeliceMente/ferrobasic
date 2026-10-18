@@ -10,9 +10,10 @@
 //! At start-up `ferro` looks for the trailer at the end of its own file; when
 //! present it runs the embedded program instead of its CLI.
 
-use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
-use std::path::Path;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Marks a standalone binary.
 pub const MAGIC: &[u8; 14] = b"FERROBASIC\0PKG";
@@ -160,26 +161,65 @@ pub fn read_embedded(path: &Path) -> io::Result<Result<Embedded, PayloadError>> 
 }
 
 /// Writes `exe[..exe_len]`, the payload and the trailer to `out`, replacing
-/// it, with the executable permission bits on Unix.
-pub fn write_standalone(exe: &Path, exe_len: u64, entries: &[Entry], out: &Path) -> io::Result<()> {
+/// it, with the executable permission bits on Unix. `finish` runs on the
+/// complete staged file before it replaces `out` (macOS signs it there); if
+/// anything fails, `out` is left as it was.
+pub fn write_standalone(
+    exe: &Path,
+    exe_len: u64,
+    entries: &[Entry],
+    out: &Path,
+    finish: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<()> {
     let mut base = Vec::new();
     File::open(exe)?.take(exe_len).read_to_end(&mut base)?;
     let payload = encode(entries);
     let mut bytes = base;
     bytes.extend_from_slice(&payload);
     bytes.extend_from_slice(&trailer(payload.len() as u64));
-    // Write next to the target, then rename: never leave a half-written
+    // Stage next to the target, then rename: never leave a half-written
     // binary at `out`, and work even when `out` is a running executable.
-    let tmp = out.with_extension("ferro-tmp");
-    std::fs::write(&tmp, &bytes)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+    let (mut file, staged) = create_staging(out)?;
+    let result = (|| {
+        file.write_all(&bytes)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(std::fs::Permissions::from_mode(0o755))?;
+        }
+        drop(file);
+        finish(&staged)?;
+        std::fs::rename(&staged, out)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&staged);
     }
-    std::fs::rename(&tmp, out).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
+    result
+}
+
+/// Creates a new, unique file next to `out`. `create_new` never opens an
+/// existing file or follows a symlink, so concurrent builds and stray files
+/// with the same name are never overwritten.
+fn create_staging(out: &Path) -> io::Result<(File, PathBuf)> {
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let dir = match out.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir,
+        _ => Path::new("."),
+    };
+    let name = out.file_name().unwrap_or(out.as_os_str()).to_string_lossy();
+    loop {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let staged = dir.join(format!(".{name}.{}.{n}.ferro-tmp", std::process::id()));
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)
+        {
+            Ok(file) => return Ok((file, staged)),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists && n < 1000 => continue,
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -249,7 +289,7 @@ mod tests {
         let exe = dir.join("fake-ferro");
         std::fs::write(&exe, b"\x7fELF not really an executable").unwrap();
         let out = dir.join("prog");
-        write_standalone(&exe, 10, &sample(), &out).unwrap();
+        write_standalone(&exe, 10, &sample(), &out, |_| Ok(())).unwrap();
         let embedded = read_embedded(&out).unwrap().unwrap();
         assert_eq!(embedded.exe_len, 10);
         assert_eq!(embedded.entries, Some(sample()));
@@ -258,10 +298,55 @@ mod tests {
         assert!(plain.entries.is_none());
         // Rebuilding from a standalone binary keeps only its executable part.
         let again = dir.join("again");
-        write_standalone(&out, embedded.exe_len, &sample()[..1], &again).unwrap();
+        write_standalone(&out, embedded.exe_len, &sample()[..1], &again, |_| Ok(())).unwrap();
         let read = read_embedded(&again).unwrap().unwrap();
         assert_eq!(read.exe_len, 10);
         assert_eq!(read.entries.unwrap().len(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn staging_never_touches_other_files() {
+        let dir =
+            std::env::temp_dir().join(format!("ferro-standalone-stage-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("fake-ferro");
+        std::fs::write(&exe, b"exe").unwrap();
+        let out = dir.join("prog");
+        std::fs::write(&out, b"previous").unwrap();
+        // A file at the old fixed staging name is left alone.
+        let stray = dir.join("prog.ferro-tmp");
+        std::fs::write(&stray, b"unrelated").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&stray, dir.join(".prog.ferro-tmp")).unwrap();
+
+        // A failing finishing step (codesign on macOS) keeps the old output
+        // and removes the staged file.
+        let err = write_standalone(&exe, 3, &sample(), &out, |staged| {
+            assert!(staged.exists() && staged != out);
+            Err(io::Error::other("signing failed"))
+        })
+        .unwrap_err();
+        assert_eq!(err.to_string(), "signing failed");
+        assert_eq!(std::fs::read(&out).unwrap(), b"previous");
+
+        write_standalone(&exe, 3, &sample(), &out, |_| Ok(())).unwrap();
+        assert_eq!(
+            read_embedded(&out).unwrap().unwrap().entries,
+            Some(sample())
+        );
+        assert_eq!(std::fs::read(&stray).unwrap(), b"unrelated");
+        let mut names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        let mut expected = vec!["fake-ferro", "prog", "prog.ferro-tmp"];
+        if cfg!(unix) {
+            expected.insert(0, ".prog.ferro-tmp");
+        }
+        assert_eq!(names, expected);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
