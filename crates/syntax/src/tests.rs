@@ -432,3 +432,63 @@ fn a_too_deep_placeholder_does_not_swallow_the_next_sub() {
     let root = crate::parse(&format!("{deep}{next}")).syntax();
     assert_eq!(count(&root, SUB_DECL), 2);
 }
+
+/// Each nested call, `Array As` or `CreateMap` adds two levels to the tree
+/// (the call and its `ARG_LIST`, the map and its entry), with no operator
+/// after it to trigger the check: the finished subtree is checked too.
+#[test]
+fn nesting_counts_calls_arrays_and_maps() {
+    let forms: [(&str, &str, &str, &str); 5] = [
+        ("x = ", "Abs(", ")", ""),
+        ("", "F(", ")", ""),
+        ("a(", "F(", ")", ") = 1"),
+        ("x = ", "Array As Object(", ")", ""),
+        ("x = ", "CreateMap(1: ", ")", ""),
+    ];
+    // The innermost operand is 1 or 2 levels tall, to hit the limit exactly.
+    let source = |(before, open, close, after): (&str, &str, &str, &str), n: usize, leaf| {
+        in_sub(&format!(
+            "{before}{}{leaf}{}{after}",
+            open.repeat(n),
+            close.repeat(n)
+        ))
+    };
+    // The height of a node's subtree, without recursion.
+    let height = |node: &SyntaxNode| {
+        let mut tallest = 0;
+        let mut levels = 0;
+        for event in node.preorder() {
+            match event {
+                rowan::WalkEvent::Enter(_) => {
+                    levels += 1;
+                    tallest = tallest.max(levels);
+                }
+                rowan::WalkEvent::Leave(_) => levels -= 1,
+            }
+        }
+        tallest
+    };
+    for (form, leaf) in forms.into_iter().flat_map(|f| [(f, "1"), (f, "s.X")]) {
+        let errors = parse_errors(&source(form, 600, leaf));
+        assert_eq!(errors.len(), 1, "{form:?}: {errors:?}");
+        assert!(errors[0].contains("nested too deeply"), "{errors:?}");
+        parse_ok(&source(form, 300, leaf));
+        // Around the limit, a statement is either rejected or fits in it. It
+        // takes two levels (statement and simple statement) for one node, so
+        // its subtree is at most 999 tall.
+        for n in 495..=505 {
+            let parse = parse(&source(form, n, leaf));
+            if parse.errors().is_empty() {
+                let root = parse.syntax();
+                for stmt in root
+                    .descendants()
+                    .filter(|n| matches!(n.kind(), ASSIGN_STMT | EXPR_STMT))
+                {
+                    assert!(height(&stmt) < 1000, "{form:?} {leaf} with {n} levels");
+                }
+            } else {
+                assert!(parse.errors()[0].message.contains("nested too deeply"));
+            }
+        }
+    }
+}

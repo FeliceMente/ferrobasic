@@ -751,7 +751,9 @@ impl Parser<'_> {
     /// `target = value`, or an expression used as a statement (a call).
     fn assign_or_call(&mut self) {
         let checkpoint = self.checkpoint();
-        self.postfix_expr();
+        let target = self.postfix_expr();
+        // Not inside `expr_bp`: check the finished target here.
+        self.fits(target);
         if self.at(EQ) {
             self.start_at(checkpoint, ASSIGN_STMT);
             self.bump();
@@ -826,6 +828,9 @@ impl Parser<'_> {
             self.finish();
             height = height.max(rhs) + 1;
         }
+        // A call, `Array As` or `CreateMap` puts two levels around each
+        // nested expression: check the finished subtree too.
+        self.fits(height);
         self.leave(1);
         height
     }
