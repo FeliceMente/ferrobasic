@@ -22,11 +22,14 @@ by its full path. The examples below just write `ferro`.
 
 ```console
 $ ferro version
-ferro 0.0.2-dev
+ferro 0.0.2-dev (linux-x64)
 ```
 
-`ferro help` (or `ferro` with no arguments) lists the commands. Three of them
-work at Level 0:
+The part in brackets is the platform `ferro` was built for, for example
+`macos-arm64` on an Apple Silicon Mac.
+
+`ferro help` (or `ferro` with no arguments) prints the same version and
+platform, then lists the commands. Three of them work at Level 0:
 
 | Command | What it does |
 | --- | --- |

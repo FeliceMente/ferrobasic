@@ -48,6 +48,15 @@ ferro bundle <input> [-o <output>]    check, then write a standalone executable
 ferro version | help
 ```
 
+- `ferro help`, and `ferro` with no arguments, print a header and the
+  commands. The header is `FerroBASIC <version> (<platform>)`, then the line
+  `A multi-target BASIC compiler and interpreter`. `ferro version` prints
+  `ferro <version> (<platform>)`.
+  - The platform is the one `ferro` was built for, named like the planned
+    `--target` values: `<os>-<arch>`, with `x64` and `arm64` for Rust's
+    `x86_64` and `aarch64` (`linux-x64`, `macos-arm64`, `windows-x64`).
+    Other values keep Rust's `std::env::consts` names.
+  - Like every message from `ferro`, they never use the B4X product names.
 - `run` and `bundle` refuse to continue if `check` reports any error.
 - `bundle` writes the interpreter plus the program (see "Standalone binary
   format"); it does not compile:

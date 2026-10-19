@@ -8,26 +8,47 @@ mod standalone;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const USAGE: &str = "\
-FerroBASIC - a B4X-compatible, multi-target BASIC compiler
-
+/// Everything after the header of `ferro help`.
+const COMMANDS: &str = "\
 Usage: ferro <command> [args]
 
 Commands:
-  check <file>                 Parse and type-check a module
-  run <file> [-- <args>...]    Run with the reference interpreter
-  bundle <file> [-o <output>]  Bundle the interpreter and the program into
-                               a standalone executable for this machine
-  version                      Print the version
+  check <file>                    Parse and type-check a module
+  run <file> [-- <args>...]       Run with the reference interpreter
+  bundle <file> [-o <output>]     Bundle the interpreter and the program into
+                                  a standalone executable for this machine
+  version                         Print the version and platform
+  help                            Print this help
 
 Planned (not implemented yet):
-  compile <file> [--target <t>]  Compile for this machine or another target
-  targets                        List the compilation targets
-  build [<project>]              Build a project from its project file
-  repl                           Start the interactive REPL
-  test                           Run conformance tests
-  fmt <file>                     Format source files
+  compile <file> [--target <t>]   Compile for this machine or another target
+  targets                         List the compilation targets
+  build [<project>]               Build a project from its project file
+  repl                            Start the interactive REPL
+  test                            Run conformance tests
+  fmt <file>                      Format source files
 ";
+
+/// `ferro help`: version, platform, description, then the commands.
+fn usage() -> String {
+    format!(
+        "FerroBASIC {} ({})\nA multi-target BASIC compiler and interpreter\n\n{COMMANDS}",
+        env!("CARGO_PKG_VERSION"),
+        platform()
+    )
+}
+
+/// The platform this `ferro` was built for, named like the `--target` values
+/// planned in `docs/spec/cli.md`: `linux-x64`, `macos-arm64`, `windows-x64`…
+/// Unknown operating systems and architectures keep Rust's names.
+fn platform() -> String {
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        other => other,
+    };
+    format!("{}-{arch}", std::env::consts::OS)
+}
 
 /// Exit codes from `docs/spec/cli.md`.
 const EXIT_USAGE: u8 = 2;
@@ -45,7 +66,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("version" | "--version" | "-V") => {
-            println!("ferro {}", env!("CARGO_PKG_VERSION"));
+            println!("ferro {} ({})", env!("CARGO_PKG_VERSION"), platform());
             ExitCode::SUCCESS
         }
         Some("check") => match &args[1..] {
@@ -91,7 +112,7 @@ fn main() -> ExitCode {
         Some("targets") => not_implemented("targets", "it arrives with `ferro compile`"),
         Some(cmd @ ("repl" | "test" | "fmt")) => not_implemented(cmd, "planned for milestone M1"),
         Some("help" | "--help" | "-h") | None => {
-            print!("{USAGE}");
+            print!("{}", usage());
             ExitCode::SUCCESS
         }
         Some(other) => usage_error(&format!("ferro: unknown command '{other}'")),
@@ -107,7 +128,7 @@ fn not_implemented(command: &str, detail: &str) -> ExitCode {
 
 fn usage_error(message: &str) -> ExitCode {
     eprintln!("{message}\n");
-    eprint!("{USAGE}");
+    eprint!("{}", usage());
     ExitCode::from(EXIT_USAGE)
 }
 
