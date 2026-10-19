@@ -690,18 +690,28 @@ impl Machine<'_, '_> {
                 list.modified();
                 Value::Null
             }
-            ListAddAll => {
-                let src = list_arg(0)?.to_vec()?;
+            // `Collections.unmodifiableList` refuses at once; `ArrayList`
+            // and `Arrays.asList` check the index, then read the source.
+            // `Arrays.asList` only fails when there is something to add, and
+            // `ArrayList` counts even an empty addition as a modification.
+            ListAddAll | ListAddAllAt => {
+                let (at, src) = if b == ListAddAll {
+                    (None, list_arg(0)?)
+                } else {
+                    (Some(n(0)?), list_arg(1)?)
+                };
+                if list.kind == ListKind::ReadOnly {
+                    return Err(unsupported());
+                }
+                let at = at.map(for_add).transpose()?.unwrap_or(size);
+                let src = src.to_vec()?;
+                if src.is_empty() {
+                    if list.kind == ListKind::Growable {
+                        list.modified();
+                    }
+                    return Ok(Value::Null);
+                }
                 growable()?;
-                try_grow(&mut items.borrow_mut(), src.len())?;
-                items.borrow_mut().extend(src);
-                list.modified();
-                Value::Null
-            }
-            ListAddAllAt => {
-                let src = list_arg(1)?.to_vec()?;
-                growable()?;
-                let at = for_add(n(0)?)?;
                 try_grow(&mut items.borrow_mut(), src.len())?;
                 items.borrow_mut().splice(at..at, src);
                 list.modified();
