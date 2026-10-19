@@ -411,3 +411,65 @@ fn select_matches_like_switch_object_to_int() {
 fn inline_cast_to_array_type() {
     ok(&program("Dim o As Object\nLog(o.As(String()).Length)"));
 }
+
+/// A `For` in `Process_Globals` with an implicit counter used to vanish
+/// silently; it is rejected until B4X's behaviour is known.
+#[test]
+fn loops_in_process_globals_need_a_declared_variable() {
+    let globals = |body: &str| {
+        format!(
+            "Sub Process_Globals\n    Private Total As Int\n{body}\nEnd Sub\n\nSub AppStart (Args() As String)\n    Log(Total)\nEnd Sub\n"
+        )
+    };
+    let diags = errors(&globals(
+        "    For i = 1 To 3\n        Total = Total + i\n    Next",
+    ));
+    assert!(
+        has(
+            &diags,
+            "the `For` variable `i` must be declared first in `Process_Globals`"
+        ),
+        "{diags:?}"
+    );
+    let diags = errors(&globals("    For i As Int = 1 To 3\n    Next"));
+    assert!(
+        has(&diags, "the `For` variable `i` must be declared first"),
+        "{diags:?}"
+    );
+    let diags = errors(&globals(
+        "    For Each v As Int In Array As Int(1, 2)\n    Next",
+    ));
+    assert!(
+        has(&diags, "the `For Each` variable `v` must be declared first"),
+        "{diags:?}"
+    );
+    // A declared variable works, as before.
+    let module = ok(&globals(
+        "    Dim i As Int\n    For i = 1 To 3\n        Total = Total + i\n    Next",
+    ));
+    let pg = module.sub(module.process_globals.unwrap());
+    assert!(
+        format!("{:?}", pg.body).contains("For"),
+        "the loop must be kept"
+    );
+}
+
+#[test]
+fn assigning_to_a_constant_or_a_sub_says_so() {
+    let diags = errors(&program("    CRLF = \"x\"\n    cPI = 3"));
+    assert!(
+        has(&diags, "cannot assign to `CRLF`: it is a built-in constant"),
+        "{diags:?}"
+    );
+    assert!(
+        has(&diags, "cannot assign to `cPI`: it is a built-in constant"),
+        "{diags:?}"
+    );
+    let diags = errors(&format!("{}\nSub F\nEnd Sub\n", program("    F = 3")));
+    assert!(
+        has(&diags, "cannot assign to `F`: it is a Sub, not a variable"),
+        "{diags:?}"
+    );
+    let diags = errors(&program("    nothing = 3"));
+    assert!(has(&diags, "`nothing` is not declared"), "{diags:?}");
+}

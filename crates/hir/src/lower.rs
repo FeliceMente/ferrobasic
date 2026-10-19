@@ -117,22 +117,32 @@ fn exprs(node: &SyntaxNode) -> Vec<SyntaxNode> {
 }
 
 fn range(node: &SyntaxNode) -> TextRange {
-    // Without the leading/trailing trivia the parser may attach.
-    let mut start = None;
-    let mut end = None;
-    for token in node
-        .descendants_with_tokens()
-        .filter_map(|e| e.into_token())
-    {
-        if !token.kind().is_trivia() {
-            start.get_or_insert(token.text_range().start());
-            end = Some(token.text_range().end());
-        }
+    // Without the leading/trailing trivia the parser may attach. Search from
+    // each end and stop at the first real token: walking every token of the
+    // node made deep trees quadratic, since this runs for every node.
+    let full = node.text_range();
+    let inside = |t: &SyntaxToken| full.contains_range(t.text_range());
+    let mut first = node.first_token();
+    while let Some(t) = first.take_if(|t| t.kind().is_trivia()) {
+        first = t.next_token().filter(inside);
     }
-    match (start, end) {
-        (Some(s), Some(e)) => TextRange::new(s, e),
-        _ => node.text_range(),
+    let mut last = node.last_token();
+    while let Some(t) = last.take_if(|t| t.kind().is_trivia()) {
+        last = t.prev_token().filter(inside);
     }
+    match (first, last) {
+        (Some(f), Some(l)) => TextRange::new(f.text_range().start(), l.text_range().end()),
+        _ => full,
+    }
+}
+
+/// The loop variable of a `For` / `For Each` in `Process_Globals`, where
+/// loop variables are not declared implicitly.
+fn undeclared_loop_variable(name: &str, statement: &str) -> String {
+    format!(
+        "the `{statement}` variable `{name}` must be declared first in `Process_Globals`, \
+         e.g. `Dim {name} As Int`: an implicit loop variable there is not supported yet"
+    )
 }
 
 fn error_expr(range: TextRange) -> Expr {
@@ -698,7 +708,14 @@ impl Lowerer {
                 let Some(name) = child(node, NAME) else {
                     return;
                 };
-                let Some((var, ty)) = self.lookup_var(&name_of(&name)) else {
+                let text = name_of(&name);
+                let Some((var, ty)) = self.lookup_var(&text) else {
+                    // Every Sub but `Process_Globals` declares an undeclared
+                    // counter as an Int (`hoist_locals`). Whether B4X makes
+                    // such a counter in `Process_Globals` a module variable
+                    // is open (`docs/open-questions.md`): reject it rather
+                    // than guess, and never drop the loop silently.
+                    self.error(range(&name), undeclared_loop_variable(&text, "For"));
                     return;
                 };
                 if !ty.is_numeric() && ty != Ty::Error {
@@ -737,12 +754,14 @@ impl Lowerer {
                 };
                 let text = name_of(&name);
                 let Some((var, ty)) = self.lookup_var(&text) else {
-                    self.error(
-                        range(&name),
+                    let message = if self.in_process_globals {
+                        undeclared_loop_variable(&text, "For Each")
+                    } else {
                         format!(
                             "`{text}` is not declared: write `For Each {text} As <type> In ...`"
-                        ),
-                    );
+                        )
+                    };
+                    self.error(range(&name), message);
                     return;
                 };
                 let Some(coll) = exprs(node).into_iter().next() else {
@@ -906,12 +925,18 @@ impl Lowerer {
                 match self.lookup_var(&name) {
                     Some((var, ty)) => Some((Place::Var(var), ty)),
                     None => {
-                        self.error(
-                            range(node),
+                        let message = if self.subs.contains_key(&key(&name)) {
+                            format!("cannot assign to `{name}`: it is a Sub, not a variable")
+                        } else if builtins::lookup(Owner::Global, &name).is_some() {
+                            format!(
+                                "cannot assign to `{name}`: it is a built-in constant or keyword"
+                            )
+                        } else {
                             format!(
                                 "`{name}` is not declared: declare it with `Dim {name} As <type>`"
-                            ),
-                        );
+                            )
+                        };
+                        self.error(range(node), message);
                         None
                     }
                 }

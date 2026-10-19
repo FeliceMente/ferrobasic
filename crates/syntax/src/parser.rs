@@ -43,6 +43,8 @@ pub fn parse(text: &str) -> Parse {
         starts,
         pos: 0,
         builder: GreenNodeBuilder::new(),
+        depth: 0,
+        too_deep: false,
         errors: lex_errors
             .into_iter()
             .map(|e| SyntaxError {
@@ -78,6 +80,12 @@ fn infix_binding_power(kind: SyntaxKind) -> Option<(u8, u8)> {
 /// Binding power of unary minus.
 const PREFIX_BINDING_POWER: u8 = 13;
 
+/// Deepest nesting of statements and expressions the parser accepts. Every
+/// later stage walks the tree recursively, so an unbounded depth would
+/// overflow their stacks (`docs/deviations.md`). Real code stays far below:
+/// a 900-term `&` chain still parses.
+const MAX_NESTING: u32 = 1000;
+
 /// Keywords that B4X also accepts as names. `In` is evidenced by a B4X
 /// library that compiles with a parameter named `In`; which other keywords
 /// are contextual is open (see `docs/open-questions.md`).
@@ -96,6 +104,13 @@ struct Parser<'t> {
     pos: usize,
     builder: GreenNodeBuilder<'static>,
     errors: Vec<SyntaxError>,
+    /// Depth of the tree being built, counted in statements and expressions.
+    /// A left-folded chain (`1 + 1 + ...`, `s.Trim.Trim...`) is built in a
+    /// loop but nests one level per operator, so it counts too.
+    depth: u32,
+    /// The current Sub went past `MAX_NESTING`: the rest of it is one error
+    /// node, and the errors of the unwinding levels are not reported.
+    too_deep: bool,
 }
 
 // Token access and tree building.
@@ -188,6 +203,9 @@ impl Parser<'_> {
 
     /// Reports an error at the current token.
     fn error(&mut self, message: impl Into<String>) {
+        if self.too_deep {
+            return;
+        }
         let range = match self.nth_index(0) {
             Some(i) => TextRange::new(self.starts[i].into(), self.starts[i + 1].into()),
             None => TextRange::empty((*self.starts.last().unwrap()).into()),
@@ -231,6 +249,38 @@ impl Parser<'_> {
         } else {
             self.error(format!("expected `End {what}`"));
         }
+    }
+
+    /// Enters one nesting level. Past `MAX_NESTING` it reports the error
+    /// once, puts the rest of the Sub into an `ERROR` node and returns
+    /// `false`: the caller then stops descending and unwinds, and every loop
+    /// stops at the `End Sub` (or end of input) left in front of it.
+    fn enter(&mut self) -> bool {
+        if self.too_deep {
+            return false;
+        }
+        if self.depth >= MAX_NESTING {
+            self.error(format!(
+                "nested too deeply (more than {MAX_NESTING} levels of statements and \
+                 expressions): split it into several statements"
+            ));
+            self.too_deep = true;
+            self.start(ERROR);
+            while self.current().is_some()
+                && !self.at_sub_start()
+                && !(self.at(END_KW) && self.nth(1) == Some(SUB_KW))
+            {
+                self.bump();
+            }
+            self.finish();
+            return false;
+        }
+        self.depth += 1;
+        true
+    }
+
+    fn leave(&mut self, levels: u32) {
+        self.depth -= levels;
     }
 
     fn at_sub_start(&self) -> bool {
@@ -288,6 +338,8 @@ impl Parser<'_> {
     }
 
     fn sub_decl(&mut self) {
+        self.too_deep = false;
+        self.depth = 0;
         self.start(SUB_DECL);
         if !self.eat(PRIVATE_KW) {
             self.eat(PUBLIC_KW);
@@ -308,6 +360,7 @@ impl Parser<'_> {
         }
         self.block();
         self.expect_end(SUB_KW, "Sub");
+        self.too_deep = false;
         self.finish();
     }
 
@@ -405,6 +458,14 @@ impl Parser<'_> {
     }
 
     fn statement(&mut self) {
+        if !self.enter() {
+            return;
+        }
+        self.statement_kind();
+        self.leave(1);
+    }
+
+    fn statement_kind(&mut self) {
         match self.current() {
             Some(DIM_KW | PRIVATE_KW | PUBLIC_KW) => self.dim_stmt(),
             Some(TYPE_KW) => self.type_decl(),
@@ -420,7 +481,16 @@ impl Parser<'_> {
     }
 
     /// Statements allowed after `Then` / `Else` of a single-line `If`.
+    /// A statement on the same line after `Then`/`Else`; nests like a block.
     fn simple_statement(&mut self) {
+        if !self.enter() {
+            return;
+        }
+        self.simple_statement_kind();
+        self.leave(1);
+    }
+
+    fn simple_statement_kind(&mut self) {
         match self.current() {
             Some(DIM_KW | PRIVATE_KW | PUBLIC_KW) => self.dim_stmt(),
             Some(IF_KW) => self.if_stmt(),
@@ -708,6 +778,10 @@ impl Parser<'_> {
     }
 
     fn expr_bp(&mut self, min_bp: u8) {
+        if !self.enter() {
+            return;
+        }
+        let mut levels = 1;
         let checkpoint = self.checkpoint();
         if self.at(MINUS) {
             self.start(PREFIX_EXPR);
@@ -718,21 +792,28 @@ impl Parser<'_> {
             self.postfix_expr();
         }
         while let Some((left, right)) = self.current().and_then(infix_binding_power) {
-            if left < min_bp {
+            if left < min_bp || !self.enter() {
                 break;
             }
+            levels += 1;
             self.start_at(checkpoint, BIN_EXPR);
             self.bump();
             self.expr_bp(right);
             self.finish();
         }
+        self.leave(levels);
     }
 
     fn postfix_expr(&mut self) {
         let checkpoint = self.checkpoint();
         self.primary();
+        let mut levels = 0;
         loop {
+            if (self.at(DOT) || self.at(L_PAREN)) && !self.enter() {
+                break;
+            }
             if self.at(DOT) {
+                levels += 1;
                 self.start_at(checkpoint, MEMBER_EXPR);
                 self.bump();
                 // Member names may be spelled like keywords: `Bit.And`, `x.As(T)`.
@@ -745,6 +826,7 @@ impl Parser<'_> {
                 }
                 self.finish();
             } else if self.at(L_PAREN) {
+                levels += 1;
                 self.start_at(checkpoint, CALL_EXPR);
                 self.arg_list();
                 self.finish();
@@ -752,6 +834,7 @@ impl Parser<'_> {
                 break;
             }
         }
+        self.leave(levels);
     }
 
     fn arg_list(&mut self) {

@@ -374,3 +374,77 @@ fn many_errors_are_counted_but_not_all_printed() {
         "{stderr}"
     );
 }
+
+fn in_app_start(body: &str) -> String {
+    format!("Sub AppStart (Args() As String)\n{body}\nEnd Sub\n")
+}
+
+/// Deeply nested programs are rejected with one error instead of crashing
+/// `ferro` with a stack overflow, and quickly (no quadratic slowdown).
+#[test]
+fn deep_nesting_is_an_error_not_a_crash() {
+    let dir = Scratch::new("deep");
+    let n = 20_000;
+    let cases = [
+        (
+            "chain",
+            format!("    Dim x As Int = {}", vec!["1"; n].join("+")),
+        ),
+        (
+            "parens",
+            format!("    Log({}1{})", "(".repeat(n), ")".repeat(n)),
+        ),
+        (
+            "ifs",
+            format!(
+                "{}    Log(1)\n{}",
+                "    If True Then\n".repeat(n),
+                "    End If\n".repeat(n)
+            ),
+        ),
+        (
+            "inline-ifs",
+            format!("    {}Log(1)", "If True Then ".repeat(n)),
+        ),
+        (
+            "members",
+            format!(
+                "    Dim s As String = \"a\"\n    Log(s{})",
+                ".Trim".repeat(n)
+            ),
+        ),
+    ];
+    for (name, body) in cases {
+        let file = dir.file(&format!("{name}.bas"), &in_app_start(&body));
+        let start = std::time::Instant::now();
+        let out = ferro_in(&dir.0, &[os("check"), file.as_os_str()]);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(3), "{name}: {stderr}");
+        assert!(stderr.contains("nested too deeply"), "{name}: {stderr}");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(10),
+            "{name}: too slow"
+        );
+    }
+}
+
+/// Just below the limit, programs check and run normally.
+#[test]
+fn deep_but_allowed_nesting_runs() {
+    let dir = Scratch::new("allowed");
+    let body = format!(
+        "    Dim x As Int = {}\n{}    Log(x)\n{}",
+        vec!["1"; 900].join(" + "),
+        "    If True Then\n".repeat(50),
+        "    End If\n".repeat(50)
+    );
+    let file = dir.file("ok.bas", &in_app_start(&body));
+    let out = ferro_in(&dir.0, &[os("run"), file.as_os_str()]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "900\n");
+}

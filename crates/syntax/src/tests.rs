@@ -297,3 +297,94 @@ fn every_prefix_of_a_program_round_trips() {
         assert_eq!(parse(prefix).syntax().to_string(), prefix);
     }
 }
+
+/// Deep nesting gives one error, never a stack overflow; the text is kept.
+#[test]
+fn nesting_deeper_than_the_limit_is_one_error() {
+    let deep = |body: String| {
+        let errors = parse_errors(&in_sub(&body));
+        let too_deep: Vec<_> = errors
+            .iter()
+            .filter(|e| e.contains("nested too deeply"))
+            .collect();
+        assert_eq!(too_deep.len(), 1, "{errors:?}");
+        // The unwinding levels report nothing else.
+        assert_eq!(errors.len(), 1, "{errors:?}");
+    };
+    let n = 20_000;
+    deep(format!("x = {}", vec!["1"; n].join(" + ")));
+    deep(format!("x = {}", vec!["\"a\""; n].join(" & ")));
+    deep(format!("Log({}1{})", "(".repeat(n), ")".repeat(n)));
+    deep(format!("Log({}1{})", "Abs(".repeat(n), ")".repeat(n)));
+    deep(format!("Log({}1)", "-".repeat(n)));
+    deep(format!("Log(s{})", ".Trim".repeat(n)));
+    deep(format!("{}Log(1)", "If True Then ".repeat(n)));
+    deep(format!(
+        "{}Log(1)\n{}",
+        "If True Then\n".repeat(n),
+        "End If\n".repeat(n)
+    ));
+    deep(format!(
+        "{}Log(1)\n{}",
+        "For i = 1 To 2\n".repeat(n),
+        "Next\n".repeat(n)
+    ));
+}
+
+#[test]
+fn nesting_resets_for_each_sub() {
+    let deep = in_sub(&format!("x = {}", vec!["1"; 5000].join("+")));
+    let text = format!(
+        "{deep}{}",
+        in_sub("x = (1 +\n").replace("AppStart", "Other")
+    );
+    let errors = parse_errors(&text);
+    assert!(errors[0].contains("nested too deeply"), "{errors:?}");
+    // The next Sub is parsed and reported normally.
+    assert!(errors.len() > 1, "{errors:?}");
+}
+
+#[test]
+fn nesting_below_the_limit_is_fine() {
+    parse_ok(&in_sub(&format!("x = {}", vec!["1"; 900].join(" + "))));
+    parse_ok(&in_sub(&format!(
+        "x = {}1{}",
+        "(".repeat(450),
+        ")".repeat(450)
+    )));
+    parse_ok(&in_sub(&format!(
+        "{}Log(1)\n{}",
+        "If True Then\n".repeat(400),
+        "End If\n".repeat(400)
+    )));
+}
+
+#[test]
+fn smart_strings_nested_too_deeply() {
+    let text = in_sub(&format!(
+        "Log({}x{})",
+        "$\"${".repeat(5000),
+        "}\"$".repeat(5000)
+    ));
+    let errors = parse_errors(&text);
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("smart strings nested too deeply")),
+        "{errors:?}"
+    );
+    parse_ok(&in_sub(&format!(
+        "Log({}x{})",
+        "$\"${".repeat(50),
+        "}\"$".repeat(50)
+    )));
+}
+
+#[test]
+fn a_comment_after_a_line_continuation_is_reported() {
+    let errors = parse_errors(&in_sub("x = 1 + _ ' comment\n    2"));
+    assert!(
+        errors[0].contains("a line continuation `_` must end its line"),
+        "{errors:?}"
+    );
+}
