@@ -334,7 +334,13 @@ fn check_output(input: &Path, exe: &Path, out: &Path) -> Result<(), String> {
     let Ok(meta) = std::fs::symlink_metadata(out) else {
         return Ok(()); // Nothing there yet.
     };
-    let same = |other: &Path| same_file::is_same_file(out, other).unwrap_or(false);
+    // `is_same_file` opens both paths, and opening a FIFO with no writer
+    // blocks: compare only regular files (`metadata` follows symlinks but
+    // never opens anything).
+    let regular = |path: &Path| std::fs::metadata(path).is_ok_and(|m| m.is_file());
+    let same = |other: &Path| {
+        regular(out) && regular(other) && same_file::is_same_file(out, other).unwrap_or(false)
+    };
     if same(input) {
         return Err("it is the input file; choose another output with -o".into());
     }

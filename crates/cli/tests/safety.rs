@@ -6,6 +6,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+#[cfg(unix)]
+use std::os::unix::fs::FileTypeExt;
+
 const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
 const PROGRAM: &str = "Sub AppStart (Args() As String)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n";
@@ -178,6 +181,54 @@ fn bundle_refuses_outputs_that_are_not_regular_files() {
         .map(|e| e.unwrap().file_name())
         .collect();
     assert_eq!(names.len(), 2, "{names:?}");
+}
+
+/// A FIFO with no writer blocks whoever opens it: `bundle` must refuse it,
+/// and replace a symlink to it, without ever opening it.
+#[cfg(unix)]
+#[test]
+fn bundle_never_opens_a_fifo_output() {
+    let dir = Scratch::new("fifo");
+    dir.file("prog.bas", PROGRAM);
+    let made = Command::new("mkfifo")
+        .arg(dir.0.join("fifo"))
+        .status()
+        .unwrap();
+    assert!(made.success());
+    std::os::unix::fs::symlink("fifo", dir.0.join("to-fifo")).unwrap();
+
+    let bundle = |output: &str| {
+        let mut child = Command::new(FERRO)
+            .args(["bundle", "prog.bas", "-o", output])
+            .current_dir(&dir.0)
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                return status.code();
+            }
+            if start.elapsed() > std::time::Duration::from_secs(10) {
+                let _ = child.kill();
+                panic!("ferro bundle -o {output} blocked for 10 s");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    };
+    assert_eq!(bundle("fifo"), Some(2));
+    assert!(
+        fs::symlink_metadata(dir.0.join("fifo"))
+            .unwrap()
+            .file_type()
+            .is_fifo()
+    );
+    assert_eq!(bundle("to-fifo"), Some(0));
+    assert!(
+        fs::symlink_metadata(dir.0.join("to-fifo"))
+            .unwrap()
+            .is_file()
+    );
 }
 
 /// Arguments and file names are bytes, not necessarily UTF-8. `AppStart`
