@@ -50,12 +50,21 @@ End Sub
 - A program is one code module: the members of the main module of a B4J
   non-UI project.
 - `Sub Process_Globals` (optional) declares module variables. It runs once,
-  before anything else.
+  before anything else. Statements there run too, but a `For` or `For Each`
+  variable must be declared first (`Dim i As Int`): the implicit `Int`
+  counter of other Subs is *(open)* there, so it is a compile error.
 - `Sub AppStart (Args() As String)` is the entry point. It is called after
   `Process_Globals` with the command-line arguments. The program ends when
   `AppStart` returns, with exit code 0.
 - A program without `AppStart` is rejected with a diagnostic.
 - `ExitApplication` / `ExitApplication2(code)` end the program at once.
+- **Nesting limit:** statements and expressions may nest at most 1000 levels
+  deep in a Sub, counting each operator of a chain such as `1 + 1 + ...` and
+  each member access of `s.Trim.Trim...` as a level; smart strings may nest
+  100 deep. Deeper code is a compile error, one per Sub, instead of a crash.
+  B4J's own limit (javac's) is *(open)*.
+- A line continuation ` _` must end its line: whether a comment may follow it
+  is *(open)*, so ` _ ' comment` is a compile error.
 - `#Region` / `#End Region` lines are trivia. Project attributes (`#Name: value`)
   are parsed and kept. Level 0 ignores them, except as listed in [cli.md](cli.md).
 - Unsupported constructs get a diagnostic naming the construct and the level

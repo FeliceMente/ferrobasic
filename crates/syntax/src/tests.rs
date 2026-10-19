@@ -297,3 +297,198 @@ fn every_prefix_of_a_program_round_trips() {
         assert_eq!(parse(prefix).syntax().to_string(), prefix);
     }
 }
+
+/// Deep nesting gives one error, never a stack overflow; the text is kept.
+#[test]
+fn nesting_deeper_than_the_limit_is_one_error() {
+    let deep = |body: String| {
+        let errors = parse_errors(&in_sub(&body));
+        let too_deep: Vec<_> = errors
+            .iter()
+            .filter(|e| e.contains("nested too deeply"))
+            .collect();
+        assert_eq!(too_deep.len(), 1, "{errors:?}");
+        // The unwinding levels report nothing else.
+        assert_eq!(errors.len(), 1, "{errors:?}");
+    };
+    let n = 20_000;
+    deep(format!("x = {}", vec!["1"; n].join(" + ")));
+    deep(format!("x = {}", vec!["\"a\""; n].join(" & ")));
+    deep(format!("Log({}1{})", "(".repeat(n), ")".repeat(n)));
+    deep(format!("Log({}1{})", "Abs(".repeat(n), ")".repeat(n)));
+    deep(format!("Log({}1)", "-".repeat(n)));
+    deep(format!("Log(s{})", ".Trim".repeat(n)));
+    deep(format!("{}Log(1)", "If True Then ".repeat(n)));
+    deep(format!(
+        "{}Log(1)\n{}",
+        "If True Then\n".repeat(n),
+        "End If\n".repeat(n)
+    ));
+    deep(format!(
+        "{}Log(1)\n{}",
+        "For i = 1 To 2\n".repeat(n),
+        "Next\n".repeat(n)
+    ));
+}
+
+#[test]
+fn nesting_resets_for_each_sub() {
+    let deep = in_sub(&format!("x = {}", vec!["1"; 5000].join("+")));
+    let text = format!(
+        "{deep}{}",
+        in_sub("x = (1 +\n").replace("AppStart", "Other")
+    );
+    let errors = parse_errors(&text);
+    assert!(errors[0].contains("nested too deeply"), "{errors:?}");
+    // The next Sub is parsed and reported normally.
+    assert!(errors.len() > 1, "{errors:?}");
+}
+
+#[test]
+fn nesting_below_the_limit_is_fine() {
+    parse_ok(&in_sub(&format!("x = {}", vec!["1"; 900].join(" + "))));
+    parse_ok(&in_sub(&format!(
+        "x = {}1{}",
+        "(".repeat(450),
+        ")".repeat(450)
+    )));
+    parse_ok(&in_sub(&format!(
+        "{}Log(1)\n{}",
+        "If True Then\n".repeat(400),
+        "End If\n".repeat(400)
+    )));
+}
+
+#[test]
+fn smart_strings_nested_too_deeply() {
+    let text = in_sub(&format!(
+        "Log({}x{})",
+        "$\"${".repeat(5000),
+        "}\"$".repeat(5000)
+    ));
+    let errors = parse_errors(&text);
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("smart strings nested too deeply")),
+        "{errors:?}"
+    );
+    parse_ok(&in_sub(&format!(
+        "Log({}x{})",
+        "$\"${".repeat(50),
+        "}\"$".repeat(50)
+    )));
+}
+
+#[test]
+fn a_comment_after_a_line_continuation_is_reported() {
+    let errors = parse_errors(&in_sub("x = 1 + _ ' comment\n    2"));
+    assert!(
+        errors[0].contains("a line continuation `_` must end its line"),
+        "{errors:?}"
+    );
+}
+
+/// An operator, member access or call may wrap a subtree that is already
+/// deep: the limit counts the height of the whole tree, not only the path
+/// being parsed.
+#[test]
+fn nesting_counts_the_height_of_wrapped_subtrees() {
+    let grouped = |start: &str, tail: &str| {
+        let mut e = start.to_string();
+        for _ in 0..3 {
+            e = format!("({e}){}", tail.repeat(600));
+        }
+        e
+    };
+    let deep = |body: String| {
+        let errors = parse_errors(&in_sub(&body));
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("nested too deeply"), "{errors:?}");
+    };
+    deep(format!("x = {}", grouped("1", " + 1")));
+    deep(format!("Log({})", grouped("s", ".Trim")));
+    deep(format!("Log({})", grouped("f", "(1)")));
+    // Two groups of 300 stay within the limit.
+    let mut e = "1".to_string();
+    for _ in 0..2 {
+        e = format!("({e}){}", " + 1".repeat(300));
+    }
+    parse_ok(&in_sub(&format!("x = {e}")));
+}
+
+/// After a too-deep error inside a smart-string placeholder, the next Sub is
+/// still parsed (and its errors reported) on its own.
+#[test]
+fn a_too_deep_placeholder_does_not_swallow_the_next_sub() {
+    let deep = in_sub(&format!("Log($\"${{{}}}\"$)", vec!["1"; 5000].join("+")));
+    let next = in_sub("x = = 1").replace("AppStart", "Other");
+    let errors = parse_errors(&format!("{deep}{next}"));
+    assert!(errors[0].contains("nested too deeply"), "{errors:?}");
+    assert!(
+        errors.iter().any(|e| e == "expected an expression"),
+        "{errors:?}"
+    );
+    let root = crate::parse(&format!("{deep}{next}")).syntax();
+    assert_eq!(count(&root, SUB_DECL), 2);
+}
+
+/// Each nested call, `Array As` or `CreateMap` adds two levels to the tree
+/// (the call and its `ARG_LIST`, the map and its entry), with no operator
+/// after it to trigger the check: the finished subtree is checked too.
+#[test]
+fn nesting_counts_calls_arrays_and_maps() {
+    let forms: [(&str, &str, &str, &str); 5] = [
+        ("x = ", "Abs(", ")", ""),
+        ("", "F(", ")", ""),
+        ("a(", "F(", ")", ") = 1"),
+        ("x = ", "Array As Object(", ")", ""),
+        ("x = ", "CreateMap(1: ", ")", ""),
+    ];
+    // The innermost operand is 1 or 2 levels tall, to hit the limit exactly.
+    let source = |(before, open, close, after): (&str, &str, &str, &str), n: usize, leaf| {
+        in_sub(&format!(
+            "{before}{}{leaf}{}{after}",
+            open.repeat(n),
+            close.repeat(n)
+        ))
+    };
+    // The height of a node's subtree, without recursion.
+    let height = |node: &SyntaxNode| {
+        let mut tallest = 0;
+        let mut levels = 0;
+        for event in node.preorder() {
+            match event {
+                rowan::WalkEvent::Enter(_) => {
+                    levels += 1;
+                    tallest = tallest.max(levels);
+                }
+                rowan::WalkEvent::Leave(_) => levels -= 1,
+            }
+        }
+        tallest
+    };
+    for (form, leaf) in forms.into_iter().flat_map(|f| [(f, "1"), (f, "s.X")]) {
+        let errors = parse_errors(&source(form, 600, leaf));
+        assert_eq!(errors.len(), 1, "{form:?}: {errors:?}");
+        assert!(errors[0].contains("nested too deeply"), "{errors:?}");
+        parse_ok(&source(form, 300, leaf));
+        // Around the limit, a statement is either rejected or fits in it. It
+        // takes two levels (statement and simple statement) for one node, so
+        // its subtree is at most 999 tall.
+        for n in 495..=505 {
+            let parse = parse(&source(form, n, leaf));
+            if parse.errors().is_empty() {
+                let root = parse.syntax();
+                for stmt in root
+                    .descendants()
+                    .filter(|n| matches!(n.kind(), ASSIGN_STMT | EXPR_STMT))
+                {
+                    assert!(height(&stmt) < 1000, "{form:?} {leaf} with {n} levels");
+                }
+            } else {
+                assert!(parse.errors()[0].message.contains("nested too deeply"));
+            }
+        }
+    }
+}

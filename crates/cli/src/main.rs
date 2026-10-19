@@ -81,7 +81,28 @@ fn program_args(args: &[OsString]) -> Vec<String> {
         .collect()
 }
 
+/// Stack for all of `ferro`'s work. The parser limits nesting
+/// (`MAX_NESTING` in `ferro-syntax`), but the later stages and the
+/// interpreter still recurse over trees and values; a large stack keeps any
+/// remaining deep recursion from crashing. Only touched pages use memory.
+const STACK_SIZE: usize = 256 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    let worker = std::thread::Builder::new()
+        .name("ferro".into())
+        .stack_size(STACK_SIZE)
+        .spawn(ferro_main);
+    match worker {
+        Ok(handle) => match handle.join() {
+            Ok(code) => code,
+            Err(panic) => std::panic::resume_unwind(panic),
+        },
+        // No thread available: run on the main thread's smaller stack.
+        Err(_) => ferro_main(),
+    }
+}
+
+fn ferro_main() -> ExitCode {
     // A standalone binary runs its embedded program, with every argument
     // passed to `AppStart`; only a plain `ferro` parses its own CLI.
     if let Some(code) = run_embedded() {
