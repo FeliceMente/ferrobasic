@@ -1,7 +1,7 @@
 //! `ferro`: the FerroBASIC command-line tool.
 //!
-//! `check`, `run` and `build` work for Level 0 modules; `repl`, `test` and
-//! `fmt` are stubs. See `docs/spec/cli.md`.
+//! `check`, `run` and `bundle` work for Level 0 modules; `build`, `compile`,
+//! `targets`, `repl`, `test` and `fmt` are reserved. See `docs/spec/cli.md`.
 
 mod standalone;
 
@@ -14,13 +14,19 @@ FerroBASIC - a B4X-compatible, multi-target BASIC compiler
 Usage: ferro <command> [args]
 
 Commands:
-  check <file>      Parse and type-check a module
-  run <file> [-- <args>...]  Run with the reference interpreter
-  build <file> [-o <output>]  Bundle the program into a standalone executable
-  repl              Start the interactive REPL
-  test              Run conformance tests
-  fmt <file>        Format source files
-  version           Print the version
+  check <file>                 Parse and type-check a module
+  run <file> [-- <args>...]    Run with the reference interpreter
+  bundle <file> [-o <output>]  Bundle the interpreter and the program into
+                               a standalone executable for this machine
+  version                      Print the version
+
+Planned (not implemented yet):
+  compile <file> [--target <t>]  Compile for this machine or another target
+  targets                        List the compilation targets
+  build [<project>]              Build a project from its project file
+  repl                           Start the interactive REPL
+  test                           Run conformance tests
+  fmt <file>                     Format source files
 ";
 
 /// Exit codes from `docs/spec/cli.md`.
@@ -66,21 +72,37 @@ fn main() -> ExitCode {
             [file, sep, program_args @ ..] if sep == "--" => run(Path::new(file), program_args),
             _ => usage_error("ferro run: expected `ferro run <file> [-- <args>...]`"),
         },
-        Some("build") => match &args[1..] {
-            [file] => build(Path::new(file), None),
-            [file, flag, out] if flag == "-o" => build(Path::new(file), Some(Path::new(out))),
-            _ => usage_error("ferro build: expected `ferro build <file> [-o <output>]`"),
+        Some("bundle") => match &args[1..] {
+            [file] => bundle(Path::new(file), None),
+            [file, flag, out] if flag == "-o" => bundle(Path::new(file), Some(Path::new(out))),
+            _ => usage_error("ferro bundle: expected `ferro bundle <file> [-o <output>]`"),
         },
-        Some(cmd @ ("repl" | "test" | "fmt")) => {
-            eprintln!("ferro {cmd}: not implemented yet (milestone M1)");
-            ExitCode::from(EXIT_USAGE)
-        }
+        // `build` meant `bundle` in 0.0.1: point there.
+        Some("build") => not_implemented(
+            "build",
+            "building projects from their project files arrives with the JVM backend (M3); \
+             to make a standalone executable from a module, use `ferro bundle <file>`",
+        ),
+        Some("compile") => not_implemented(
+            "compile",
+            "compilation arrives with the backends: JVM (M3), native and WebAssembly (M4), \
+             microcontrollers (M5); until then, use `ferro run` or `ferro bundle`",
+        ),
+        Some("targets") => not_implemented("targets", "it arrives with `ferro compile`"),
+        Some(cmd @ ("repl" | "test" | "fmt")) => not_implemented(cmd, "planned for milestone M1"),
         Some("help" | "--help" | "-h") | None => {
             print!("{USAGE}");
             ExitCode::SUCCESS
         }
         Some(other) => usage_error(&format!("ferro: unknown command '{other}'")),
     }
+}
+
+/// A reserved command (`docs/spec/cli.md`): says what is missing and when it
+/// arrives.
+fn not_implemented(command: &str, detail: &str) -> ExitCode {
+    eprintln!("ferro {command}: not implemented yet: {detail}");
+    ExitCode::from(EXIT_USAGE)
 }
 
 fn usage_error(message: &str) -> ExitCode {
@@ -203,16 +225,16 @@ fn run_embedded() -> Option<ExitCode> {
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     // The program was checked at build time; a failure here means the payload
-    // does not come from a matching `ferro build`.
+    // does not come from a matching `ferro bundle`.
     Some(match compile_text(Path::new(MAIN_ENTRY), &text) {
         Ok(module) => execute(&text, &module, &args),
         Err(_) => ExitCode::from(EXIT_USAGE),
     })
 }
 
-/// `ferro build`: check the module, then write this executable with the
+/// `ferro bundle`: check the module, then write this executable with the
 /// program embedded (`docs/spec/cli.md`).
-fn build(path: &Path, out: Option<&Path>) -> ExitCode {
+fn bundle(path: &Path, out: Option<&Path>) -> ExitCode {
     let (text, _) = match compile(path) {
         Ok(compiled) => compiled,
         Err(code) => return code,
@@ -231,7 +253,7 @@ fn build(path: &Path, out: Option<&Path>) -> ExitCode {
         standalone::write_standalone(&bytes, &out, sign_for_intel_mac)
     });
     if let Err(error) = written {
-        eprintln!("ferro build: cannot write {}: {error}", out.display());
+        eprintln!("ferro bundle: cannot write {}: {error}", out.display());
         return ExitCode::from(EXIT_USAGE);
     }
     ExitCode::SUCCESS

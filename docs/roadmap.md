@@ -8,10 +8,10 @@ B4X; M3 is the first milestone where real B4J projects build unchanged.
 | Milestone | Scope | Gate |
 | --- | --- | --- |
 | **M0 · Foundations** | Project-file reader, lexer, parser, lossless CST, Level 0 test corpus, recorder | The whole corpus parses without errors |
-| **M1 · Interpreter and REPL** | Level 0 execution, `ferro run`, standalone `ferro build` (interpreter + embedded program), REPL, LSP with diagnostics | Conformance tests pass in the interpreter and as standalone binaries |
+| **M1 · Interpreter and REPL** | Level 0 execution, `ferro run`, standalone `ferro bundle` (interpreter + embedded program), REPL, LSP with diagnostics | Conformance tests pass in the interpreter and as standalone binaries |
 | **M2 · Classes and events** | Levels 1 and 2: classes, events, Sleep and Wait For | Real B4J console programs match the reference |
-| **M3 · JVM backend** | Java backend, library descriptors, original jars, Android | Real B4J projects build unchanged and match the reference |
-| **M4 · Native LLVM and WASM** | Native runtime with ARC, desktop executables, wasm32 | Same output, binaries with no external dependencies |
+| **M3 · JVM backend** | Java backend, library descriptors, original jars, Android; `ferro compile --target jvm`, `ferro build` for projects | Real B4J projects build unchanged and match the reference |
+| **M4 · Native LLVM and WASM** | Native runtime with ARC, desktop executables and cross-compilation with `ferro compile --target`, wasm32 | Same output, binaries with no external dependencies |
 | **M5 · Microcontrollers** | Embedded profile, Raspberry Pi Pico first | GPIO and serial working on the board |
 | **M6 · User interface** | B4X layouts and designer scripts, preview in VS Code | B4XPages projects run unchanged on desktop, Android, web |
 
@@ -49,9 +49,12 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
 - [x] `ferro check` / `ferro run`: every conformance test with a provisional
       output matches it (`crates/interp/tests/conformance.rs`).
-- [x] `ferro build`: standalone executable for the host (payload appended to
+- [x] `ferro bundle`: standalone executable for the host (payload appended to
       `ferro`; embedded with `libsui` on macOS). Verified on Linux x86_64,
       glibc and musl (fully static), and on macOS: arm64, and x86_64 through
       Rosetta. Windows is not tested yet.
+- [x] CLI command names settled: `build` renamed `bundle`; `compile`,
+      `targets` and project-level `build` reserved, with their plan in
+      `docs/spec/cli.md` ("Planned commands").
 - [ ] `ferro-difftest --target interp` and `--target standalone` against
       `.expected` / `.provisional`.

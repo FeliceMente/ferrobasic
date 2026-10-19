@@ -32,9 +32,11 @@ work at Level 0:
 | --- | --- |
 | `ferro check <file>` | parses and type-checks the program and prints any errors |
 | `ferro run <file> [-- <args>...]` | checks it, then runs it with the interpreter |
-| `ferro build <file> [-o <output>]` | checks it, then bundles it with the interpreter into a standalone executable |
+| `ferro bundle <file> [-o <output>]` | checks it, then bundles it with the interpreter into a standalone executable |
 
-`repl`, `test` and `fmt` are listed but not implemented yet.
+The help also lists planned commands, which are not implemented yet: `compile`
+(native code and other targets), `targets`, `build` (for whole projects),
+`repl`, `test` and `fmt`. In 0.0.1, `ferro bundle` was called `ferro build`.
 
 ## 2. Hello, world
 
@@ -249,7 +251,7 @@ bird: 1
 
 ### Compile errors
 
-`check`, `run` and `build` all refuse a program with errors. Each error shows
+`check`, `run` and `bundle` all refuse a program with errors. Each error shows
 the file, line and column, then the source line with a caret under the problem:
 
 ```vb
@@ -342,11 +344,11 @@ if it is not a number.
 
 ## 8. Standalone executables
 
-`ferro build` turns a program into a single executable for the machine you
+`ferro bundle` turns a program into a single executable for the machine you
 are on:
 
 ```console
-$ ferro build greet.bas
+$ ferro bundle greet.bas
 $ ./greet Grace
 Hello, Grace!
 $ ./greet
@@ -357,7 +359,7 @@ $ echo $?
 
 - By default the output is named after the source file (`greet`, or
   `greet.exe` on Windows) and goes in the current directory.
-- `-o` chooses another path, for example `ferro build greet.bas -o bin/greet`.
+- `-o` chooses another path, for example `ferro bundle greet.bas -o bin/greet`.
   The directory must already exist.
 - An existing file at the output path is replaced.
 - Every argument goes to `AppStart`; there is no `--` here.
@@ -367,11 +369,12 @@ The executable needs neither FerroBASIC nor a JVM. It is `ferro` itself, with
 the checked program appended (about 1.4 MB). You can copy it to another machine
 with the same OS and architecture.
 
-> **Note:** at Level 0, `ferro build` *bundles* rather than compiles. The
-> executable is the `ferro` interpreter plus your program's checked source,
-> which is parsed and interpreted at start-up exactly as `ferro run` does. So
-> it runs at interpreter speed, and the source can be recovered from the file.
-> Native code generation (M4) will replace this behind the same command.
+> **Note:** `ferro bundle` does not compile. The executable is the `ferro`
+> interpreter plus your program's checked source, which is parsed and interpreted at
+> start-up exactly as `ferro run` does. So it runs at interpreter speed, and the
+> source can be recovered from the file. Native code will come with
+> `ferro compile` (M4); `bundle` stays, as the quickest way to ship a program
+> that behaves exactly like `ferro run`.
 
 - On Linux it depends only on the system C library.
 - For a fully static Linux binary, build `ferro` for musl first:
@@ -379,7 +382,7 @@ with the same OS and architecture.
   ```sh
   rustup target add x86_64-unknown-linux-musl
   cargo build --release -p ferro-cli --target x86_64-unknown-linux-musl
-  target/x86_64-unknown-linux-musl/release/ferro build greet.bas
+  target/x86_64-unknown-linux-musl/release/ferro bundle greet.bas
   ```
 
 - Building for another OS or architecture is not supported yet.
@@ -396,7 +399,7 @@ with the same OS and architecture.
 | 0 | success, or the program ended normally |
 | *n* | the program called `ExitApplication2(n)` |
 | 1 | the program stopped on an uncaught runtime error |
-| 2 | usage error: bad arguments, unreadable input, output not writable |
+| 2 | usage error: bad arguments, a planned command not implemented yet, unreadable input, output not writable |
 | 3 | the program has compile errors |
 
 A standalone executable uses 0, *n* and 1 the same way, and 2 if its embedded

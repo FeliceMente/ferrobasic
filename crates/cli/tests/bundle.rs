@@ -1,4 +1,4 @@
-//! `ferro build` end to end (acceptance criterion 5 of `docs/spec/cli.md`):
+//! `ferro bundle` end to end (acceptance criterion 5 of `docs/spec/cli.md`):
 //! for every conformance test with an expected output, the standalone binary,
 //! copied away from the build tree, must print exactly what `ferro run`
 //! prints and exit with the same code.
@@ -11,7 +11,7 @@ const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
 /// A fresh, empty directory for one test.
 fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("ferro-build-test-{}-{name}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ferro-bundle-test-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
@@ -37,14 +37,14 @@ fn build_and_move(source: &Path, dir: &Path) -> PathBuf {
     let built = dir.join("build").join("prog");
     fs::create_dir_all(built.parent().unwrap()).unwrap();
     let out = ferro(&[
-        "build",
+        "bundle",
         source.to_str().unwrap(),
         "-o",
         built.to_str().unwrap(),
     ]);
     assert!(
         out.status.success(),
-        "build failed: {}",
+        "bundle failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     let moved = dir.join("elsewhere").join("prog");
@@ -179,7 +179,7 @@ fn programs_with_errors_are_not_built() {
     let out_path = dir.join("prog");
     let negative = conformance_dir().join("do_loop_while.bas");
     let out = ferro(&[
-        "build",
+        "bundle",
         negative.to_str().unwrap(),
         "-o",
         out_path.to_str().unwrap(),
@@ -194,7 +194,7 @@ fn default_output_is_the_file_stem() {
     let dir = scratch("default");
     let source = conformance_dir().join("prices_map.bas");
     let out = Command::new(FERRO)
-        .args(["build", source.to_str().unwrap()])
+        .args(["bundle", source.to_str().unwrap()])
         .current_dir(&dir)
         .output()
         .unwrap();
@@ -203,4 +203,30 @@ fn default_output_is_the_file_stem() {
     let run = Command::new(&binary).output().unwrap();
     assert_eq!(run.stdout, b"Big breakfast\nTotal: 2.7\n");
     fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Reserved commands (`docs/spec/cli.md`, "Commands") say what is missing and
+/// when it arrives, and never do something else instead. `build` meant
+/// `bundle` in 0.0.1, so it points there.
+#[test]
+fn reserved_commands_are_not_implemented_yet() {
+    let source = conformance_dir().join("prices_map.bas");
+    let source = source.to_str().unwrap();
+    for (args, hint) in [
+        (vec!["build", source], "ferro bundle"),
+        (vec!["build"], "ferro bundle"),
+        (vec!["compile", source], "(M3)"),
+        (vec!["compile", source, "--target", "js"], "(M3)"),
+        (vec!["targets"], "ferro compile"),
+    ] {
+        let out = ferro(&args);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(out.stdout.is_empty(), "{args:?}");
+        assert!(
+            stderr.contains("not implemented yet") && stderr.contains(hint),
+            "{args:?}: {stderr}"
+        );
+    }
+    assert!(!Path::new("prices_map").exists());
 }

@@ -1,6 +1,6 @@
 //! Standalone binaries (`docs/spec/cli.md`, "Standalone binary format").
 //!
-//! `ferro build` embeds the checked program, as a *package*, in a copy of the
+//! `ferro bundle` embeds the checked program, as a *package*, in a copy of the
 //! running `ferro` executable:
 //!
 //! ```text
@@ -205,7 +205,7 @@ pub fn standalone_bytes(exe: &Path, entries: &[Entry]) -> io::Result<Vec<u8>> {
 /// On Intel, `libsui` 0.16.4 copies the executable to
 /// `temp_dir()/sui_tmp_<pid>` with `File::create`, which follows symlinks and
 /// truncates. With a shared `TMPDIR` such as `/tmp`, another user could plant
-/// a symlink there and make `ferro build` overwrite a file of the builder.
+/// a symlink there and make `ferro bundle` overwrite a file of the builder.
 /// Creating the path first with `create_new` (which refuses symlinks and
 /// existing files) makes `libsui` open our own regular file; in a sticky
 /// directory nobody else can replace it.

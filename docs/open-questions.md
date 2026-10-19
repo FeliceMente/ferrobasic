@@ -68,6 +68,9 @@ related tests stay `pending-recording`.
       not work (`codesign`: "main executable failed strict validation", on
       Apple Silicon and Intel). The package is embedded with `libsui`
       instead (see `docs/spec/cli.md`).
+- [ ] Planned CLI (`docs/spec/cli.md`, "Planned commands"): the final target
+      names; whether `js` is its own backend or goes through `wasm`; the
+      format and timing of a `ferro.toml` project file.
 
 Provisional runtime behaviour in `crates/mir` and `crates/interp` (each
 needs a recorded test):
