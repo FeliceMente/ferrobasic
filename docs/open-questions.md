@@ -124,6 +124,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 
 ## Project
 
-- [ ] Choose the licence: Apache-2.0/MIT dual or EUPL-1.2.
+- [x] Choose the licence: MIT (`LICENSE`).
+- [ ] Ship the licence notices of FerroBASIC's dependencies with released
+      binaries (e.g. generated with `cargo-about`).
 - [ ] Evaluate Cranelift for the REPL JIT and debug builds.
 - [ ] Evaluate `zig cc` / `cargo-zigbuild` as the cross-linker.

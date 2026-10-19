@@ -98,5 +98,12 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 
 ## License
 
-Not chosen yet (candidates: Apache-2.0/MIT dual licence, or EUPL-1.2).
-Until a LICENSE file is added, all rights are reserved by the authors.
+FerroBASIC is released under the [MIT License](LICENSE).
+
+Programs you write, check, run, bundle or compile with FerroBASIC remain
+yours, under whatever licence you choose. A bundled executable contains a copy
+of `ferro`, so when you distribute one, include FerroBASIC's copyright and
+licence notice, for example in your program's documentation.
+
+Unless you state otherwise, any contribution you submit for inclusion in
+FerroBASIC is licensed under the MIT License, without additional terms.
