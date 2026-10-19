@@ -19,7 +19,8 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("safety-{name}"));
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("safety-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         Scratch(dir)

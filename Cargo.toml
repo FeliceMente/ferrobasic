@@ -7,6 +7,7 @@ members = [
     "crates/mir",
     "crates/interp",
     "crates/difftest",
+    "crates/corpus",
     "crates/cli",
 ]
 

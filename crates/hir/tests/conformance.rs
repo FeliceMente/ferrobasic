@@ -1,49 +1,27 @@
-//! Every conformance test that parses must also type-check without
-//! diagnostics, unless it is a negative test.
-
-use std::fs;
-use std::path::{Path, PathBuf};
-
-fn bas_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            bas_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "bas") {
-            out.push(path);
-        }
-    }
-}
-
-fn is_negative(bas: &Path) -> bool {
-    let meta = fs::read_to_string(bas.with_extension("meta.toml")).unwrap_or_default();
-    meta.lines()
-        .any(|line| line.split('#').next().unwrap().replace(' ', "") == "status=\"negative\"")
-}
+//! The front end on every conformance test: a program FerroBASIC accepts
+//! must parse and type-check without diagnostics, and one it rejects (a
+//! negative test, or `ferro_rejects = true`) must get at least one error.
 
 #[test]
 fn conformance_corpus_type_checks() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/conformance");
-    let mut files = Vec::new();
-    bas_files(&root, &mut files);
-    files.sort();
     let mut failures = Vec::new();
-    for file in files.iter().filter(|f| !is_negative(f)) {
-        let text = fs::read_to_string(file).unwrap();
+    for program in ferro_corpus::programs() {
+        let text = program.source();
         let parse = ferro_syntax::parse(&text);
-        assert!(
-            parse.errors().is_empty(),
-            "{}: syntax errors",
-            file.display()
-        );
-        let (_, diags) = ferro_hir::check(&parse.syntax());
-        for d in diags {
-            let line = text[..usize::from(d.range.start())].lines().count();
-            failures.push(format!(
-                "{}:{line}: {}",
-                file.file_name().unwrap().to_string_lossy(),
-                d.message
-            ));
+        let mut errors: Vec<String> = parse.errors().iter().map(|e| e.message.clone()).collect();
+        if errors.is_empty() {
+            let (_, diags) = ferro_hir::check(&parse.syntax());
+            errors.extend(diags.into_iter().map(|d| {
+                let line = text[..usize::from(d.range.start())].lines().count();
+                format!("line {line}: {}", d.message)
+            }));
+        }
+        match (program.rejected, errors.is_empty()) {
+            (false, false) => failures.push(format!("{}: {}", program.name, errors.join("; "))),
+            (true, true) => {
+                failures.push(format!("{}: accepted, but must be rejected", program.name))
+            }
+            _ => {}
         }
     }
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));

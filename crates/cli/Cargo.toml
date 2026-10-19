@@ -32,3 +32,6 @@ libsui = "0.16.4"
 # `ferro` itself from being overwritten. Unix compares device and inode.
 [target.'cfg(not(unix))'.dependencies]
 same-file = "1.0.6"
+
+[dev-dependencies]
+ferro-corpus = { path = "../corpus" }

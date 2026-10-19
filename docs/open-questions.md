@@ -117,11 +117,13 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] A `For` with an undeclared counter, or `For Each v As T`, inside
       `Process_Globals`: does B4X declare a module variable, a local, or
       reject it? FerroBASIC rejects it until a recording shows
-      (`docs/spec/level0.md`, "Program structure").
+      (`docs/spec/level0.md`, "Program structure"). Fixture:
+      `level0/process_globals_for`.
 - [ ] Whether a comment may follow a line continuation (` _ ' comment`);
-      FerroBASIC rejects it.
+      FerroBASIC rejects it. Fixture: `level0/continuation_comment`.
 - [ ] How deep B4J (javac) lets expressions and blocks nest before failing;
-      FerroBASIC stops at 1000 levels (`docs/deviations.md`).
+      FerroBASIC stops at 1000 levels (`docs/deviations.md`). Fixture:
+      `level0/deep_nesting`.
 
 ## Porting
 
