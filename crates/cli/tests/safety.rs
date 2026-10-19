@@ -231,6 +231,48 @@ fn bundle_never_opens_a_fifo_output() {
     );
 }
 
+/// An input read through a symlink to a FIFO is still the input: `bundle`
+/// must not replace that symlink when it is also the output.
+#[cfg(unix)]
+#[test]
+fn bundle_protects_an_input_read_from_a_fifo() {
+    let dir = Scratch::new("fifo-input");
+    let made = Command::new("mkfifo")
+        .arg(dir.0.join("source"))
+        .status()
+        .unwrap();
+    assert!(made.success());
+    std::os::unix::fs::symlink("source", dir.0.join("alias.bas")).unwrap();
+    let fifo = dir.0.join("source");
+    // Feeds the program once `ferro` opens the FIFO for reading.
+    let writer = std::thread::spawn(move || fs::write(fifo, PROGRAM));
+    let mut child = Command::new(FERRO)
+        .args(["bundle", "alias.bas", "-o", "alias.bas"])
+        .current_dir(&dir.0)
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let start = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if start.elapsed() > std::time::Duration::from_secs(10) {
+            let _ = child.kill();
+            panic!("ferro bundle alias.bas -o alias.bas blocked for 10 s");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    writer.join().unwrap().unwrap();
+    assert_eq!(status.code(), Some(2));
+    assert!(
+        fs::symlink_metadata(dir.0.join("alias.bas"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+}
+
 /// Arguments and file names are bytes, not necessarily UTF-8. `AppStart`
 /// receives undecodable bytes as U+FFFD, like on the JVM.
 #[cfg(unix)]

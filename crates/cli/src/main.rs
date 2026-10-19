@@ -334,13 +334,7 @@ fn check_output(input: &Path, exe: &Path, out: &Path) -> Result<(), String> {
     let Ok(meta) = std::fs::symlink_metadata(out) else {
         return Ok(()); // Nothing there yet.
     };
-    // `is_same_file` opens both paths, and opening a FIFO with no writer
-    // blocks: compare only regular files (`metadata` follows symlinks but
-    // never opens anything).
-    let regular = |path: &Path| std::fs::metadata(path).is_ok_and(|m| m.is_file());
-    let same = |other: &Path| {
-        regular(out) && regular(other) && same_file::is_same_file(out, other).unwrap_or(false)
-    };
+    let same = |other: &Path| same_file(out, other);
     if same(input) {
         return Err("it is the input file; choose another output with -o".into());
     }
@@ -351,6 +345,27 @@ fn check_output(input: &Path, exe: &Path, out: &Path) -> Result<(), String> {
         return Err("it exists and is not a regular file".into());
     }
     Ok(())
+}
+
+/// Whether two paths name the same file, following symlinks, without ever
+/// opening either: opening a FIFO with no writer blocks.
+#[cfg(unix)]
+fn same_file(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+/// Whether two paths name the same file, hard links included. Windows has no
+/// FIFOs in the file system, so opening the paths to compare file identities
+/// (volume serial number and file index) cannot block; only regular files
+/// are compared.
+#[cfg(not(unix))]
+fn same_file(a: &Path, b: &Path) -> bool {
+    let regular = |path: &Path| std::fs::metadata(path).is_ok_and(|m| m.is_file());
+    regular(a) && regular(b) && same_file::is_same_file(a, b).unwrap_or(false)
 }
 
 /// `prices_map.bas` → `./prices_map` (`.exe` on Windows).
