@@ -130,6 +130,18 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   Which boxed type a numeric literal key gets is compiler behaviour (**open**).
 - `Put` returns the previous value or `Null`; `Get` of a missing key returns
   `Null`; `GetDefault` returns the default when the stored value is `Null`.
+- `GetKeyAt` / `GetValueAt` go through `MyMap.getEntry`
+  ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java#L219-L248)), which keeps
+  an iterator, the index it stands at and the entry it last returned. Every
+  `Put`, `Remove` and `Clear` drops the iterator, but not that entry. So:
+  - the next index moves the iterator on; any other index starts again and
+    walks `index + 1` entries;
+  - an index past the end raises `java.util.NoSuchElementException`, after
+    walking every entry. The entry last returned is then the last one, and
+    asking again for the index the iterator stood at returns it;
+  - a negative index walks nothing and returns the entry last returned
+    (its current value, or its last one if it was removed), or raises
+    `NullPointerException` if there is none.
 
 ### List (source)
 
@@ -137,6 +149,36 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   range throw Java `IndexOutOfBoundsException` (catchable with `Try`).
 - `Sort` requires all numbers or all strings
   ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java)).
+- An array passed as a `List` goes through `Common.ArrayToList`
+  ([`Common.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Common.java#L715-L729)): a primitive
+  array is boxed into a copy, any other array is wrapped by `Arrays.asList`.
+  An array of rank 2 or more is an array of arrays (`int[][]` is an
+  `Object[]`), so it gives a fixed-size list of its rows, shared with the
+  array: changing a row through the list changes the array, and `Set`
+  replaces a row (with an array of the row's type, or `Null`; anything else
+  raises `ArrayStoreException`).
+- `AddAll` / `AddAllAt` call Java's `addAll`
+  ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L97-L105)), which
+  (**measured**, JDK 21) behaves by list class:
+  - `ArrayList` checks the index, then adds; even adding nothing counts as a
+    modification, so it invalidates the list's `SubList` views;
+  - a fixed-size list (`Arrays.asList`) checks the index, then raises
+    `UnsupportedOperationException` only if there is something to add;
+  - a `SubList` view (`Collections.unmodifiableList`) always raises
+    `UnsupportedOperationException`.
+
+### Number parsing (source, measured)
+
+- `IsNumber(Text)` is `Double.parseDouble(Text)` without an exception
+  ([`Common.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Common.java#L441-L448)): a `Null` text
+  raises `NullPointerException`, which `IsNumber` does not catch.
+- `Bit.ParseInt(Value, Radix)` is `Integer.parseInt(Value, Radix)`
+  ([`Bit.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Bit.java#L164-L166)), which reads each
+  `char` with `Character.digit`: any Unicode decimal digit (Arabic-Indic,
+  Devanagari, fullwidth, …) counts, and so do the fullwidth Latin letters
+  for radixes above 10. Digits outside the Basic Multilingual Plane are two
+  `char`s, neither a digit. FerroBASIC's table is checked against JDK 21
+  (Unicode 15).
 
 ### Uninitialised objects (source)
 
