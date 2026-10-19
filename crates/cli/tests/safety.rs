@@ -79,23 +79,69 @@ fn bundle_never_overwrites_its_input() {
     assert_refused(&out, "it is the input file");
     assert_eq!(fs::read_to_string(dir.0.join("prog.bas")).unwrap(), PROGRAM);
 
-    // Without an extension the default output would be the input itself.
-    dir.file("hello", PROGRAM);
-    let out = ferro_in(&dir.0, &[os("bundle"), os("hello")]);
+    // The default output is the file stem plus the platform's executable
+    // suffix: `hello` on Unix, `hello.exe` on Windows, the input itself.
+    let same_name = format!("hello{}", std::env::consts::EXE_SUFFIX);
+    dir.file(&same_name, PROGRAM);
+    let out = ferro_in(&dir.0, &[os("bundle"), os(&same_name)]);
     assert_refused(&out, "it is the input file");
-    assert_eq!(fs::read_to_string(dir.0.join("hello")).unwrap(), PROGRAM);
+    assert_eq!(fs::read_to_string(dir.0.join(&same_name)).unwrap(), PROGRAM);
 
-    // The same file through another name.
+    // The same file under another name: a hard link (every OS).
+    fs::hard_link(dir.0.join("prog.bas"), dir.0.join("hard")).unwrap();
+    let out = ferro_in(
+        &dir.0,
+        &[os("bundle"), os("prog.bas"), os("-o"), os("hard")],
+    );
+    assert_refused(&out, "it is the input file");
+    assert_eq!(fs::read_to_string(dir.0.join("prog.bas")).unwrap(), PROGRAM);
+
     #[cfg(unix)]
     {
+        // A symlink to the input, as the input or as the output: replacing
+        // the link would leave the name the user gave without its source.
         std::os::unix::fs::symlink("prog.bas", dir.0.join("alias.bas")).unwrap();
-        fs::hard_link(dir.0.join("prog.bas"), dir.0.join("hard")).unwrap();
+        for (input, output) in [
+            ("alias.bas", "alias.bas"),
+            ("prog.bas", "alias.bas"),
+            ("alias.bas", "hard"),
+        ] {
+            let out = ferro_in(&dir.0, &[os("bundle"), os(input), os("-o"), os(output)]);
+            assert_refused(&out, "it is the input file");
+        }
+        assert_eq!(
+            fs::read_to_string(dir.0.join("alias.bas")).unwrap(),
+            PROGRAM
+        );
+        assert!(
+            fs::symlink_metadata(dir.0.join("alias.bas"))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+
+        // A symlink to anything else is replaced by the binary, not followed.
+        dir.file("other", "untouched");
+        std::os::unix::fs::symlink("other", dir.0.join("link-out")).unwrap();
         let out = ferro_in(
             &dir.0,
-            &[os("bundle"), os("alias.bas"), os("-o"), os("hard")],
+            &[os("bundle"), os("prog.bas"), os("-o"), os("link-out")],
         );
-        assert_refused(&out, "it is the input file");
-        assert_eq!(fs::read_to_string(dir.0.join("prog.bas")).unwrap(), PROGRAM);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(dir.0.join("other")).unwrap(),
+            "untouched"
+        );
+        assert!(
+            fs::symlink_metadata(dir.0.join("link-out"))
+                .unwrap()
+                .is_file()
+        );
     }
 }
 

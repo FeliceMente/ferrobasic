@@ -326,45 +326,25 @@ fn bundle(path: &Path, out: Option<&Path>) -> ExitCode {
 }
 
 /// `ferro bundle` replaces its output, so it refuses an output that is the
-/// input itself or the running `ferro`, or that exists and is not a regular
-/// file (a directory, a device such as `/dev/null`, a pipe). A symlink is
-/// replaced, not followed.
+/// input itself or the running `ferro` (directly, through a symlink or as a
+/// hard link), or that exists and is not a regular file (a directory, a
+/// device such as `/dev/null`, a pipe). Any other symlink is replaced, not
+/// followed.
 fn check_output(input: &Path, exe: &Path, out: &Path) -> Result<(), String> {
     let Ok(meta) = std::fs::symlink_metadata(out) else {
         return Ok(()); // Nothing there yet.
     };
-    if meta.file_type().is_symlink() {
-        return Ok(());
-    }
-    if !meta.is_file() {
-        return Err("it exists and is not a regular file".into());
-    }
-    if same_file(out, input) {
+    let same = |other: &Path| same_file::is_same_file(out, other).unwrap_or(false);
+    if same(input) {
         return Err("it is the input file; choose another output with -o".into());
     }
-    if same_file(out, exe) {
+    if same(exe) {
         return Err("it is the running ferro executable".into());
     }
+    if !meta.is_file() && !meta.file_type().is_symlink() {
+        return Err("it exists and is not a regular file".into());
+    }
     Ok(())
-}
-
-/// Whether two paths name the same file (hard links and symlinks included).
-fn same_file(a: &Path, b: &Path) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        match (std::fs::metadata(a), std::fs::metadata(b)) {
-            (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
-            _ => false,
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-            (Ok(a), Ok(b)) => a == b,
-            _ => false,
-        }
-    }
 }
 
 /// `prices_map.bas` → `./prices_map` (`.exe` on Windows).

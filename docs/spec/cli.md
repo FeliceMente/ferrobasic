@@ -65,9 +65,10 @@ ferro version | help
   - `-o` overrides it;
   - an existing output file is replaced, but `bundle` refuses (exit code 2,
     nothing written) an output that is the input file itself or the running
-    `ferro` (compared as files, so links count), or that exists and is not a
-    regular file (a directory, a device such as `/dev/null`, a pipe). A
-    symlink at the output is replaced, not followed;
+    `ferro`, whether directly, through a symlink or as a hard link, or that
+    exists and is not a regular file (a directory, a device such as
+    `/dev/null`, a pipe). Any other symlink at the output is replaced, not
+    followed;
   - the output gets the executable permission bits on Unix.
 - In 0.0.1 this command was called `build`; `build` now has the meaning below.
 - Arguments are bytes, not necessarily UTF-8. File names may contain any
