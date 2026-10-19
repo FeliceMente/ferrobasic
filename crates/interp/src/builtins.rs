@@ -824,14 +824,7 @@ impl Machine<'_, '_> {
             .ok_or_else(|| Exc::not_initialized("Map"))?;
         let a = |i| arg(args, i);
         let positional = |keys: bool| -> Result<Value, Exc> {
-            let i = int_of(a(0)?)?;
-            let size = map.borrow().len();
-            let entry = usize::try_from(i)
-                .ok()
-                .and_then(|i| map.borrow_mut().entry_at(i));
-            let (k, v) = entry.ok_or_else(|| {
-                Exc::new(INDEX_OUT_OF_BOUNDS, format!("Index: {i}, Size: {size}"))
-            })?;
+            let (k, v) = map.borrow_mut().positional(int_of(a(0)?)?)?;
             Ok(if keys { k } else { v })
         };
         Ok(match b {
