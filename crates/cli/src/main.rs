@@ -193,13 +193,14 @@ fn compile_text(path: &Path, text: &str) -> Result<ferro_hir::Module, ExitCode> 
             .collect();
         (None, errors)
     };
+    // One diagnostic at a time: each holds its whole source line, which can
+    // be long, so never keep them all in memory.
     let lines = LineIndex::new(text);
-    let mut report = String::new();
     for (range, message) in errors.iter().take(MAX_ERRORS_SHOWN) {
-        report.push_str(&render_error(path, text, &lines, *range, message));
+        err(&render_error(path, text, &lines, *range, message));
     }
     if errors.len() > MAX_ERRORS_SHOWN {
-        report.push_str(&format!(
+        err(&format!(
             "... and {} more error(s) not shown\n",
             errors.len() - MAX_ERRORS_SHOWN
         ));
@@ -207,8 +208,7 @@ fn compile_text(path: &Path, text: &str) -> Result<ferro_hir::Module, ExitCode> 
     match module {
         Some(module) if errors.is_empty() => Ok(module),
         _ => {
-            report.push_str(&format!("{} error(s)\n", errors.len()));
-            err(&report);
+            err(&format!("{} error(s)\n", errors.len()));
             Err(ExitCode::from(EXIT_COMPILE_ERRORS))
         }
     }
