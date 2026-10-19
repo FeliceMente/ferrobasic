@@ -16,7 +16,9 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(name: &str) -> Scratch {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("bundle-{name}"));
+        // The process id keeps concurrent test runs on one target apart.
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("bundle-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         Scratch(dir)

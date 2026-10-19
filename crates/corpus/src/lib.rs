@@ -49,11 +49,17 @@ impl Program {
     }
 
     /// The output to compare with: the recording if there is one, else the
-    /// hand-derived provisional output (a recording always wins).
+    /// hand-derived provisional output (a recording always wins). A file that
+    /// exists but cannot be read is an error, not a missing output.
     pub fn expected_output(&self) -> Option<String> {
-        ["expected", "provisional"]
-            .iter()
-            .find_map(|ext| fs::read_to_string(self.path.with_extension(ext)).ok())
+        ["expected", "provisional"].iter().find_map(|ext| {
+            let path = self.path.with_extension(ext);
+            match fs::read_to_string(&path) {
+                Ok(text) => Some(text),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => panic!("{}: {e}", path.display()),
+            }
+        })
     }
 
     /// A name usable as a single path component: `level0-prices_map`.
@@ -79,7 +85,9 @@ pub fn programs() -> Vec<Program> {
         "no conformance tests in {}",
         root.display()
     );
-    let deviations = fs::read_to_string(root.join("../../docs/deviations.md")).unwrap_or_default();
+    let deviations = deviation_ids(
+        &fs::read_to_string(root.join("../../docs/deviations.md")).unwrap_or_default(),
+    );
     files
         .into_iter()
         .map(|path| {
@@ -98,13 +106,26 @@ pub fn programs() -> Vec<Program> {
                 .unwrap_or_else(|e| panic!("{}: {e}", meta_path.display()));
             if let Some(id) = &program.deviation {
                 assert!(
-                    deviations.contains(&format!("| {id} |")),
+                    deviations.contains(id),
                     "{}: deviation {id} is not in docs/deviations.md",
                     program.name
                 );
             }
             program
         })
+        .collect()
+}
+
+/// The IDs in the first column of the table in `docs/deviations.md`.
+fn deviation_ids(markdown: &str) -> Vec<String> {
+    markdown
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix('|')?.split('|').next())
+        .map(str::trim)
+        .filter(|id| {
+            id.len() > 1 && id.starts_with('D') && id[1..].bytes().all(|b| b.is_ascii_digit())
+        })
+        .map(String::from)
         .collect()
 }
 
@@ -242,6 +263,12 @@ mod tests {
         let p =
             meta("status = \"pending-recording\"\nuncaught_error = \"a.B#C\"  # kind\n").unwrap();
         assert_eq!(p.uncaught_error.as_deref(), Some("a.B#C"));
+    }
+
+    #[test]
+    fn deviation_ids_come_from_the_id_column() {
+        let table = "| ID | Area | Target(s) |\n| --- | --- | --- |\n| D1 | Syntax | all |\n| D12 | Runtime | all |\n";
+        assert_eq!(deviation_ids(table), ["D1", "D12"]);
     }
 
     #[test]
