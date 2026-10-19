@@ -25,6 +25,26 @@ pub const MAX_DEPTH: usize = 10_000;
 /// still fail to allocate: both raise `OutOfMemoryError`.
 const MAX_ARRAY: usize = 1 << 28;
 
+/// Roughly how many bytes a default element allocates for itself: shared
+/// values (numbers, Null, Strings) count nothing.
+fn own_heap_size(v: &Value) -> usize {
+    // An `Rc` adds two counters; the allocator adds its own overhead.
+    let rc = 2 * std::mem::size_of::<usize>() + 16;
+    match v {
+        Value::List(_) | Value::Map(_) | Value::Sb(_) => {
+            rc + std::mem::size_of::<RefCell<Option<Rc<()>>>>()
+        }
+        Value::Record(r) => {
+            rc + std::mem::size_of::<RecordObj>()
+                + r.fields.borrow().len() * std::mem::size_of::<Value>()
+        }
+        Value::Array(_) => {
+            2 * rc + std::mem::size_of::<ArrayObj>() + std::mem::size_of::<RefCell<Vec<Value>>>()
+        }
+        _ => 0,
+    }
+}
+
 /// Why execution stopped early.
 pub enum Stop {
     /// An uncaught error, and the statement that raised it.
@@ -565,7 +585,24 @@ impl<'p, 'w> Machine<'p, 'w> {
                 }
                 let mut items = Vec::new();
                 try_grow(&mut items, total)?;
-                items.extend((0..total).map(|_| default_value(elem, program)));
+                let first = default_value(elem, program);
+                match own_heap_size(&first) {
+                    // A number, Null or the (immutable) empty String: every
+                    // element shares it.
+                    0 => items.resize(total, first),
+                    // A wrapper, record or array per element. Their small
+                    // allocations cannot fail gracefully, so check first that
+                    // they fit.
+                    size => {
+                        let mut probe: Vec<u8> = Vec::new();
+                        probe
+                            .try_reserve_exact(total.saturating_mul(size))
+                            .map_err(|_| out_of_memory())?;
+                        drop(probe);
+                        items.push(first);
+                        items.extend((1..total).map(|_| default_value(elem, program)));
+                    }
+                }
                 Value::Array(Rc::new(ArrayObj {
                     elem: elem.clone(),
                     dims: sizes,

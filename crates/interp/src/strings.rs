@@ -207,9 +207,14 @@ pub fn to_lower(s: &[u16]) -> Vec<u16> {
     map_text(s, str::to_lowercase)
 }
 
-/// `String.getBytes("UTF-8")`: unpaired surrogates become `?`.
-pub fn utf8_bytes(s: &[u16]) -> Vec<u8> {
-    to_rust(s).into_bytes()
+/// `String.getBytes("UTF-8")`, byte by byte: unpaired surrogates become
+/// `?`.
+pub fn utf8_bytes(s: &[u16]) -> impl Iterator<Item = u8> {
+    char::decode_utf16(s.iter().copied()).flat_map(|c| {
+        let mut utf8 = [0; 4];
+        let len = c.unwrap_or('?').encode_utf8(&mut utf8).len();
+        utf8.into_iter().take(len)
+    })
 }
 
 #[cfg(test)]
@@ -235,6 +240,9 @@ mod tests {
         assert_eq!(last_index_of(&u("hello"), &u("l"), 5), 3);
         assert_eq!(last_index_of(&u("hello"), &u("l"), 2), 2);
         assert_eq!(last_index_of(&u("hello"), &u("l"), -1), -1);
+        let mut text = u("aé€😀");
+        text.insert(1, 0xDC00);
+        assert_eq!(utf8_bytes(&text).collect::<Vec<_>>(), "a?é€😀".as_bytes());
         assert_eq!(replace(&u("aXbXc"), &u("X"), &u("--")), u("a--b--c"));
         assert_eq!(replace(&u("abc"), &u(""), &u("-")), u("-a-b-c-"));
         for (hay, target, with) in [

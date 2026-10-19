@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use ferro_mir::{Program, RecordId, Ty};
+use ferro_mir::{Program, RecordField, RecordId, Ty};
 
 use crate::number::{java_double_to_string, java_float_to_string};
 #[cfg(test)]
@@ -151,8 +151,10 @@ impl ListObj {
 
     pub fn to_vec(&self) -> Result<Vec<Value>, Exc> {
         let (items, from, len) = self.resolve()?;
-        let items = items.borrow();
-        Ok(items[from..from + len].to_vec())
+        let mut copy = Vec::new();
+        try_grow(&mut copy, len)?;
+        copy.extend_from_slice(&items.borrow()[from..from + len]);
+        Ok(copy)
     }
 
     pub fn get(&self, i: usize) -> Result<Option<Value>, Exc> {
@@ -444,16 +446,24 @@ impl OrderedMap {
         self.live = 0;
     }
 
+    /// Removes the holes. Allocates nothing: the index keeps its capacity,
+    /// which already holds every live key.
     fn compact(&mut self) {
         if self.entries.len() != self.live {
             self.entries.retain(Option::is_some);
-            self.index = self
-                .entries
-                .iter()
-                .enumerate()
-                .filter_map(|(i, e)| e.as_ref().map(|(k, _)| (HKey::of(k), i)))
-                .collect();
+            self.index.clear();
+            for (i, (k, _)) in self.entries.iter().flatten().enumerate() {
+                self.index.insert(HKey::of(k), i);
+            }
         }
+    }
+
+    /// A copy of the entries, keys or values (`part`), in order.
+    pub fn snapshot<T>(&self, part: impl Fn(&(Value, Value)) -> T) -> Result<Vec<T>, Exc> {
+        let mut copy = Vec::new();
+        try_grow(&mut copy, self.live)?;
+        copy.extend(self.iter().map(part));
+        Ok(copy)
     }
 
     /// The entry at a position, in insertion order.
@@ -476,7 +486,9 @@ impl OrderedMap {
 // holds, recursively: a long linked list of records, or Lists nested
 // 100,000 deep, overflowed the stack. Instead, a container that is about
 // to be freed moves the values only it holds onto a work list, and they
-// are freed from there, one at a time.
+// are freed from there, one at a time. The work list reuses the storage of
+// the containers being freed, so freeing needs no memory of its own when
+// memory has run out.
 
 impl Drop for ListObj {
     fn drop(&mut self) {
@@ -505,7 +517,7 @@ impl Drop for ArrayObj {
 impl Drop for RecordObj {
     fn drop(&mut self) {
         let mut work = Vec::new();
-        move_values(std::mem::take(self.fields.get_mut()), &mut work);
+        absorb(&mut work, std::mem::take(self.fields.get_mut()));
         dismantle(work);
     }
 }
@@ -525,7 +537,16 @@ impl ListObj {
 impl OrderedMap {
     fn take_values(&mut self, work: &mut Vec<Value>) {
         for (k, v) in std::mem::take(&mut self.entries).into_iter().flatten() {
-            move_values([k, v], work);
+            for value in [k, v] {
+                if holds_values(&value) {
+                    if work.try_reserve(1).is_ok() {
+                        work.push(value);
+                    } else {
+                        // Out of memory even to free: leak it rather than abort.
+                        std::mem::forget(value);
+                    }
+                }
+            }
         }
     }
 }
@@ -569,7 +590,7 @@ fn take_values(v: &mut Value, work: &mut Vec<Value>) {
         }
         Value::Record(r) => {
             if let Some(r) = Rc::get_mut(r) {
-                move_values(std::mem::take(r.fields.get_mut()), work);
+                absorb(work, std::mem::take(r.fields.get_mut()));
             }
         }
         _ => {}
@@ -578,19 +599,36 @@ fn take_values(v: &mut Value, work: &mut Vec<Value>) {
 
 fn take_items(items: &mut Shared<Vec<Value>>, work: &mut Vec<Value>) {
     if let Some(items) = Rc::get_mut(items) {
-        move_values(std::mem::take(items.get_mut()), work);
+        absorb(work, std::mem::take(items.get_mut()));
     }
 }
 
-/// Moves the values that can hold other values onto `work`, and frees the
-/// rest (numbers, Strings, StringBuilders, exceptions) at once.
-fn move_values(values: impl IntoIterator<Item = Value>, work: &mut Vec<Value>) {
-    work.extend(values.into_iter().filter(|v| {
-        matches!(
-            v,
-            Value::List(_) | Value::Map(_) | Value::View(..) | Value::Array(_) | Value::Record(_)
-        )
-    }));
+/// Whether a value can hold other values.
+fn holds_values(v: &Value) -> bool {
+    matches!(
+        v,
+        Value::List(_) | Value::Map(_) | Value::View(..) | Value::Array(_) | Value::Record(_)
+    )
+}
+
+/// Moves the values in `values` that can hold others onto `work`, and frees
+/// the rest (numbers, Strings, StringBuilders, exceptions) at once. Whichever
+/// vector has room takes the other's values, so this usually allocates
+/// nothing; if memory has run out even for that, the values are leaked
+/// rather than aborting.
+fn absorb(work: &mut Vec<Value>, mut values: Vec<Value>) {
+    values.retain(holds_values);
+    if values.is_empty() {
+        return;
+    }
+    if work.capacity() - work.len() < values.len() {
+        std::mem::swap(work, &mut values);
+    }
+    if work.try_reserve(values.len()).is_ok() {
+        work.append(&mut values);
+    } else {
+        std::mem::forget(values);
+    }
 }
 
 /// A hashable key with Java `equals` semantics for boxes and Strings:
@@ -706,7 +744,7 @@ pub fn java_equals(a: &Value, b: &Value) -> Result<bool, Exc> {
                         if Rc::ptr_eq(&x, &y) {
                             continue;
                         }
-                        let xs: Vec<(Value, Value)> = x.borrow().iter().cloned().collect();
+                        let xs = x.borrow().snapshot(Clone::clone)?;
                         if xs.len() != y.borrow().len() {
                             return Ok(false);
                         }
@@ -825,20 +863,30 @@ pub fn wrapper_to_string(v: &Value, program: &Program, out: &mut Vec<u16>) -> Re
 /// The ids of the collections and records being printed, outermost first.
 type Seen = Vec<usize>;
 
-/// What is left to print, on a work list rather than the Rust stack.
+/// What is left to print, on a work list rather than the Rust stack. A
+/// collection is one job that prints an element at a time, so the list is
+/// only as long as the nesting is deep.
 enum Print<'p> {
     /// `String.valueOf` of a value.
     Raw(Value),
-    /// An element: `this` if it is a collection being printed, else `Raw`.
-    Element(Value, &'static str),
     /// `AbsObjectWrapper.toString` of a value, which starts over: its
     /// object does not know which collections enclose the wrapper.
     Wrapper(Value),
-    Text(&'p str),
-    /// The end of a collection or record.
-    Leave,
     /// The end of a `Wrapper`: back to the enclosing collections.
     Restore(Seen),
+    /// A collection's elements from `next` on, then `]`.
+    Items { items: Vec<Value>, next: usize },
+    /// A Map's keys and values from `next` on (two per entry), then `}`.
+    Entries {
+        entries: Vec<(Value, Value)>,
+        next: usize,
+    },
+    /// A record's fields from `next` on, then `]`.
+    Fields {
+        fields: &'p [RecordField],
+        values: Vec<Value>,
+        next: usize,
+    },
 }
 
 struct Printer<'p, 'o> {
@@ -866,20 +914,72 @@ impl<'p, 'o> Printer<'p, 'o> {
         while let Some(job) = self.jobs.pop() {
             match job {
                 Print::Raw(v) => self.raw(&v)?,
-                Print::Element(v, this) => {
-                    if identity(&v).is_some_and(|id| self.seen.contains(&id)) {
-                        self.put(this)?;
+                Print::Wrapper(v) => self.wrapper(v)?,
+                Print::Restore(seen) => self.seen = seen,
+                Print::Items { mut items, next } => {
+                    if next == items.len() {
+                        self.put("]")?;
+                        self.leave();
+                        continue;
+                    }
+                    if next > 0 {
+                        self.put(", ")?;
+                    }
+                    let item = std::mem::replace(&mut items[next], Value::Null);
+                    // The rest waits below the element's own jobs.
+                    self.jobs.push(Print::Items {
+                        items,
+                        next: next + 1,
+                    });
+                    self.element(&item, "(this Collection)")?;
+                }
+                Print::Entries { mut entries, next } => {
+                    if next == 2 * entries.len() {
+                        self.put("}")?;
+                        self.leave();
+                        continue;
+                    }
+                    let (k, v) = &mut entries[next / 2];
+                    let item = if next % 2 == 0 {
+                        if next > 0 {
+                            self.put(", ")?;
+                        }
+                        std::mem::replace(k, Value::Null)
                     } else {
-                        self.raw(&v)?;
+                        self.put("=")?;
+                        std::mem::replace(v, Value::Null)
+                    };
+                    self.jobs.push(Print::Entries {
+                        entries,
+                        next: next + 1,
+                    });
+                    self.element(&item, "(this Map)")?;
+                }
+                Print::Fields {
+                    fields,
+                    mut values,
+                    next,
+                } => {
+                    let Some(field) = fields.get(next).filter(|_| next < values.len()) else {
+                        self.put("]")?;
+                        self.leave();
+                        continue;
+                    };
+                    self.put(", ")?;
+                    self.put(&field.name)?;
+                    self.put("=")?;
+                    let value = std::mem::replace(&mut values[next], Value::Null);
+                    self.jobs.push(Print::Fields {
+                        fields,
+                        values,
+                        next: next + 1,
+                    });
+                    if is_wrapper_type(&field.ty) {
+                        self.wrapper(value)?;
+                    } else {
+                        self.element(&value, "(this Collection)")?;
                     }
                 }
-                Print::Wrapper(v) => self.wrapper(v)?,
-                Print::Text(s) => self.put(s)?,
-                Print::Leave => {
-                    self.seen.pop();
-                    self.depth -= 1;
-                }
-                Print::Restore(seen) => self.seen = seen,
             }
         }
         Ok(())
@@ -908,6 +1008,20 @@ impl<'p, 'o> Printer<'p, 'o> {
         Ok(())
     }
 
+    fn leave(&mut self) {
+        self.seen.pop();
+        self.depth -= 1;
+    }
+
+    /// An element: `this` if it is a collection being printed.
+    fn element(&mut self, v: &Value, this: &str) -> Result<(), Exc> {
+        if identity(v).is_some_and(|id| self.seen.contains(&id)) {
+            self.put(this)
+        } else {
+            self.raw(v)
+        }
+    }
+
     fn raw(&mut self, v: &Value) -> Result<(), Exc> {
         match v {
             Value::Null => self.put("null")?,
@@ -927,19 +1041,10 @@ impl<'p, 'o> Printer<'p, 'o> {
             Value::Map(w) => match w.borrow().clone() {
                 None => self.put("null")?,
                 Some(m) => {
-                    let entries: Vec<(Value, Value)> = m.borrow().iter().cloned().collect();
+                    let entries = m.borrow().snapshot(Clone::clone)?;
                     self.enter(ptr(&m))?;
                     self.put("{")?;
-                    self.jobs.push(Print::Leave);
-                    self.jobs.push(Print::Text("}"));
-                    for (i, (k, val)) in entries.into_iter().enumerate().rev() {
-                        self.jobs.push(Print::Element(val, "(this Map)"));
-                        self.jobs.push(Print::Text("="));
-                        self.jobs.push(Print::Element(k, "(this Map)"));
-                        if i > 0 {
-                            self.jobs.push(Print::Text(", "));
-                        }
-                    }
+                    self.jobs.push(Print::Entries { entries, next: 0 });
                 }
             },
             Value::Sb(w) => match w.borrow().as_ref() {
@@ -958,11 +1063,9 @@ impl<'p, 'o> Printer<'p, 'o> {
             }
             Value::Record(r) => self.record(r)?,
             Value::View(m, keys) => {
-                let items: Vec<Value> = m
+                let items = m
                     .borrow()
-                    .iter()
-                    .map(|(k, v)| if *keys { k.clone() } else { v.clone() })
-                    .collect();
+                    .snapshot(|(k, v)| if *keys { k.clone() } else { v.clone() })?;
                 self.sequence(items, ptr(m))?;
             }
         }
@@ -973,14 +1076,7 @@ impl<'p, 'o> Printer<'p, 'o> {
     fn sequence(&mut self, items: Vec<Value>, id: usize) -> Result<(), Exc> {
         self.enter(id)?;
         self.put("[")?;
-        self.jobs.push(Print::Leave);
-        self.jobs.push(Print::Text("]"));
-        for (i, item) in items.into_iter().enumerate().rev() {
-            self.jobs.push(Print::Element(item, "(this Collection)"));
-            if i > 0 {
-                self.jobs.push(Print::Text(", "));
-            }
-        }
+        self.jobs.push(Print::Items { items, next: 0 });
         Ok(())
     }
 
@@ -988,25 +1084,17 @@ impl<'p, 'o> Printer<'p, 'o> {
     /// `[IsInitialized=true, Name=abc, Price=1.5]`.
     fn record(&mut self, r: &Rc<RecordObj>) -> Result<(), Exc> {
         let Some(rec) = self.program.records.get(r.id.0 as usize) else {
-            self.put("[]")?;
-            return Ok(());
+            return self.put("[]");
         };
-        let fields = r.fields.borrow().clone();
+        let values = r.fields.borrow().clone();
         self.enter(ptr(r))?;
         self.put("[IsInitialized=")?;
         self.put(if r.initialized.get() { "true" } else { "false" })?;
-        self.jobs.push(Print::Leave);
-        self.jobs.push(Print::Text("]"));
-        for (f, v) in rec.fields.iter().zip(fields).rev() {
-            self.jobs.push(if is_wrapper_type(&f.ty) {
-                Print::Wrapper(v)
-            } else {
-                Print::Element(v, "(this Collection)")
-            });
-            self.jobs.push(Print::Text("="));
-            self.jobs.push(Print::Text(&f.name));
-            self.jobs.push(Print::Text(", "));
-        }
+        self.jobs.push(Print::Fields {
+            fields: &rec.fields,
+            values,
+            next: 0,
+        });
         Ok(())
     }
 

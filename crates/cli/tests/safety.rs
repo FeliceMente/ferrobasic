@@ -458,6 +458,8 @@ fn running_out_of_memory_is_a_java_error() {
     let dir = Scratch::new("memory");
     let cases = [
         ("array", "    Dim a(200000000) As Int\n    Log(a.Length)"),
+        // Its slots fit, but not a separate List wrapper for each.
+        ("lists", "    Dim a(50000000) As List\n    Log(a.Length)"),
         (
             "string",
             "    Dim s As String = \"x\"\n    For i = 1 To 40\n        s = s & s\n    Next\n    Log(s.Length)",
@@ -496,4 +498,24 @@ fn running_out_of_memory_is_a_java_error() {
             "{name}: {stderr}"
         );
     }
+    // Strings are immutable, so the elements share one empty String: the
+    // slots are all the array needs.
+    let file = dir.file(
+        "strings.bas",
+        &in_app_start("    Dim a(50000000) As String\n    Log(a.Length)"),
+    );
+    let out = run_written(
+        Command::new("sh")
+            .arg("-c")
+            .arg("ulimit -v 1500000 && exec \"$0\" run \"$1\"")
+            .arg(FERRO)
+            .arg(&file),
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "50000000\n");
 }

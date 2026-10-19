@@ -480,13 +480,13 @@ impl Machine<'_, '_> {
             StrTrim => text(try_copy_text(strings::trim(s))?),
             StrGetBytes => {
                 let charset = to_rust(sa(0)?);
-                let bytes: Vec<u8> = match charset.to_ascii_uppercase().as_str() {
-                    "UTF8" | "UTF-8" => strings::utf8_bytes(s),
-                    _ => return Err(Exc::new(UNSUPPORTED_ENCODING, charset)),
-                };
+                if !matches!(charset.to_ascii_uppercase().as_str(), "UTF8" | "UTF-8") {
+                    return Err(Exc::new(UNSUPPORTED_ENCODING, charset));
+                }
+                // Encoded twice, to reserve the array before filling it.
                 let mut items = Vec::new();
-                try_grow(&mut items, bytes.len())?;
-                items.extend(bytes.into_iter().map(|b| Value::Byte(b as i8)));
+                try_grow(&mut items, strings::utf8_bytes(s).count())?;
+                items.extend(strings::utf8_bytes(s).map(|b| Value::Byte(b as i8)));
                 Value::Array(Rc::new(ArrayObj {
                     elem: Ty::Byte,
                     dims: vec![items.len()],
