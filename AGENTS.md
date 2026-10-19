@@ -52,8 +52,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   entry in `docs/deviations.md`. Never build something that silently behaves differently.
 - Every language feature lands with at least one conformance test.
 - If B4X semantics are unclear, do NOT invent them: add a test with
-  `status = "pending-recording"` in its `.meta.toml` and an entry in
-  `docs/open-questions.md`.
+  `status = "pending-recording"` in its `.meta.toml` (plus `ferro_rejects = true`
+  if FerroBASIC rejects it meanwhile) and an entry in `docs/open-questions.md`.
+  Harnesses read the corpus through `crates/corpus`.
 - A mismatch found by the program generator is minimized and kept as a regression test.
 - The CST is lossless (whitespace and comments included): LSP and the formatter
   depend on it.

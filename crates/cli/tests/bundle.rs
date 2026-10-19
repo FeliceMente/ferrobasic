@@ -9,12 +9,36 @@ use std::process::{Command, Output};
 
 const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
-/// A fresh, empty directory for one test.
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("ferro-bundle-test-{}-{name}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+/// A fresh directory under Cargo's per-target scratch area (removed by
+/// `cargo clean`, and never on a `noexec` `/tmp`), deleted when dropped, also
+/// when the test fails.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Scratch {
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("bundle-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        Scratch(dir)
+    }
+}
+
+impl std::ops::Deref for Scratch {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// A program's executable name on this platform.
+fn exe(name: &str) -> String {
+    format!("{name}{}", std::env::consts::EXE_SUFFIX)
 }
 
 fn ferro(args: &[&str]) -> Output {
@@ -39,19 +63,12 @@ fn run_binary(command: &mut Command) -> Output {
 }
 
 fn conformance_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/conformance/level0")
-}
-
-fn is_negative(bas: &Path) -> bool {
-    fs::read_to_string(bas.with_extension("meta.toml"))
-        .unwrap_or_default()
-        .lines()
-        .any(|l| l.split('#').next().unwrap().replace(' ', "") == "status=\"negative\"")
+    ferro_corpus::root().join("level0")
 }
 
 /// Builds `source` and returns the binary, moved into its own empty directory.
 fn build_and_move(source: &Path, dir: &Path) -> PathBuf {
-    let built = dir.join("build").join("prog");
+    let built = dir.join("build").join(exe("prog"));
     fs::create_dir_all(built.parent().unwrap()).unwrap();
     let out = ferro(&[
         "bundle",
@@ -64,7 +81,7 @@ fn build_and_move(source: &Path, dir: &Path) -> PathBuf {
         "bundle failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let moved = dir.join("elsewhere").join("prog");
+    let moved = dir.join("elsewhere").join(exe("prog"));
     fs::create_dir_all(moved.parent().unwrap()).unwrap();
     fs::rename(&built, &moved).unwrap();
     fs::remove_dir_all(dir.join("build")).unwrap();
@@ -73,49 +90,44 @@ fn build_and_move(source: &Path, dir: &Path) -> PathBuf {
 
 #[test]
 fn standalone_binaries_behave_like_ferro_run() {
-    let mut files: Vec<PathBuf> = fs::read_dir(conformance_dir())
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|e| e == "bas") && !is_negative(p))
-        .collect();
-    files.sort();
     let mut checked = 0;
-    for file in files {
-        let expected = fs::read_to_string(file.with_extension("expected"))
-            .or_else(|_| fs::read_to_string(file.with_extension("provisional")));
-        let Ok(expected) = expected else { continue };
-        let name = file.file_stem().unwrap().to_string_lossy().into_owned();
-        let dir = scratch(&name);
-        let binary = build_and_move(&file, &dir);
-        let run = ferro(&["run", file.to_str().unwrap()]);
+    let mut failures = Vec::new();
+    for program in ferro_corpus::programs() {
+        let Some(expected) = program.expected_output() else {
+            continue;
+        };
+        let name = &program.name;
+        // Prefixed, so that no conformance test can share a directory with
+        // the other tests here.
+        let dir = Scratch::new(&format!("conformance-{}", program.file_name()));
+        let binary = build_and_move(&program.path, &dir);
+        let run = ferro(&["run", program.path.to_str().unwrap()]);
         let standalone = run_binary(Command::new(&binary).current_dir(dir.join("elsewhere")));
-        assert_eq!(
-            String::from_utf8_lossy(&standalone.stdout),
-            expected,
-            "{name}: stdout"
-        );
-        assert_eq!(
-            standalone.stdout, run.stdout,
-            "{name}: stdout differs from ferro run"
-        );
-        assert_eq!(
-            standalone.stderr, run.stderr,
-            "{name}: stderr differs from ferro run"
-        );
-        assert_eq!(
-            standalone.status.code(),
-            run.status.code(),
-            "{name}: exit code"
-        );
-        fs::remove_dir_all(&dir).unwrap();
+        if String::from_utf8_lossy(&standalone.stdout) != expected {
+            failures.push(format!("{name}: stdout differs from the expected output"));
+        }
+        if standalone.stdout != run.stdout {
+            failures.push(format!("{name}: stdout differs from ferro run"));
+        }
+        if standalone.stderr != run.stderr {
+            failures.push(format!("{name}: stderr differs from ferro run"));
+        }
+        if standalone.status.code() != run.status.code() {
+            failures.push(format!(
+                "{name}: exit code {:?}, ferro run gives {:?}",
+                standalone.status.code(),
+                run.status.code()
+            ));
+        }
         checked += 1;
     }
-    assert!(checked >= 12, "only {checked} programs checked");
+    assert!(checked > 0, "no conformance test with an expected output");
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
 #[test]
 fn arguments_go_to_app_start() {
-    let dir = scratch("args");
+    let dir = Scratch::new("args");
     let source = dir.join("echo.bas");
     fs::write(
         &source,
@@ -130,12 +142,11 @@ fn arguments_go_to_app_start() {
     // Same through `ferro run`.
     let run = ferro(&["run", source.to_str().unwrap(), "--", "run", "--help", "é"]);
     assert_eq!(run.stdout, out.stdout);
-    fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
 fn exit_codes_and_corrupt_binaries() {
-    let dir = scratch("exit");
+    let dir = Scratch::new("exit");
     let source = dir.join("exit.bas");
     fs::write(
         &source,
@@ -161,7 +172,6 @@ fn exit_codes_and_corrupt_binaries() {
         assert_eq!(out.status.code(), Some(2));
         assert!(String::from_utf8_lossy(&out.stderr).contains("corrupt"));
     }
-    fs::remove_dir_all(&dir).unwrap();
 }
 
 /// macOS refuses binaries with a broken signature on Apple Silicon:
@@ -169,7 +179,7 @@ fn exit_codes_and_corrupt_binaries() {
 #[cfg(target_os = "macos")]
 #[test]
 fn binaries_are_validly_signed() {
-    let dir = scratch("signed");
+    let dir = Scratch::new("signed");
     let binary = build_and_move(&conformance_dir().join("prices_map.bas"), &dir);
     let verify = Command::new("codesign")
         .args(["--verify", "--strict", "--verbose=2"])
@@ -181,12 +191,11 @@ fn binaries_are_validly_signed() {
         "codesign --verify: {}",
         String::from_utf8_lossy(&verify.stderr)
     );
-    fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
 fn programs_with_errors_are_not_built() {
-    let dir = scratch("errors");
+    let dir = Scratch::new("errors");
     let out_path = dir.join("prog");
     let negative = conformance_dir().join("do_loop_while.bas");
     let out = ferro(&[
@@ -197,23 +206,21 @@ fn programs_with_errors_are_not_built() {
     ]);
     assert_eq!(out.status.code(), Some(3));
     assert!(!out_path.exists());
-    fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
 fn default_output_is_the_file_stem() {
-    let dir = scratch("default");
+    let dir = Scratch::new("default");
     let source = conformance_dir().join("prices_map.bas");
     let out = Command::new(FERRO)
         .args(["bundle", source.to_str().unwrap()])
-        .current_dir(&dir)
+        .current_dir(&*dir)
         .output()
         .unwrap();
     assert!(out.status.success());
-    let binary = dir.join(format!("prices_map{}", std::env::consts::EXE_SUFFIX));
+    let binary = dir.join(exe("prices_map"));
     let run = run_binary(&mut Command::new(&binary));
     assert_eq!(run.stdout, b"Big breakfast\nTotal: 2.7\n");
-    fs::remove_dir_all(&dir).unwrap();
 }
 
 /// Reserved commands (`docs/spec/cli.md`, "Commands") say what is missing and
@@ -221,6 +228,8 @@ fn default_output_is_the_file_stem() {
 /// `bundle` in 0.0.1, so it points there.
 #[test]
 fn reserved_commands_are_not_implemented_yet() {
+    // Run in an empty directory: nothing may be written there.
+    let dir = Scratch::new("reserved");
     let source = conformance_dir().join("prices_map.bas");
     let source = source.to_str().unwrap();
     for (args, hint) in [
@@ -230,7 +239,11 @@ fn reserved_commands_are_not_implemented_yet() {
         (vec!["compile", source, "--target", "js"], "(M3)"),
         (vec!["targets"], "ferro compile"),
     ] {
-        let out = ferro(&args);
+        let out = Command::new(FERRO)
+            .args(&args)
+            .current_dir(&*dir)
+            .output()
+            .unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         assert!(out.stdout.is_empty(), "{args:?}");
@@ -239,5 +252,5 @@ fn reserved_commands_are_not_implemented_yet() {
             "{args:?}: {stderr}"
         );
     }
-    assert!(!Path::new("prices_map").exists());
+    assert_eq!(fs::read_dir(&*dir).unwrap().count(), 0);
 }

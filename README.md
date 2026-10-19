@@ -36,6 +36,7 @@ crates/
   mir/            typed IR and lowering
   interp/         reference interpreter and REPL
   difftest/       differential runner, normalizer, differ, report
+  corpus/         the conformance corpus, as the test harnesses read it
   cli/            the `ferro` command
 tests/conformance/  test programs with recorded expected outputs
 tests/corpus/     real-world B4X projects (licence-checked)

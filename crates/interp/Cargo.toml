@@ -17,3 +17,4 @@ ferro-mir = { path = "../mir" }
 [dev-dependencies]
 ferro-syntax = { path = "../syntax" }
 ferro-hir = { path = "../hir" }
+ferro-corpus = { path = "../corpus" }

@@ -339,6 +339,33 @@ fn create_staging(out: &Path) -> io::Result<(File, PathBuf)> {
 mod tests {
     use super::*;
 
+    /// A fresh directory for one test, removed when dropped, also when the
+    /// test fails.
+    struct TempDir(std::path::PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> TempDir {
+            let dir = std::env::temp_dir()
+                .join(format!("ferro-standalone-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+    }
+
+    impl std::ops::Deref for TempDir {
+        type Target = std::path::Path;
+        fn deref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     fn sample() -> Vec<Entry> {
         vec![
             Entry {
@@ -413,9 +440,7 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn write_then_read_back() {
-        let dir =
-            std::env::temp_dir().join(format!("ferro-standalone-unit-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("unit");
         let exe = dir.join("fake-ferro");
         std::fs::write(&exe, b"\x7fELF not really an executable").unwrap();
         let out = dir.join("prog");
@@ -434,15 +459,11 @@ mod tests {
         let read = read_embedded(&again).unwrap().unwrap();
         assert_eq!(read.exe_len, 29);
         assert_eq!(read.entries.unwrap().len(), 1);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn staging_never_touches_other_files() {
-        let dir =
-            std::env::temp_dir().join(format!("ferro-standalone-stage-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("stage");
         let out = dir.join("prog");
         std::fs::write(&out, b"previous").unwrap();
         // A file at the old fixed staging name is left alone.
@@ -464,7 +485,7 @@ mod tests {
         write_standalone(b"new", &out, |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(&out).unwrap(), b"new");
         assert_eq!(std::fs::read(&stray).unwrap(), b"unrelated");
-        let mut names: Vec<_> = std::fs::read_dir(&dir)
+        let mut names: Vec<_> = std::fs::read_dir(&*dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().into_string().unwrap())
             .collect();
@@ -474,6 +495,5 @@ mod tests {
             expected.insert(0, ".prog.ferro-tmp");
         }
         assert_eq!(names, expected);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
