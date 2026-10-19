@@ -75,6 +75,21 @@ fn java_min(a: f64, b: f64) -> f64 {
     }
 }
 
+/// `Math.atan2` (fdlibm, as `StrictMath`). `libm` is a port of the same
+/// code, except that when |y/x| > 2^60 and x < 0 fdlibm adds the low part
+/// of π/2 back, and so returns a value one ulp off π/2.
+fn java_atan2(y: f64, x: f64) -> f64 {
+    let high = |v: f64| ((v.to_bits() >> 32) as i32) & 0x7fff_ffff;
+    if x < 0.0 && x.is_finite() && y.is_finite() && y != 0.0 && (high(y) - high(x)) >> 20 > 60 {
+        // π − (atan(|y/x|) − π_lo), with atan(|y/x|) = π/2 + π_lo/2.
+        use std::f64::consts::{FRAC_PI_2, PI};
+        const PI_LO: f64 = 1.224_646_799_147_353_2e-16;
+        let v = PI - ((FRAC_PI_2 + 0.5 * PI_LO) - PI_LO);
+        return if y < 0.0 { -v } else { v };
+    }
+    libm::atan2(y, x)
+}
+
 /// `Math.pow`: unlike C, a NaN exponent always gives NaN, and ±1 to an
 /// infinite power is NaN.
 fn java_pow(x: f64, y: f64) -> f64 {
@@ -303,17 +318,19 @@ impl Machine<'_, '_> {
             Sin => num(d(0)?.sin()),
             Cos => num(d(0)?.cos()),
             Tan => num(d(0)?.tan()),
-            ASin => num(d(0)?.asin()),
-            ACos => num(d(0)?.acos()),
-            ATan => num(d(0)?.atan()),
-            ATan2 => num(d(0)?.atan2(d(1)?)),
+            // Java's `Math.asin`, `acos`, `atan` and `atan2` are fdlibm's,
+            // which `libm` ports bit for bit; Rust's are the platform's.
+            ASin => num(libm::asin(d(0)?)),
+            ACos => num(libm::acos(d(0)?)),
+            ATan => num(libm::atan(d(0)?)),
+            ATan2 => num(java_atan2(d(0)?, d(1)?)),
             SinD => num((d(0)? / 180.0 * std::f64::consts::PI).sin()),
             CosD => num((d(0)? / 180.0 * std::f64::consts::PI).cos()),
             TanD => num((d(0)? / 180.0 * std::f64::consts::PI).tan()),
-            ASinD => num(d(0)?.asin() * 180.0 / std::f64::consts::PI),
-            ACosD => num(d(0)?.acos() * 180.0 / std::f64::consts::PI),
-            ATanD => num(d(0)?.atan() * 180.0 / std::f64::consts::PI),
-            ATan2D => num(d(0)?.atan2(d(1)?) * 180.0 / std::f64::consts::PI),
+            ASinD => num(libm::asin(d(0)?) / std::f64::consts::PI * 180.0),
+            ACosD => num(libm::acos(d(0)?) / std::f64::consts::PI * 180.0),
+            ATanD => num(libm::atan(d(0)?) / std::f64::consts::PI * 180.0),
+            ATan2D => num(java_atan2(d(0)?, d(1)?) / std::f64::consts::PI * 180.0),
             Logarithm => num(d(0)?.ln() / d(1)?.ln()),
             Max => num(java_max(d(0)?, d(1)?)),
             Min => num(java_min(d(0)?, d(1)?)),
@@ -880,5 +897,30 @@ mod tests {
         );
         assert!(p("", 10).is_err());
         assert!(p("+", 10).is_err());
+    }
+
+    /// `tests/data/java_trig.tsv`: Java's own results, bit for bit.
+    #[test]
+    fn inverse_trigonometry_matches_jdk_21() {
+        let data = include_str!("../tests/data/java_trig.tsv");
+        let mut rows = 0;
+        for line in data.lines().filter(|l| !l.starts_with('#')) {
+            let v: Vec<f64> = line
+                .split(' ')
+                .map(|h| f64::from_bits(u64::from_str_radix(h, 16).unwrap()))
+                .collect();
+            let (x, y) = (v[0], v[1]);
+            let got = [
+                libm::atan(x),
+                libm::asin(x),
+                libm::acos(x),
+                java_atan2(x, y),
+            ];
+            for (got, want) in got.into_iter().zip(&v[2..]) {
+                assert_eq!(got.to_bits(), want.to_bits(), "{line}");
+            }
+            rows += 1;
+        }
+        assert!(rows > 900);
     }
 }
