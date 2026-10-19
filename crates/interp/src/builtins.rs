@@ -119,6 +119,32 @@ fn java_double_cmp(a: f64, b: f64) -> Ordering {
 }
 
 /// `Integer.parseInt(s, radix)`.
+/// The first digit (zero) of each run of ten decimal digits (Unicode
+/// category Nd) in the Basic Multilingual Plane, as JDK 21 has them.
+const DIGIT_ZEROS: [u16; 37] = [
+    0x0030, 0x0660, 0x06F0, 0x07C0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0CE6,
+    0x0D66, 0x0DE6, 0x0E50, 0x0ED0, 0x0F20, 0x1040, 0x1090, 0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80,
+    0x1A90, 0x1B50, 0x1BB0, 0x1C40, 0x1C50, 0xA620, 0xA8D0, 0xA900, 0xA9D0, 0xA9F0, 0xAA50, 0xABF0,
+    0xFF10,
+];
+
+/// Java's `Character.digit(char, radix)`: any decimal digit, and the Latin
+/// letters `A`–`Z` and `a`–`z`, ASCII or fullwidth, for 10 to 35.
+fn java_digit(c: u16, radix: u32) -> Option<u32> {
+    let run = |zero: u16| c.checked_sub(zero).filter(|d| *d < 10);
+    let value = match c {
+        0x41..=0x5A => c - 0x41 + 10,
+        0x61..=0x7A => c - 0x61 + 10,
+        0xFF21..=0xFF3A => c - 0xFF21 + 10,
+        0xFF41..=0xFF5A => c - 0xFF41 + 10,
+        _ => {
+            let i = DIGIT_ZEROS.partition_point(|&zero| zero <= c);
+            run(DIGIT_ZEROS[i.checked_sub(1)?])?
+        }
+    };
+    Some(u32::from(value)).filter(|&v| v < radix)
+}
+
 fn parse_int(s: &[u16], radix: i32) -> Result<i32, Exc> {
     if !(2..=36).contains(&radix) {
         return Err(Exc::new(
@@ -138,17 +164,17 @@ fn parse_int(s: &[u16], radix: i32) -> Result<i32, Exc> {
             format!("For input string: \"{text}\"{suffix}"),
         )
     };
-    let (neg, digits) = match text.as_bytes().first() {
-        Some(b'-') => (true, &text[1..]),
-        Some(b'+') => (false, &text[1..]),
-        _ => (false, text.as_str()),
+    let (neg, digits) = match s.first() {
+        Some(&c) if c == u16::from(b'-') => (true, &s[1..]),
+        Some(&c) if c == u16::from(b'+') => (false, &s[1..]),
+        _ => (false, s),
     };
     if digits.is_empty() {
         return Err(fail());
     }
     let mut v: i64 = 0;
-    for c in digits.chars() {
-        let d = c.to_digit(radix as u32).ok_or_else(fail)? as i64;
+    for &c in digits {
+        let d = java_digit(c, radix as u32).ok_or_else(fail)? as i64;
         v = v * radix as i64 + d;
         if v > i32::MAX as i64 + 1 {
             return Err(fail());
@@ -347,10 +373,12 @@ impl Machine<'_, '_> {
                 n(3)?,
                 bool_arg(a(4)?)?,
             ))),
-            IsNumber => Ok(Value::Bool(match a(0)? {
-                Value::Str(s) => parse_java_double(&to_rust(s)).is_some(),
-                _ => false,
-            })),
+            // `Double.parseDouble(null)` raises `NullPointerException`.
+            IsNumber => match a(0)? {
+                Value::Str(s) => Ok(Value::Bool(parse_java_double(&to_rust(s)).is_some())),
+                Value::Null => Err(Exc::bare(NULL_POINTER).into()),
+                _ => Err(Exc::internal("expected a String").into()),
+            },
             Asc => Ok(Value::Int(n(0)?)),
             Chr => Ok(Value::Char(n(0)? as u16)),
             Rnd => {
@@ -886,6 +914,31 @@ mod tests {
         );
         assert!(p("", 10).is_err());
         assert!(p("+", 10).is_err());
+        // Any Unicode decimal digit, and fullwidth letters (JDK 21).
+        assert_eq!(p("\u{663}\u{FF14}", 10), Ok(34));
+        assert_eq!(p("\u{FF26}\u{FF46}", 16), Ok(255));
+        assert_eq!(p("-\u{967}\u{966}", 10), Ok(-10));
+        assert!(p("\u{1D7CE}", 10).is_err());
+    }
+
+    /// `Character.digit` over every `char`, as JDK 21 sums it up: for each
+    /// radix, the number of digits, the sum of their values, and the sum of
+    /// value × code.
+    #[test]
+    fn java_digit_matches_jdk_21() {
+        for (radix, count, sum, weighted) in [
+            (2, 74, 37, 491_415),
+            (10, 370, 1665, 22_122_555),
+            (16, 394, 1965, 31_934_875),
+            (36, 474, 4005, 98_687_355),
+        ] {
+            let digits: Vec<(u64, u64)> = (0..=u16::MAX)
+                .filter_map(|c| java_digit(c, radix).map(|d| (u64::from(d), u64::from(c))))
+                .collect();
+            assert_eq!(digits.len(), count, "radix {radix}");
+            assert_eq!(digits.iter().map(|d| d.0).sum::<u64>(), sum);
+            assert_eq!(digits.iter().map(|d| d.0 * d.1).sum::<u64>(), weighted);
+        }
     }
 
     /// `tests/data/java_trig.tsv`: Java's own results, bit for bit.
