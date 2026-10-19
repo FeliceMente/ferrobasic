@@ -86,6 +86,7 @@ needs a recorded test):
       before Java's recursive `equals` / `toString` overflow (FerroBASIC: 1000
       levels), and whether a record whose List holds the record overflows when
       printed (FerroBASIC: it does, as the List prints through its wrapper).
+      Fixtures: `level0/deep_printing`, `deep_equals`, `self_printing_record`.
 - [ ] When B4J raises `java.lang.OutOfMemoryError` depends on the JVM's heap
       size, which a recording must state. FerroBASIC always says `Java heap
       space`; the JDK words an over-long String differently.
