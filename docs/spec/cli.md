@@ -161,7 +161,8 @@ it arrives.
   - `java.lang.ArrayStoreException`;
   - `java.lang.NullPointerException`;
   - `java.util.ConcurrentModificationException`;
-  - `java.lang.StackOverflowError`, which `Try` does not catch.
+  - `java.lang.StackOverflowError` and `java.lang.OutOfMemoryError`, which
+    `Try` does not catch.
 
   The kind is what `ferro-difftest` compares. Messages are compared only where
   [level0-builtins.md](level0-builtins.md) quotes them exactly.
@@ -194,7 +195,16 @@ it arrives.
 - `Log` writes through a buffered stdout that is flushed at exit, at
   `ExitApplication`, and before a runtime error is printed.
 - Recursion depth is limited. Overflowing it is a runtime error of kind
-  `java.lang.StackOverflowError`, not a crash of `ferro`.
+  `java.lang.StackOverflowError`, not a crash of `ferro`. So is comparing
+  (`=`, `IndexOf`) or printing collections and records nested more than 1000
+  deep, where Java's `equals` and `toString` recurse too.
+- Data may nest to any depth: a linked list of 100,000 records is freed
+  without recursion.
+- Memory is limited. When an allocation fails, or a String or
+  `StringBuilder` would be longer than Java's limit of 2,147,483,647 UTF-16
+  code units, the program stops with `java.lang.OutOfMemoryError: Java heap
+  space`, keeping the output printed so far. Arrays hold at most 2^28
+  elements.
 
 ## Standalone binary format
 

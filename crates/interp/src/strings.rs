@@ -120,16 +120,45 @@ pub fn last_index_of(hay: &[u16], needle: &[u16], from: i32) -> i32 {
         .map_or(-1, |i| i as i32)
 }
 
-/// `String.replace(CharSequence, CharSequence)`: every occurrence, literally.
+#[cfg(test)]
 pub fn replace(hay: &[u16], target: &[u16], with: &[u16]) -> Vec<u16> {
-    let mut out = Vec::with_capacity(hay.len());
+    let mut out = Vec::new();
+    replace_into(&mut out, hay, target, with);
+    out
+}
+
+/// The length of [`replace_into`]'s result (saturating), so that the
+/// caller can check and reserve it first.
+pub fn replaced_len(hay: &[u16], target: &[u16], with: &[u16]) -> usize {
+    let matches = if target.is_empty() {
+        hay.len() + 1
+    } else {
+        let mut count = 0;
+        let mut i = 0;
+        while i < hay.len() {
+            if hay[i..].starts_with(target) {
+                count += 1;
+                i += target.len();
+            } else {
+                i += 1;
+            }
+        }
+        count
+    };
+    // The matches don't overlap, so they fit in `hay`.
+    (hay.len() - matches * target.len()).saturating_add(matches.saturating_mul(with.len()))
+}
+
+/// `String.replace(CharSequence, CharSequence)`: every occurrence,
+/// literally, appended to `out`.
+pub fn replace_into(out: &mut Vec<u16>, hay: &[u16], target: &[u16], with: &[u16]) {
     if target.is_empty() {
         for &c in hay {
             out.extend_from_slice(with);
             out.push(c);
         }
         out.extend_from_slice(with);
-        return out;
+        return;
     }
     let mut i = 0;
     while i < hay.len() {
@@ -141,7 +170,6 @@ pub fn replace(hay: &[u16], target: &[u16], with: &[u16]) -> Vec<u16> {
             i += 1;
         }
     }
-    out
 }
 
 /// `String.trim`: removes code units ≤ U+0020 at both ends.
@@ -209,6 +237,20 @@ mod tests {
         assert_eq!(last_index_of(&u("hello"), &u("l"), -1), -1);
         assert_eq!(replace(&u("aXbXc"), &u("X"), &u("--")), u("a--b--c"));
         assert_eq!(replace(&u("abc"), &u(""), &u("-")), u("-a-b-c-"));
+        for (hay, target, with) in [
+            ("aXbXc", "X", "--"),
+            ("abc", "", "-"),
+            ("", "", "-"),
+            ("aaaa", "aa", ""),
+            ("aaa", "aa", "b"),
+            ("abc", "z", "yy"),
+        ] {
+            let (hay, target, with) = (u(hay), u(target), u(with));
+            assert_eq!(
+                replaced_len(&hay, &target, &with),
+                replace(&hay, &target, &with).len()
+            );
+        }
         assert_eq!(trim(&u(" \t x y \n")), u("x y").as_slice());
         assert_eq!(trim(&u("   ")), u("").as_slice());
         assert_eq!(to_upper(&u("straße")), u("STRASSE"));

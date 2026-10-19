@@ -448,3 +448,52 @@ fn deep_but_allowed_nesting_runs() {
     );
     assert_eq!(String::from_utf8_lossy(&out.stdout), "900\n");
 }
+
+/// With a memory limit, allocations really fail: a program that asks for
+/// too much stops with Java's `OutOfMemoryError` after the output it
+/// already printed, instead of aborting.
+#[cfg(target_os = "linux")]
+#[test]
+fn running_out_of_memory_is_a_java_error() {
+    let dir = Scratch::new("memory");
+    let cases = [
+        ("array", "    Dim a(200000000) As Int\n    Log(a.Length)"),
+        (
+            "string",
+            "    Dim s As String = \"x\"\n    For i = 1 To 40\n        s = s & s\n    Next\n    Log(s.Length)",
+        ),
+        (
+            "builder",
+            "    Dim sb As StringBuilder\n    sb.Initialize\n    sb.Append(\"x\")\n    For i = 1 To 40\n        sb.Append(sb.ToString)\n    Next\n    Log(sb.Length)",
+        ),
+        (
+            "print",
+            "    Dim s As String = \"x\"\n    For i = 1 To 25\n        s = s & s\n    Next\n    Dim l As List\n    l.Initialize\n    For i = 1 To 64\n        l.Add(s)\n    Next\n    Dim t As String = l\n    Log(t.Length)",
+        ),
+        (
+            "replace",
+            "    Dim s As String = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"\n    For i = 1 To 6\n        s = s.Replace(\"x\", s)\n    Next\n    Log(s.Length)",
+        ),
+    ];
+    for (name, body) in cases {
+        let file = dir.file(
+            &format!("{name}.bas"),
+            &in_app_start(&format!("    Log(\"before\")\n{body}")),
+        );
+        // 1.5 GB of address space: enough for `ferro` and its 256 MiB stack.
+        let out = run_written(
+            Command::new("sh")
+                .arg("-c")
+                .arg("ulimit -v 1500000 && exec \"$0\" run \"$1\"")
+                .arg(FERRO)
+                .arg(&file),
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{name}: {stderr}");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "before\n", "{name}");
+        assert!(
+            stderr.contains("java.lang.OutOfMemoryError: Java heap space"),
+            "{name}: {stderr}"
+        );
+    }
+}

@@ -21,9 +21,12 @@ use std::rc::Rc;
 use ferro_mir::{Program, RecordId, Ty};
 
 use crate::number::{java_double_to_string, java_float_to_string};
-use crate::strings::{to_rust, to_utf16};
+#[cfg(test)]
+use crate::strings::to_rust;
+use crate::strings::to_utf16;
 
-pub type Str = Rc<[u16]>;
+/// A Java String. The text is built first, then shared without copying.
+pub type Str = Rc<Vec<u16>>;
 pub type Shared<T> = Rc<RefCell<T>>;
 pub type Wrapper<T> = Rc<RefCell<Option<T>>>;
 
@@ -99,18 +102,27 @@ impl ListObj {
         }
     }
 
-    /// A read-only view of `parent[from..to]` (bounds already checked).
+    /// A read-only view of `parent[from..to]` (bounds already checked, so
+    /// a parent view is still valid). A view of a view points straight at
+    /// the underlying list, as Java's `SubList` does (it keeps the root
+    /// list): views never chain, however often a program takes a `SubList`
+    /// of a `SubList`.
     pub fn view(parent: &ListRef, from: usize, to: usize) -> ListObj {
+        let (root, offset) = match &parent.view {
+            Some(v) => (v.parent.clone(), v.from),
+            None => (parent.clone(), 0),
+        };
+        let expected = root.mod_count.get();
         ListObj {
             kind: ListKind::ReadOnly,
             items: Rc::new(RefCell::new(Vec::new())),
             elem: None,
             mod_count: std::cell::Cell::new(0),
             view: Some(SubView {
-                parent: parent.clone(),
-                from,
+                parent: root,
+                from: offset + from,
                 len: to - from,
-                expected: parent.mod_count.get(),
+                expected,
             }),
         }
     }
@@ -124,11 +136,11 @@ impl ListObj {
                 Ok((self.items.clone(), 0, len))
             }
             Some(v) => {
+                // The parent is never a view itself (see `view`).
                 if v.parent.mod_count.get() != v.expected {
                     return Err(Exc::bare(CONCURRENT_MODIFICATION));
                 }
-                let (items, offset, _) = v.parent.resolve()?;
-                Ok((items, offset + v.from, v.len))
+                Ok((v.parent.items.clone(), v.from, v.len))
             }
         }
     }
@@ -260,6 +272,36 @@ impl Exc {
     }
 }
 
+/// Java's longest String or StringBuilder, in UTF-16 code units.
+pub const MAX_STRING: usize = i32::MAX as usize;
+
+/// `java.lang.OutOfMemoryError: Java heap space`.
+pub fn out_of_memory() -> Exc {
+    Exc::new(OUT_OF_MEMORY, "Java heap space")
+}
+
+/// Makes room for `extra` more elements. A failed allocation raises
+/// `OutOfMemoryError` instead of aborting the process.
+pub fn try_grow<T>(v: &mut Vec<T>, extra: usize) -> Result<(), Exc> {
+    v.try_reserve(extra).map_err(|_| out_of_memory())
+}
+
+/// [`try_grow`] for text, which also stops at Java's length limit.
+pub fn try_grow_text(v: &mut Vec<u16>, extra: usize) -> Result<(), Exc> {
+    if v.len().saturating_add(extra) > MAX_STRING {
+        return Err(out_of_memory());
+    }
+    try_grow(v, extra)
+}
+
+/// A copy of `s`, or `OutOfMemoryError`.
+pub fn try_copy_text(s: &[u16]) -> Result<Vec<u16>, Exc> {
+    let mut copy = Vec::new();
+    try_grow_text(&mut copy, s.len())?;
+    copy.extend_from_slice(s);
+    Ok(copy)
+}
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Null,
@@ -285,11 +327,11 @@ pub enum Value {
 
 impl Value {
     pub fn str(s: &str) -> Value {
-        Value::Str(to_utf16(s).into())
+        Value::Str(Rc::new(to_utf16(s)))
     }
 
     pub fn from_utf16(s: Vec<u16>) -> Value {
-        Value::Str(s.into())
+        Value::Str(Rc::new(s))
     }
 
     #[cfg(test)]
@@ -345,7 +387,8 @@ impl Value {
 /// key's position, keys compare with Java `equals` (see [`HKey`]).
 #[derive(Debug, Default)]
 pub struct OrderedMap {
-    /// Removed entries leave a hole until the next positional access.
+    /// Removed entries leave a hole until the next positional access, or
+    /// until there are more holes than entries.
     entries: Vec<Option<(Value, Value)>>,
     index: HashMap<HKey, usize>,
     live: usize,
@@ -366,17 +409,19 @@ impl OrderedMap {
     }
 
     /// Returns the previous value.
-    pub fn put(&mut self, key: Value, value: Value) -> Option<Value> {
+    pub fn put(&mut self, key: Value, value: Value) -> Result<Option<Value>, Exc> {
         let h = HKey::of(&key);
         if let Some(&i) = self.index.get(&h)
             && let Some((_, v)) = self.entries[i].as_mut()
         {
-            return Some(std::mem::replace(v, value));
+            return Ok(Some(std::mem::replace(v, value)));
         }
+        try_grow(&mut self.entries, 1)?;
+        self.index.try_reserve(1).map_err(|_| out_of_memory())?;
         self.index.insert(h, self.entries.len());
         self.entries.push(Some((key, value)));
         self.live += 1;
-        None
+        Ok(None)
     }
 
     pub fn remove(&mut self, key: &Value) -> Option<Value> {
@@ -385,6 +430,10 @@ impl OrderedMap {
         self.live -= 1;
         if self.live == 0 {
             self.entries.clear();
+        } else if self.entries.len() - self.live > self.live.max(8) {
+            // Each compaction follows at least as many removals as it
+            // moves entries, so removing stays O(1) amortised.
+            self.compact();
         }
         Some(v)
     }
@@ -416,6 +465,132 @@ impl OrderedMap {
     pub fn iter(&self) -> impl Iterator<Item = &(Value, Value)> {
         self.entries.iter().flatten()
     }
+
+    #[cfg(test)]
+    pub fn slots(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+// Dropping without recursion. By default, dropping a Value drops what it
+// holds, recursively: a long linked list of records, or Lists nested
+// 100,000 deep, overflowed the stack. Instead, a container that is about
+// to be freed moves the values only it holds onto a work list, and they
+// are freed from there, one at a time.
+
+impl Drop for ListObj {
+    fn drop(&mut self) {
+        let mut work = Vec::new();
+        self.take_values(&mut work);
+        dismantle(work);
+    }
+}
+
+impl Drop for OrderedMap {
+    fn drop(&mut self) {
+        let mut work = Vec::new();
+        self.take_values(&mut work);
+        dismantle(work);
+    }
+}
+
+impl Drop for ArrayObj {
+    fn drop(&mut self) {
+        let mut work = Vec::new();
+        take_items(&mut self.items, &mut work);
+        dismantle(work);
+    }
+}
+
+impl Drop for RecordObj {
+    fn drop(&mut self) {
+        let mut work = Vec::new();
+        move_values(std::mem::take(self.fields.get_mut()), &mut work);
+        dismantle(work);
+    }
+}
+
+impl ListObj {
+    fn take_values(&mut self, work: &mut Vec<Value>) {
+        take_items(&mut self.items, work);
+        if let Some(mut view) = self.view.take()
+            && let Some(parent) = Rc::get_mut(&mut view.parent)
+        {
+            // A view's parent is never a view (see `ListObj::view`).
+            take_items(&mut parent.items, work);
+        }
+    }
+}
+
+impl OrderedMap {
+    fn take_values(&mut self, work: &mut Vec<Value>) {
+        for (k, v) in std::mem::take(&mut self.entries).into_iter().flatten() {
+            move_values([k, v], work);
+        }
+    }
+}
+
+/// Frees the values on `work`: each one first gives up the values only it
+/// holds, so freeing it does not recurse.
+fn dismantle(mut work: Vec<Value>) {
+    while let Some(mut v) = work.pop() {
+        take_values(&mut v, &mut work);
+    }
+}
+
+/// Moves the values that only `v` holds onto `work`.
+fn take_values(v: &mut Value, work: &mut Vec<Value>) {
+    match v {
+        Value::List(w) => {
+            if let Some(cell) = Rc::get_mut(w)
+                && let Some(list) = cell.get_mut()
+                && let Some(list) = Rc::get_mut(list)
+            {
+                list.take_values(work);
+            }
+        }
+        Value::Map(w) => {
+            if let Some(cell) = Rc::get_mut(w)
+                && let Some(map) = cell.get_mut()
+                && let Some(map) = Rc::get_mut(map)
+            {
+                map.get_mut().take_values(work);
+            }
+        }
+        Value::View(map, _) => {
+            if let Some(map) = Rc::get_mut(map) {
+                map.get_mut().take_values(work);
+            }
+        }
+        Value::Array(a) => {
+            if let Some(a) = Rc::get_mut(a) {
+                take_items(&mut a.items, work);
+            }
+        }
+        Value::Record(r) => {
+            if let Some(r) = Rc::get_mut(r) {
+                move_values(std::mem::take(r.fields.get_mut()), work);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn take_items(items: &mut Shared<Vec<Value>>, work: &mut Vec<Value>) {
+    if let Some(items) = Rc::get_mut(items) {
+        move_values(std::mem::take(items.get_mut()), work);
+    }
+}
+
+/// Moves the values that can hold other values onto `work`, and frees the
+/// rest (numbers, Strings, StringBuilders, exceptions) at once.
+fn move_values(values: impl IntoIterator<Item = Value>, work: &mut Vec<Value>) {
+    work.extend(values.into_iter().filter(|v| {
+        matches!(
+            v,
+            Value::List(_) | Value::Map(_) | Value::View(..) | Value::Array(_) | Value::Record(_)
+        )
+    }));
 }
 
 /// A hashable key with Java `equals` semantics for boxes and Strings:
@@ -623,10 +798,10 @@ fn array_descriptor(elem: &Ty) -> String {
     }
 }
 
-/// Appends text to a UTF-16 buffer.
-fn push(out: &mut Vec<u16>, s: &str) {
-    out.extend(s.encode_utf16());
-}
+/// How many collections and records may be nested in one another while
+/// printing, before `StackOverflowError`: Java's `toString` recurses, like
+/// `equals` (see [`MAX_EQUALS_DEPTH`]).
+const MAX_PRINT_DEPTH: usize = MAX_EQUALS_DEPTH;
 
 /// Java `String.valueOf(object)` of a value held in an `Object` (so a
 /// collection prints without its wrapper's prefix and a Double keeps its
@@ -634,74 +809,231 @@ fn push(out: &mut Vec<u16>, s: &str) {
 /// `(this Map)`. Fails like Java's `toString` does, e.g. on a sub-list
 /// whose parent changed.
 pub fn raw_to_string(v: &Value, program: &Program, out: &mut Vec<u16>) -> Result<(), Exc> {
-    raw(v, program, out, &mut Vec::new())
+    Printer::new(program, out).run(Print::Raw(v.clone()))
 }
 
+/// `AbsObjectWrapper.toString`: what a `List`, `Map`, `StringBuilder` or
+/// `Exception` *variable* prints: `(ArrayList) [1, 2]`, `(MyMap) {a=1}`,
+/// `(List) Not initialized`. The prefix is the inner object's simple class
+/// name (`(UnmodifiableRandomAccessList)` for a `SubList`). A Java `null`
+/// wrapper reference (a field of a record that was never initialised)
+/// prints `null`.
+pub fn wrapper_to_string(v: &Value, program: &Program, out: &mut Vec<u16>) -> Result<(), Exc> {
+    Printer::new(program, out).run(Print::Wrapper(v.clone()))
+}
+
+/// The ids of the collections and records being printed, outermost first.
 type Seen = Vec<usize>;
 
-fn raw(v: &Value, program: &Program, out: &mut Vec<u16>, seen: &mut Seen) -> Result<(), Exc> {
-    match v {
-        Value::Null => push(out, "null"),
-        Value::Bool(b) => push(out, if *b { "true" } else { "false" }),
-        Value::Byte(x) => push(out, &x.to_string()),
-        Value::Short(x) => push(out, &x.to_string()),
-        Value::Int(x) => push(out, &x.to_string()),
-        Value::Long(x) => push(out, &x.to_string()),
-        Value::Float(x) => push(out, &java_float_to_string(*x)),
-        Value::Double(x) => push(out, &java_double_to_string(*x)),
-        Value::Char(c) => out.push(*c),
-        Value::Str(s) => out.extend_from_slice(s),
-        Value::List(w) => match w.borrow().clone() {
-            None => push(out, "null"),
-            Some(l) => {
-                let items = l.to_vec()?;
-                sequence(&items, ptr(&l), "(this Collection)", program, out, seen)?;
-            }
-        },
-        Value::Map(w) => match w.borrow().clone() {
-            None => push(out, "null"),
-            Some(m) => {
-                let id = ptr(&m);
-                let entries: Vec<(Value, Value)> = m.borrow().iter().cloned().collect();
-                seen.push(id);
-                out.push(b'{' as u16);
-                for (i, (k, val)) in entries.iter().enumerate() {
-                    if i > 0 {
-                        push(out, ", ");
-                    }
-                    element(k, "(this Map)", program, out, seen)?;
-                    out.push(b'=' as u16);
-                    element(val, "(this Map)", program, out, seen)?;
-                }
-                out.push(b'}' as u16);
-                seen.pop();
-            }
-        },
-        Value::Sb(w) => match w.borrow().as_ref() {
-            None => push(out, "null"),
-            Some(sb) => out.extend_from_slice(&sb.borrow()),
-        },
-        Value::Exc(e) => match e {
-            None => push(out, "null"),
-            Some(e) => push(out, &e.to_java_string()),
-        },
-        Value::Array(a) => {
-            // Java prints the identity hash code, which no test can compare.
-            let mut name = "[".repeat(a.dims.len().max(1));
-            name.push_str(&array_descriptor(&a.elem));
-            push(out, &format!("{name}@{:x}", (ptr(a) >> 4) & 0x7fff_ffff));
-        }
-        Value::Record(r) => record_to_string(r, program, out, seen)?,
-        Value::View(m, keys) => {
-            let items: Vec<Value> = m
-                .borrow()
-                .iter()
-                .map(|(k, v)| if *keys { k.clone() } else { v.clone() })
-                .collect();
-            sequence(&items, ptr(m), "(this Collection)", program, out, seen)?;
+/// What is left to print, on a work list rather than the Rust stack.
+enum Print<'p> {
+    /// `String.valueOf` of a value.
+    Raw(Value),
+    /// An element: `this` if it is a collection being printed, else `Raw`.
+    Element(Value, &'static str),
+    /// `AbsObjectWrapper.toString` of a value, which starts over: its
+    /// object does not know which collections enclose the wrapper.
+    Wrapper(Value),
+    Text(&'p str),
+    /// The end of a collection or record.
+    Leave,
+    /// The end of a `Wrapper`: back to the enclosing collections.
+    Restore(Seen),
+}
+
+struct Printer<'p, 'o> {
+    program: &'p Program,
+    out: &'o mut Vec<u16>,
+    jobs: Vec<Print<'p>>,
+    seen: Seen,
+    /// Collections and records entered and not yet left, across wrappers.
+    depth: usize,
+}
+
+impl<'p, 'o> Printer<'p, 'o> {
+    fn new(program: &'p Program, out: &'o mut Vec<u16>) -> Printer<'p, 'o> {
+        Printer {
+            program,
+            out,
+            jobs: Vec::new(),
+            seen: Vec::new(),
+            depth: 0,
         }
     }
-    Ok(())
+
+    fn run(mut self, first: Print<'p>) -> Result<(), Exc> {
+        self.jobs.push(first);
+        while let Some(job) = self.jobs.pop() {
+            match job {
+                Print::Raw(v) => self.raw(&v)?,
+                Print::Element(v, this) => {
+                    if identity(&v).is_some_and(|id| self.seen.contains(&id)) {
+                        self.put(this)?;
+                    } else {
+                        self.raw(&v)?;
+                    }
+                }
+                Print::Wrapper(v) => self.wrapper(v)?,
+                Print::Text(s) => self.put(s)?,
+                Print::Leave => {
+                    self.seen.pop();
+                    self.depth -= 1;
+                }
+                Print::Restore(seen) => self.seen = seen,
+            }
+        }
+        Ok(())
+    }
+
+    /// Appends text; very long text raises `OutOfMemoryError`.
+    fn put(&mut self, s: &str) -> Result<(), Exc> {
+        try_grow_text(self.out, s.len())?;
+        self.out.extend(s.encode_utf16());
+        Ok(())
+    }
+
+    fn put_units(&mut self, s: &[u16]) -> Result<(), Exc> {
+        try_grow_text(self.out, s.len())?;
+        self.out.extend_from_slice(s);
+        Ok(())
+    }
+
+    /// Starts printing a collection or record, as `id`.
+    fn enter(&mut self, id: usize) -> Result<(), Exc> {
+        if self.depth >= MAX_PRINT_DEPTH {
+            return Err(Exc::bare(STACK_OVERFLOW));
+        }
+        self.seen.push(id);
+        self.depth += 1;
+        Ok(())
+    }
+
+    fn raw(&mut self, v: &Value) -> Result<(), Exc> {
+        match v {
+            Value::Null => self.put("null")?,
+            Value::Bool(b) => self.put(if *b { "true" } else { "false" })?,
+            Value::Byte(x) => self.put(&x.to_string())?,
+            Value::Short(x) => self.put(&x.to_string())?,
+            Value::Int(x) => self.put(&x.to_string())?,
+            Value::Long(x) => self.put(&x.to_string())?,
+            Value::Float(x) => self.put(&java_float_to_string(*x))?,
+            Value::Double(x) => self.put(&java_double_to_string(*x))?,
+            Value::Char(c) => self.put_units(&[*c])?,
+            Value::Str(s) => self.put_units(s)?,
+            Value::List(w) => match w.borrow().clone() {
+                None => self.put("null")?,
+                Some(l) => self.sequence(l.to_vec()?, ptr(&l))?,
+            },
+            Value::Map(w) => match w.borrow().clone() {
+                None => self.put("null")?,
+                Some(m) => {
+                    let entries: Vec<(Value, Value)> = m.borrow().iter().cloned().collect();
+                    self.enter(ptr(&m))?;
+                    self.put("{")?;
+                    self.jobs.push(Print::Leave);
+                    self.jobs.push(Print::Text("}"));
+                    for (i, (k, val)) in entries.into_iter().enumerate().rev() {
+                        self.jobs.push(Print::Element(val, "(this Map)"));
+                        self.jobs.push(Print::Text("="));
+                        self.jobs.push(Print::Element(k, "(this Map)"));
+                        if i > 0 {
+                            self.jobs.push(Print::Text(", "));
+                        }
+                    }
+                }
+            },
+            Value::Sb(w) => match w.borrow().as_ref() {
+                None => self.put("null")?,
+                Some(sb) => self.put_units(&sb.borrow())?,
+            },
+            Value::Exc(e) => match e {
+                None => self.put("null")?,
+                Some(e) => self.put(&e.to_java_string())?,
+            },
+            Value::Array(a) => {
+                // Java prints the identity hash code, which no test can compare.
+                let mut name = "[".repeat(a.dims.len().max(1));
+                name.push_str(&array_descriptor(&a.elem));
+                self.put(&format!("{name}@{:x}", (ptr(a) >> 4) & 0x7fff_ffff))?;
+            }
+            Value::Record(r) => self.record(r)?,
+            Value::View(m, keys) => {
+                let items: Vec<Value> = m
+                    .borrow()
+                    .iter()
+                    .map(|(k, v)| if *keys { k.clone() } else { v.clone() })
+                    .collect();
+                self.sequence(items, ptr(m))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `[a, b, c]`, as `AbstractCollection.toString` prints it.
+    fn sequence(&mut self, items: Vec<Value>, id: usize) -> Result<(), Exc> {
+        self.enter(id)?;
+        self.put("[")?;
+        self.jobs.push(Print::Leave);
+        self.jobs.push(Print::Text("]"));
+        for (i, item) in items.into_iter().enumerate().rev() {
+            self.jobs.push(Print::Element(item, "(this Collection)"));
+            if i > 0 {
+                self.jobs.push(Print::Text(", "));
+            }
+        }
+        Ok(())
+    }
+
+    /// The `toString` B4X generates for a `Type`:
+    /// `[IsInitialized=true, Name=abc, Price=1.5]`.
+    fn record(&mut self, r: &Rc<RecordObj>) -> Result<(), Exc> {
+        let Some(rec) = self.program.records.get(r.id.0 as usize) else {
+            self.put("[]")?;
+            return Ok(());
+        };
+        let fields = r.fields.borrow().clone();
+        self.enter(ptr(r))?;
+        self.put("[IsInitialized=")?;
+        self.put(if r.initialized.get() { "true" } else { "false" })?;
+        self.jobs.push(Print::Leave);
+        self.jobs.push(Print::Text("]"));
+        for (f, v) in rec.fields.iter().zip(fields).rev() {
+            self.jobs.push(if is_wrapper_type(&f.ty) {
+                Print::Wrapper(v)
+            } else {
+                Print::Element(v, "(this Collection)")
+            });
+            self.jobs.push(Print::Text("="));
+            self.jobs.push(Print::Text(&f.name));
+            self.jobs.push(Print::Text(", "));
+        }
+        Ok(())
+    }
+
+    fn wrapper(&mut self, v: Value) -> Result<(), Exc> {
+        // The wrapper's type, and its object's simple class name if any.
+        let wrapper = match &v {
+            Value::List(w) => Some(("List", w.borrow().as_ref().map(|l| l.kind.simple_name()))),
+            Value::Map(w) => Some(("Map", w.borrow().is_some().then_some("MyMap"))),
+            Value::Sb(w) => Some((
+                "StringBuilder",
+                w.borrow().is_some().then_some("StringBuilder"),
+            )),
+            Value::Exc(e) => Some(("Exception", e.as_ref().map(|e| e.simple_name()))),
+            _ => None,
+        };
+        match wrapper {
+            Some((short, None)) => {
+                return self.put(&format!("({short}) Not initialized"));
+            }
+            Some((_, Some(simple))) => self.put(&format!("({simple}) "))?,
+            None => {}
+        }
+        let enclosing = std::mem::take(&mut self.seen);
+        self.jobs.push(Print::Restore(enclosing));
+        self.jobs.push(Print::Raw(v));
+        Ok(())
+    }
 }
 
 fn identity(v: &Value) -> Option<usize> {
@@ -713,108 +1045,53 @@ fn identity(v: &Value) -> Option<usize> {
     }
 }
 
-fn element(
-    v: &Value,
-    this: &str,
-    program: &Program,
-    out: &mut Vec<u16>,
-    seen: &mut Seen,
-) -> Result<(), Exc> {
-    if identity(v).is_some_and(|id| seen.contains(&id)) {
-        push(out, this);
-        Ok(())
-    } else {
-        raw(v, program, out, seen)
-    }
-}
-
-fn sequence(
-    items: &[Value],
-    id: usize,
-    this: &str,
-    program: &Program,
-    out: &mut Vec<u16>,
-    seen: &mut Seen,
-) -> Result<(), Exc> {
-    seen.push(id);
-    out.push(b'[' as u16);
-    for (i, item) in items.iter().enumerate() {
-        if i > 0 {
-            push(out, ", ");
-        }
-        element(item, this, program, out, seen)?;
-    }
-    out.push(b']' as u16);
-    seen.pop();
-    Ok(())
-}
-
-/// The `toString` B4X generates for a `Type`:
-/// `[IsInitialized=true, Name=abc, Price=1.5]`.
-fn record_to_string(
-    r: &Rc<RecordObj>,
-    program: &Program,
-    out: &mut Vec<u16>,
-    seen: &mut Seen,
-) -> Result<(), Exc> {
-    let Some(rec) = program.records.get(r.id.0 as usize) else {
-        push(out, "[]");
-        return Ok(());
-    };
-    let fields = r.fields.borrow().clone();
-    seen.push(ptr(r));
-    push(out, "[IsInitialized=");
-    push(out, if r.initialized.get() { "true" } else { "false" });
-    for (f, v) in rec.fields.iter().zip(&fields) {
-        push(out, ", ");
-        push(out, &f.name);
-        out.push(b'=' as u16);
-        if is_wrapper_type(&f.ty) {
-            wrapper_to_string(v, program, out)?;
-        } else {
-            element(v, "(this Collection)", program, out, seen)?;
-        }
-    }
-    out.push(b']' as u16);
-    seen.pop();
-    Ok(())
-}
-
 pub fn is_wrapper_type(ty: &Ty) -> bool {
     matches!(ty, Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception)
 }
 
-/// `AbsObjectWrapper.toString`: what a `List`, `Map`, `StringBuilder` or
-/// `Exception` *variable* prints: `(ArrayList) [1, 2]`, `(MyMap) {a=1}`,
-/// `(List) Not initialized`. The prefix is the inner object's simple class
-/// name (`(UnmodifiableRandomAccessList)` for a `SubList`). A Java `null`
-/// wrapper reference (a field of a record that was never initialised)
-/// prints `null`.
-pub fn wrapper_to_string(v: &Value, program: &Program, out: &mut Vec<u16>) -> Result<(), Exc> {
-    let (short, simple) = match v {
-        Value::List(w) => ("List", w.borrow().as_ref().map(|l| l.kind.simple_name())),
-        Value::Map(w) => ("Map", w.borrow().is_some().then_some("MyMap")),
-        Value::Sb(w) => (
-            "StringBuilder",
-            w.borrow().is_some().then_some("StringBuilder"),
-        ),
-        Value::Exc(e) => ("Exception", e.as_ref().map(|e| e.simple_name())),
-        other => return raw_to_string(other, program, out),
-    };
-    match simple {
-        None => push(out, &format!("({short}) Not initialized")),
-        Some(simple) => {
-            push(out, &format!("({simple}) "));
-            raw_to_string(v, program, out)?;
-        }
+/// The text of a `String` value (`null` for Null), shared.
+pub fn utf16_of(v: &Value) -> Str {
+    match v {
+        Value::Str(s) => s.clone(),
+        _ => Rc::new(to_utf16("null")),
     }
-    Ok(())
 }
 
 /// The Rust text of a `String` value (`null` for Null).
+#[cfg(test)]
 pub fn text_of(v: &Value) -> String {
     match v {
         Value::Str(s) => to_rust(s),
         _ => "null".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removed_map_entries_are_compacted() {
+        let mut m = OrderedMap::default();
+        m.put(Value::str("first"), Value::Int(0)).unwrap();
+        for i in 1..10_000 {
+            m.put(Value::Int(i), Value::Int(i)).unwrap();
+            m.remove(&Value::Int(i - 1));
+            assert!(m.slots() <= 2 * m.len() + 9, "{} slots", m.slots());
+        }
+        let keys: Vec<HKey> = m.iter().map(|(k, _)| HKey::of(k)).collect();
+        assert_eq!(keys, [HKey::of(&Value::str("first")), HKey::Int(9_999)]);
+        assert!(matches!(m.get(&Value::Int(9_999)), Some(Value::Int(9_999))));
+        assert!(matches!(m.entry_at(1), Some((Value::Int(9_999), _))));
+    }
+
+    #[test]
+    fn text_stops_at_java_length_limit() {
+        let mut text = vec![0u16; 4];
+        assert!(try_grow_text(&mut text, MAX_STRING - 3).is_err_and(|e| e.kind == OUT_OF_MEMORY));
+        assert!(try_grow_text(&mut text, usize::MAX).is_err());
+        assert!(try_grow_text(&mut text, 10).is_ok());
+        let mut huge: Vec<Value> = Vec::new();
+        assert!(try_grow(&mut huge, usize::MAX / 2).is_err_and(|e| e.kind == OUT_OF_MEMORY));
     }
 }

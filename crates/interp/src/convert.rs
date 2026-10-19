@@ -14,7 +14,7 @@ use crate::value::*;
 /// Java defaults (see [`java_default`]) with `IsInitialized` false.
 pub fn default_value(ty: &Ty, program: &Program) -> Value {
     match ty {
-        Ty::String => Value::Str(Rc::from(Vec::new())),
+        Ty::String => Value::Str(Rc::new(Vec::new())),
         Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception => fresh_wrapper(ty),
         // The contract says "an empty array of rank 1"; an array type of a
         // higher rank gets an empty array with as many (zero) dimensions,
@@ -514,8 +514,8 @@ mod tests {
             "[1, 2.0]"
         );
         let mut m = OrderedMap::default();
-        m.put(Value::str("a"), Value::Int(1));
-        m.put(Value::str("b"), Value::Int(2));
+        m.put(Value::str("a"), Value::Int(1)).unwrap();
+        m.put(Value::str("b"), Value::Int(2)).unwrap();
         let map = Value::new_map(m);
         assert_eq!(
             text_of(&to_string_from(&map, &Ty::Map, &p).unwrap()),
