@@ -4,7 +4,7 @@ The first deliverable has two parts:
 
 1. **The `ferro` executable**, built for the host (`cargo build --release -p ferro-cli`).
    It checks and runs Level 0 programs with the reference interpreter.
-2. **Standalone binaries**: `ferro build` turns a Level 0 program into a single
+2. **Standalone binaries**: `ferro bundle` turns a Level 0 program into a single
    native executable for the same OS and architecture as the `ferro` that built it.
    The result runs without FerroBASIC installed and without a JVM.
 
@@ -42,30 +42,73 @@ Source text:
 ## Commands
 
 ```text
-ferro check <input>                  parse and type-check, print diagnostics
-ferro run   <input> [-- <args>...]   check, then interpret; args go to AppStart
-ferro build <input> [-o <output>]    check, then write a standalone executable
+ferro check  <input>                  parse and type-check, print diagnostics
+ferro run    <input> [-- <args>...]   check, then interpret; args go to AppStart
+ferro bundle <input> [-o <output>]    check, then write a standalone executable
 ferro version | help
 ```
 
-- `run` and `build` refuse to continue if `check` reports any error.
-- `build`:
+- `run` and `bundle` refuse to continue if `check` reports any error.
+- `bundle` writes the interpreter plus the program (see "Standalone binary
+  format"); it does not compile:
   - the default output is the input's file stem in the current directory, with
     `.exe` on Windows: `prices_map.bas` → `./prices_map`;
   - `-o` overrides it;
   - an existing output file is replaced;
   - the output gets the executable permission bits on Unix.
-- `repl`, `test` and `fmt` stay stubs. `ferro-difftest` drives the
-  conformance tests.
+- In 0.0.1 this command was called `build`; `build` now has the meaning below.
+- `ferro-difftest` drives the conformance tests.
+
+### Planned commands
+
+These names are reserved. Until a command is implemented it exits with code 2
+and a message saying what is missing and when it arrives, and it never does
+something else instead (`ferro build` on a module points to `ferro bundle`).
+
+| Command | Meaning | Arrives with |
+| --- | --- | --- |
+| `ferro compile <input> [--target <t>] [--emit <kind>] [-o <output>]` | compile one module or project for this machine (no `--target`) or for another target | JVM backend (M3), native and WebAssembly (M4), microcontrollers (M5) |
+| `ferro targets` | list the targets and what each needs installed | `compile` |
+| `ferro build [<project>]` | build a project from its project file: compile for the project's default target, then package the result where the target needs it | JVM backend (M3) |
+| `ferro repl`, `ferro test`, `ferro fmt` | interactive REPL, conformance runner, formatter | M1 and later |
+
+Decisions behind them:
+
+- **One verb for every target.** Generating source (Java, JavaScript) is
+  compiling too, so there is no separate `transpile`: the target says where
+  the program runs, `--emit` chooses the form of the output when a target has
+  more than one (`exe`, `obj`, `asm`, `llvm-ir`, `class`, `java`, …).
+- **Targets** have short names, and full LLVM target triples are accepted
+  too (`x86_64-unknown-linux-gnu`), so new architectures are new names, not
+  new commands. Planned, by milestone:
+  - M3: `jvm` (bytecode by default; Java source with `--emit java`) and
+    `android`;
+  - M4: native desktop (`linux-x64`, `linux-arm64`, `windows-x64`,
+    `windows-arm64`, `macos-x64`, `macos-arm64`) and `wasm`;
+  - M5: microcontrollers, `pico` (Raspberry Pi Pico) first, then Arduino
+    boards and others;
+  - later: `ios-arm64`, `js`. *(open: names, and whether `js` is its own
+    backend or goes through `wasm`.)*
+- **`build` works on projects.** With no argument it uses the project file in
+  the current directory. The default target follows the project type:
+  `.b4j` → JVM, `.b4a` → Android, `.b4i` → iOS, `.b4r` → microcontroller;
+  `--target` overrides it. `ferro run` will accept a project too.
+- **Packaging** (an `.apk` or `.aab`, an `.ipa`, a macOS `.app`, installers)
+  is part of `build`. The word is kept free for it, which is why the
+  interpreter bundle is `bundle` and not `package`.
+- **A new text project format** (a `ferro.toml`, with dependencies) may come
+  later, as an addition only: a B4X project must always build unchanged from
+  its own project files, never needing the new format. *(open: format and
+  timing.)*
 
 ## Exit codes
 
-| Code | `ferro check` / `run` / `build` | Standalone binary |
+| Code | `ferro check` / `run` / `bundle` | Standalone binary |
 | --- | --- | --- |
 | 0 | success / program ended normally | program ended normally |
 | *n* | `run`: the program called `ExitApplication2(n)` | the program called `ExitApplication2(n)` |
 | 1 | `run`: uncaught runtime error | uncaught runtime error |
-| 2 | usage error, unreadable input, cannot write output | corrupt embedded payload |
+| 2 | usage error, a planned command that is not implemented yet, unreadable input, cannot write output | corrupt embedded payload |
 | 3 | the program has compile errors | — |
 
 The B4J exit code for an uncaught error is *(open)*; 1 is provisional.
@@ -129,7 +172,7 @@ it arrives.
 
 ## Standalone binary format
 
-`ferro build` embeds a **package** in a copy of the running `ferro`
+`ferro bundle` embeds a **package** in a copy of the running `ferro`
 executable. The package is a payload followed by a trailer:
 
 ```text
@@ -171,10 +214,10 @@ is embedded with `libsui` instead (see below).
     (`__SUI,__ferro`) before `__LINKEDIT`, and `libsui` signs the result ad
     hoc itself.
   - **Intel**: `libsui` appends the package after its own marker and extends
-    `__LINKEDIT` to cover it. `ferro build` then signs ad hoc with
+    `__LINKEDIT` to cover it. `ferro bundle` then signs ad hoc with
     `codesign --force --sign -`, and reports an error if that fails.
     `libsui` stages a copy at `$TMPDIR/sui_tmp_<pid>` with a call that
-    follows symlinks, so `ferro build` creates that path first, exclusively;
+    follows symlinks, so `ferro bundle` creates that path first, exclusively;
     if it already exists, the build stops with an error.
   - At start-up `libsui` finds the package again: through `getsectdata` on
     Apple Silicon, by scanning the file for its marker on Intel.
@@ -208,7 +251,7 @@ The first implementation is done when, on Linux x86_64 and in CI:
    error named in `uncaught_error` when there is one
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
    Tests with neither file, such as `precedence_open`, are only checked.
-5. For every test in point 4, `ferro build` produces a binary whose stdout and
+5. For every test in point 4, `ferro bundle` produces a binary whose stdout and
    exit code are identical to `ferro run`'s. The binary must also keep working
    after the build tree and `ferro` itself are removed.
 6. `cargo fmt`, `cargo clippy -D warnings` and `cargo test` pass. There is no

@@ -15,7 +15,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - Language: Rust (stable, edition 2024). Workspace in `crates/`, one crate per
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
 - Current milestone: **M0 → M1** — lexer, parser, lossless CST, then the
-  Level 0 interpreter, `ferro run` and standalone `ferro build` (see
+  Level 0 interpreter, `ferro run` and standalone `ferro bundle` (see
   `docs/spec/cli.md`). The recorder is deferred. See `docs/roadmap.md`.
 
 ## Read before working
@@ -75,7 +75,7 @@ cargo test --workspace
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p ferro-cli -- run tests/conformance/level0/<file>.bas
-cargo run -p ferro-cli -- build tests/conformance/level0/<file>.bas -o /tmp/prog
+cargo run -p ferro-cli -- bundle tests/conformance/level0/<file>.bas -o /tmp/prog
 cargo run -p ferro-difftest -- --target interp   # compare against recordings (once implemented)
 ```
 
