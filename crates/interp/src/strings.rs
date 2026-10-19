@@ -204,6 +204,9 @@ pub fn change_case(s: &[u16], upper: bool, limit: usize) -> Option<Vec<u16>> {
         };
         match c {
             Err(e) => {
+                if out.len() >= limit {
+                    return None;
+                }
                 out.try_reserve(1).ok()?;
                 out.push(e.unpaired_surrogate());
             }
@@ -250,14 +253,20 @@ impl SigmaContext {
     }
 
     fn properties(&mut self, c: char) -> (bool, bool) {
-        *self.known.entry(c).or_insert_with(|| {
-            let final_after = |text: String| text.to_lowercase().ends_with('ς');
-            // `cΣ` ends in `ς` when `c` is cased and not case-ignorable;
-            // `AcΣ` does when `c` is either (it is skipped, reaching `A`).
-            let cased_not_ignorable = final_after(format!("{c}Σ"));
-            let either = final_after(format!("A{c}Σ"));
-            (either && !cased_not_ignorable, cased_not_ignorable)
-        })
+        if let Some(&known) = self.known.get(&c) {
+            return known;
+        }
+        let final_after = |text: String| text.to_lowercase().ends_with('ς');
+        // `cΣ` ends in `ς` when `c` is cased and not case-ignorable; `AcΣ`
+        // does when `c` is either (it is skipped, reaching `A`).
+        let cased_not_ignorable = final_after(format!("{c}Σ"));
+        let either = final_after(format!("A{c}Σ"));
+        let properties = (either && !cased_not_ignorable, cased_not_ignorable);
+        // The cache is only an optimisation: without room, skip it.
+        if self.known.try_reserve(1).is_ok() {
+            self.known.insert(c, properties);
+        }
+        properties
     }
 }
 
@@ -371,6 +380,11 @@ mod tests {
         );
         assert_eq!(change_case(&u("\u{390}"), true, 2), None);
         assert_eq!(change_case(&u("ß"), true, 1), None);
+        assert_eq!(change_case(&[0xDF, 0xD800], true, 2), None);
+        assert_eq!(
+            change_case(&[0xDF, 0xD800], true, 3),
+            Some(vec![0x53, 0x53, 0xD800])
+        );
     }
 
     #[test]
