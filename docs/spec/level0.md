@@ -189,8 +189,12 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - **`If`**: single line `If c Then s [Else s]`, or the block form with `Else If`
   (two words) and `Else`.
 - **`Select expr`**: each `Case` holds a list of expressions, compared in order.
-  - Numbers match by numeric value (as Double); other values match with `equals`
-    on the boxed values, so String "1" does not match `Case 1`. With a Char
+  - Numbers match by numeric value (as Double), also when an `Object` holds
+    the number; other values match with `equals` on the boxed values, so
+    String "1" does not match `Case 1`. If an `Object` scrutinee holds a
+    number, a case that is not a number raises `ClassCastException` (`Null`:
+    `NullPointerException`), and a `Null` scrutinee raises
+    `NullPointerException`. With a Char
     scrutinee the cases are converted to Char (`Select Txt.CharAt(i)` with
     `Case "A"`, from the booklet).
   - The first matching `Case` runs, then control leaves the `Select`; there is no
@@ -238,6 +242,9 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - `NumberFormat(x, minInt, maxFrac)`:
   - US locale, with three-digit grouping by `,`;
   - rounding is half-even, on the decimal value of the double;
+  - the digits are those of the JDK's older double conversion, which differs
+    from `Double.toString` on integers from 2^53 to 2^63 and on powers of two
+    ([research](../research/level0-semantics.md#java-exact-numbers-source-measured));
   - for example `NumberFormat(12345.6789, 0, 2)` is `12,345.68`.
 - String members are listed in [level0-builtins.md](level0-builtins.md).
   Indices are zero-based UTF-16 positions.

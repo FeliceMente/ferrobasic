@@ -92,6 +92,14 @@ needs a recorded test):
       space`; the JDK words an over-long String differently.
 - [ ] How a record prints (`Log(p)`), and `GetType` of a record.
 - [ ] How a variable of type `Exception` and an array print.
+- [ ] `Sin`, `Cos`, `Tan`, `Power` and `Logarithm` call `Math` methods that
+      HotSpot replaces with CPU intrinsics, whose last bit may depend on the
+      JVM and CPU; FerroBASIC uses the platform's maths library. Needs recordings from the reference machine. (`ASin`, `ACos`,
+      `ATan`, `ATan2` are settled: fdlibm, bit for bit.)
+- [ ] Whether all `Case` values are evaluated before matching, as they would
+      be if the compiler passes them to `BA.switchObjectToInt` as arguments;
+      FerroBASIC evaluates them in order until one matches. It only matters
+      for cases with side effects.
 - [ ] Exact texts of JDK-generated messages (`ClassCastException`,
       `IndexOutOfBoundsException`, …) seen through `LastException.Message`.
 - [x] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class),

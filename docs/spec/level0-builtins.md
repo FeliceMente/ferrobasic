@@ -27,7 +27,7 @@ A member not listed here gets a precise diagnostic. For example:
 | `cPI`, `cE` | Java `Math.PI`, `Math.E` |
 | `Not(Value As Boolean) As Boolean` | logical not |
 | `IIf(Condition, TrueValue, FalseValue)` | evaluates only the chosen branch. The result type is `Object` unless `.As(T)` is used *(open)*. |
-| `Abs`, `Sqrt`, `Power`, `Floor`, `Ceil`, `Sin`, `Cos`, `Tan`, `ASin`, `ACos`, `ATan`, `ATan2`, `SinD`, `CosD`, `TanD`, `ASinD`, `ACosD`, `ATanD`, `ATan2D`, `Logarithm(Number, Base)`, `Max`, `Min` | `Double` in and out, Java `Math` semantics. The `D` variants use degrees. |
+| `Abs`, `Sqrt`, `Power`, `Floor`, `Ceil`, `Sin`, `Cos`, `Tan`, `ASin`, `ACos`, `ATan`, `ATan2`, `SinD`, `CosD`, `TanD`, `ASinD`, `ACosD`, `ATanD`, `ATan2D`, `Logarithm(Number, Base)`, `Max`, `Min` | `Double` in and out, Java `Math` semantics; `ASin`, `ACos`, `ATan` and `ATan2` match Java bit for bit (fdlibm). The `D` variants use degrees: `ASinD(x)` is `ASin(x) / π * 180`, in that order. |
 | `Round(Number As Double) As Long` | Java `Math.round`: halves round up (`Round(-2.5)` is `-2`) |
 | `Round2(Number As Double, DecimalPlaces As Int) As Double` | `Math.round(x * 10^d) / 10^d` |
 | `NumberFormat(Number, MinimumIntegers, MaximumFractions)` | see [level0.md](level0.md#strings) |
