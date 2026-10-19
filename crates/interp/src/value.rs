@@ -297,8 +297,8 @@ pub fn try_grow_text(v: &mut Vec<u16>, extra: usize) -> Result<(), Exc> {
 }
 
 /// Checks that `bytes` more could be allocated now, before work whose
-/// allocations cannot fail gracefully (many small objects, or Rust's own
-/// string functions). A check, not a guarantee.
+/// allocations cannot fail gracefully (many small objects). A check, not a
+/// guarantee.
 pub fn check_room(bytes: usize) -> Result<(), Exc> {
     Vec::<u8>::new()
         .try_reserve_exact(bytes)

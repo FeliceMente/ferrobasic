@@ -179,7 +179,105 @@ pub fn trim(s: &[u16]) -> &[u16] {
     &s[start..end]
 }
 
-/// Maps the well-formed runs of `s` with `f`, keeping unpaired surrogates.
+/// `String.toUpperCase()` / `String.toLowerCase()` with the root-locale
+/// (Unicode default) mapping, exactly as Rust's `str::to_uppercase` /
+/// `str::to_lowercase` map each run between unpaired surrogates (which are
+/// kept). The text is mapped one character at a time into a buffer that
+/// grows fallibly: `None` if memory runs out, or if the result (which can be
+/// longer, `ß` → `SS`) would pass `limit` code units.
+pub fn change_case(s: &[u16], upper: bool, limit: usize) -> Option<Vec<u16>> {
+    let mut out = Vec::new();
+    out.try_reserve(s.len()).ok()?;
+    let mut context = SigmaContext::default();
+    let mut i = 0;
+    for c in char::decode_utf16(s.iter().copied()) {
+        let width = c.as_ref().map_or(1, |c| c.len_utf16());
+        let mut units = [0u16; 2];
+        let mut push = |out: &mut Vec<u16>, c: char| -> Option<()> {
+            let c = c.encode_utf16(&mut units);
+            if out.len() + c.len() > limit {
+                return None;
+            }
+            out.try_reserve(c.len()).ok()?;
+            out.extend_from_slice(c);
+            Some(())
+        };
+        match c {
+            Err(e) => {
+                out.try_reserve(1).ok()?;
+                out.push(e.unpaired_surrogate());
+            }
+            Ok(c) if upper => c.to_uppercase().try_for_each(|c| push(&mut out, c))?,
+            // `str::to_lowercase`'s one context rule: a capital sigma that
+            // ends a word becomes the final form.
+            Ok('Σ') => push(&mut out, context.lower_sigma(s, i))?,
+            Ok(c) => c.to_lowercase().try_for_each(|c| push(&mut out, c))?,
+        }
+        i += width;
+    }
+    Some(out)
+}
+
+/// Decides between `σ` and `ς` as `str::to_lowercase` does: final when the
+/// nearest character before that is not case-ignorable is cased, and the
+/// nearest one after is not. Rust does not expose those two Unicode
+/// properties, so they are read off `str::to_lowercase` itself (and cached).
+#[derive(Default)]
+struct SigmaContext {
+    /// Whether a character is case-ignorable, and whether it is cased.
+    known: std::collections::HashMap<char, (bool, bool)>,
+}
+
+impl SigmaContext {
+    fn lower_sigma(&mut self, s: &[u16], at: usize) -> char {
+        let before = chars_before(s, at);
+        let after = char::decode_utf16(s[at + 1..].iter().copied()).map_while(Result::ok);
+        if self.cased_beyond_ignorable(before) && !self.cased_beyond_ignorable(after) {
+            'ς'
+        } else {
+            'σ'
+        }
+    }
+
+    /// Whether the first character that is not case-ignorable is cased.
+    fn cased_beyond_ignorable(&mut self, mut chars: impl Iterator<Item = char>) -> bool {
+        chars
+            .find_map(|c| {
+                let (ignorable, cased) = self.properties(c);
+                (!ignorable).then_some(cased)
+            })
+            .unwrap_or(false)
+    }
+
+    fn properties(&mut self, c: char) -> (bool, bool) {
+        *self.known.entry(c).or_insert_with(|| {
+            let final_after = |text: String| text.to_lowercase().ends_with('ς');
+            // `cΣ` ends in `ς` when `c` is cased and not case-ignorable;
+            // `AcΣ` does when `c` is either (it is skipped, reaching `A`).
+            let cased_not_ignorable = final_after(format!("{c}Σ"));
+            let either = final_after(format!("A{c}Σ"));
+            (either && !cased_not_ignorable, cased_not_ignorable)
+        })
+    }
+}
+
+/// The characters of `s` before `at`, backwards, up to an unpaired
+/// surrogate (where the run ends).
+fn chars_before(s: &[u16], mut at: usize) -> impl Iterator<Item = char> + '_ {
+    std::iter::from_fn(move || {
+        let unit = *s.get(at.checked_sub(1)?)?;
+        if (0xDC00..0xE000).contains(&unit) && at >= 2 && (0xD800..0xDC00).contains(&s[at - 2]) {
+            at -= 2;
+            char::decode_utf16([s[at], unit]).next()?.ok()
+        } else {
+            at -= 1;
+            char::from_u32(unit as u32)
+        }
+    })
+}
+
+/// The previous implementation, kept as the reference for the tests.
+#[cfg(test)]
 fn map_text(s: &[u16], f: impl Fn(&str) -> String) -> Vec<u16> {
     let mut out = Vec::with_capacity(s.len());
     let mut run = String::new();
@@ -197,14 +295,14 @@ fn map_text(s: &[u16], f: impl Fn(&str) -> String) -> Vec<u16> {
     out
 }
 
-/// `String.toUpperCase()` with the root-locale (Unicode default) mapping.
+#[cfg(test)]
 pub fn to_upper(s: &[u16]) -> Vec<u16> {
-    map_text(s, str::to_uppercase)
+    change_case(s, true, usize::MAX).unwrap()
 }
 
-/// `String.toLowerCase()` with the root-locale (Unicode default) mapping.
+#[cfg(test)]
 pub fn to_lower(s: &[u16]) -> Vec<u16> {
-    map_text(s, str::to_lowercase)
+    change_case(s, false, usize::MAX).unwrap()
 }
 
 /// `String.getBytes("UTF-8")`, byte by byte: unpaired surrogates become
@@ -266,6 +364,13 @@ mod tests {
         assert_eq!(to_lower(&u("ΟΔΟΣ")), u("\u{3bf}\u{3b4}\u{3bf}\u{3c2}"));
         assert_eq!(to_rust(&[0x61, 0xD800, 0x62]), "a?b");
         assert_eq!(to_upper(&[0x61, 0xD800]), vec![0x41, 0xD800]);
+        // Expanding mappings count against the limit.
+        assert_eq!(
+            change_case(&u("\u{390}"), true, 3).map(|v| v.len()),
+            Some(3)
+        );
+        assert_eq!(change_case(&u("\u{390}"), true, 2), None);
+        assert_eq!(change_case(&u("ß"), true, 1), None);
     }
 
     #[test]
@@ -282,5 +387,57 @@ mod tests {
         assert_eq!(upper(0x1FB3), 0x1FBC);
         assert_eq!(upper(0x1F80), 0x1F88);
         assert!(equals_ignore_case(&u("\u{1fb3}"), &u("\u{1fbc}")));
+    }
+
+    /// Case mapping one character at a time gives exactly what Rust's `str`
+    /// functions give on whole runs, final sigma included.
+    #[test]
+    fn change_case_matches_whole_run_mapping() {
+        let pool: Vec<Vec<u16>> = [
+            "a",
+            "Z",
+            " ",
+            ".",
+            "'",
+            "1",
+            "\u{3a3}",
+            "\u{3c3}",
+            "\u{391}",
+            "\u{390}",
+            "\u{301}",
+            "\u{345}",
+            "\u{2b0}",
+            "\u{ad}",
+            "\u{df}",
+            "\u{130}",
+            "\u{1f600}",
+        ]
+        .iter()
+        .map(|t| u(t))
+        .chain([vec![0xD800], vec![0xDC00]])
+        .collect();
+        let mut seed: u64 = 42;
+        for _ in 0..20_000 {
+            let mut text = Vec::new();
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            for _ in 0..(seed >> 60) {
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                text.extend(&pool[(seed >> 33) as usize % pool.len()]);
+            }
+            assert_eq!(
+                to_lower(&text),
+                map_text(&text, str::to_lowercase),
+                "{text:x?}"
+            );
+            assert_eq!(
+                to_upper(&text),
+                map_text(&text, str::to_uppercase),
+                "{text:x?}"
+            );
+        }
     }
 }
