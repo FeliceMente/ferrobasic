@@ -21,6 +21,23 @@ fn ferro(args: &[&str]) -> Output {
     Command::new(FERRO).args(args).output().unwrap()
 }
 
+/// Runs an executable that was just written. Linux refuses to run a file
+/// that some process still has open for writing (`ETXTBSY`). Tests run on
+/// several threads, and a child process another test is starting can hold a
+/// copy of this test's write descriptor for a moment, between its `fork` and
+/// its `exec`. So retry briefly instead of failing at random.
+fn run_binary(command: &mut Command) -> Output {
+    for _ in 0..200 {
+        match command.output() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            result => return result.unwrap(),
+        }
+    }
+    panic!("{command:?}: still \"text file busy\" after 2 s");
+}
+
 fn conformance_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/conformance/level0")
 }
@@ -71,10 +88,7 @@ fn standalone_binaries_behave_like_ferro_run() {
         let dir = scratch(&name);
         let binary = build_and_move(&file, &dir);
         let run = ferro(&["run", file.to_str().unwrap()]);
-        let standalone = Command::new(&binary)
-            .current_dir(dir.join("elsewhere"))
-            .output()
-            .unwrap();
+        let standalone = run_binary(Command::new(&binary).current_dir(dir.join("elsewhere")));
         assert_eq!(
             String::from_utf8_lossy(&standalone.stdout),
             expected,
@@ -110,10 +124,7 @@ fn arguments_go_to_app_start() {
     .unwrap();
     let binary = build_and_move(&source, &dir);
     // Arguments that look like ferro's own commands and flags are the program's.
-    let out = Command::new(&binary)
-        .args(["run", "--help", "é"])
-        .output()
-        .unwrap();
+    let out = run_binary(Command::new(&binary).args(["run", "--help", "é"]));
     assert_eq!(String::from_utf8_lossy(&out.stdout), "3\nrun\n--help\né\n");
     assert!(out.status.success());
     // Same through `ferro run`.
@@ -132,7 +143,7 @@ fn exit_codes_and_corrupt_binaries() {
     )
     .unwrap();
     let binary = build_and_move(&source, &dir);
-    let out = Command::new(&binary).output().unwrap();
+    let out = run_binary(&mut Command::new(&binary));
     assert_eq!(out.stdout, b"bye\n");
     assert_eq!(out.status.code(), Some(7));
 
@@ -146,7 +157,7 @@ fn exit_codes_and_corrupt_binaries() {
         let trailer = bytes.len() - 24;
         bytes[trailer..trailer + 8].copy_from_slice(&u64::MAX.to_le_bytes());
         fs::write(&binary, &bytes).unwrap();
-        let out = Command::new(&binary).output().unwrap();
+        let out = run_binary(&mut Command::new(&binary));
         assert_eq!(out.status.code(), Some(2));
         assert!(String::from_utf8_lossy(&out.stderr).contains("corrupt"));
     }
@@ -200,7 +211,7 @@ fn default_output_is_the_file_stem() {
         .unwrap();
     assert!(out.status.success());
     let binary = dir.join(format!("prices_map{}", std::env::consts::EXE_SUFFIX));
-    let run = Command::new(&binary).output().unwrap();
+    let run = run_binary(&mut Command::new(&binary));
     assert_eq!(run.stdout, b"Big breakfast\nTotal: 2.7\n");
     fs::remove_dir_all(&dir).unwrap();
 }
