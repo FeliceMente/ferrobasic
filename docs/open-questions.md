@@ -82,6 +82,14 @@ needs a recorded test):
 - [ ] Call depth before `java.lang.StackOverflowError` (FerroBASIC: 10,000
       frames). The error is not caught by `Try`, as Java `Error`s escape the
       generated `catch (Exception e)`.
+- [ ] How deeply nested Lists, Maps and records can be compared or printed
+      before Java's recursive `equals` / `toString` overflow (FerroBASIC: 1000
+      levels), and whether a record whose List holds the record overflows when
+      printed (FerroBASIC: it does, as the List prints through its wrapper).
+      Fixtures: `level0/deep_printing`, `deep_equals`, `self_printing_record`.
+- [ ] When B4J raises `java.lang.OutOfMemoryError` depends on the JVM's heap
+      size, which a recording must state. FerroBASIC always says `Java heap
+      space`; the JDK words an over-long String differently.
 - [ ] How a record prints (`Log(p)`), and `GetType` of a record.
 - [ ] How a variable of type `Exception` and an array print.
 - [ ] Exact texts of JDK-generated messages (`ClassCastException`,

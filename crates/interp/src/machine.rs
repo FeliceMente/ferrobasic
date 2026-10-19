@@ -21,8 +21,29 @@ use crate::value::*;
 /// 1 MB thread stack holds roughly this many small B4J frames.
 pub const MAX_DEPTH: usize = 10_000;
 
-/// Largest array a program may allocate, in elements.
+/// Largest array a program may allocate, in elements. Smaller ones can
+/// still fail to allocate: both raise `OutOfMemoryError`.
 const MAX_ARRAY: usize = 1 << 28;
+
+/// Roughly how many bytes a default element allocates for itself: shared
+/// values (numbers, Null, Strings) count nothing.
+fn own_heap_size(v: &Value) -> usize {
+    // An `Rc` adds two counters; the allocator adds its own overhead.
+    let rc = 2 * std::mem::size_of::<usize>() + 16;
+    match v {
+        Value::List(_) | Value::Map(_) | Value::Sb(_) => {
+            rc + std::mem::size_of::<RefCell<Option<Rc<()>>>>()
+        }
+        Value::Record(r) => {
+            rc + std::mem::size_of::<RecordObj>()
+                + r.fields.borrow().len() * std::mem::size_of::<Value>()
+        }
+        Value::Array(_) => {
+            2 * rc + std::mem::size_of::<ArrayObj>() + std::mem::size_of::<RefCell<Vec<Value>>>()
+        }
+        _ => 0,
+    }
+}
 
 /// Why execution stopped early.
 pub enum Stop {
@@ -64,27 +85,46 @@ struct Frame {
     ret_to: Option<LocalId>,
 }
 
-/// Buffered stdout (flushed when large, before writing to stderr and at the
-/// end of the run) and unbuffered stderr.
+/// Buffered stdout (flushed when large, before writing to stderr, at the
+/// end of the run and if the run unwinds) and unbuffered stderr.
 pub struct Output<'w> {
     stdout: &'w mut dyn Write,
     stderr: &'w mut dyn Write,
     buf: Vec<u8>,
 }
 
+/// Output is written in pieces of about this many bytes.
+const CHUNK: usize = 1 << 16;
+
 impl Output<'_> {
-    pub fn log(&mut self, text: &str) {
-        self.buf.extend_from_slice(text.as_bytes());
-        self.buf.push(b'\n');
-        if self.buf.len() >= 1 << 16 {
+    /// Writes a line, as UTF-8 (an unpaired surrogate becomes `?`, as in
+    /// [`to_rust`]), encoding it piece by piece: a huge String needs no
+    /// second copy.
+    pub fn log(&mut self, text: &[u16]) {
+        let mut wrote = false;
+        encode_line(text, &mut self.buf, |buf| {
+            if buf.len() >= CHUNK {
+                let _ = self.stdout.write_all(buf);
+                buf.clear();
+                wrote = true;
+            }
+        });
+        // A long line is written whole, its line feed included.
+        if wrote || self.buf.len() >= CHUNK {
             self.flush();
         }
     }
 
-    pub fn log_error(&mut self, text: &str) {
+    pub fn log_error(&mut self, text: &[u16]) {
         self.flush();
-        let _ = self.stderr.write_all(text.as_bytes());
-        let _ = self.stderr.write_all(b"\n");
+        let mut buf = Vec::new();
+        encode_line(text, &mut buf, |buf| {
+            if buf.len() >= CHUNK {
+                let _ = self.stderr.write_all(buf);
+                buf.clear();
+            }
+        });
+        let _ = self.stderr.write_all(&buf);
         let _ = self.stderr.flush();
     }
 
@@ -93,6 +133,23 @@ impl Output<'_> {
         let _ = self.stdout.write_all(&self.buf);
         let _ = self.stdout.flush();
         self.buf.clear();
+    }
+}
+
+/// Appends `text` and a line feed to `buf` as UTF-8, calling `drain` as
+/// it grows.
+fn encode_line(text: &[u16], buf: &mut Vec<u8>, mut drain: impl FnMut(&mut Vec<u8>)) {
+    for c in char::decode_utf16(text.iter().copied()) {
+        let mut utf8 = [0; 4];
+        buf.extend_from_slice(c.unwrap_or('?').encode_utf8(&mut utf8).as_bytes());
+        drain(buf);
+    }
+    buf.push(b'\n');
+}
+
+impl Drop for Output<'_> {
+    fn drop(&mut self) {
+        self.flush();
     }
 }
 
@@ -272,7 +329,7 @@ impl<'p, 'w> Machine<'p, 'w> {
             Constant::String(s) => Value::Str(
                 self.strings
                     .entry(s.as_ptr() as usize)
-                    .or_insert_with(|| s.encode_utf16().collect::<Vec<_>>().into())
+                    .or_insert_with(|| Rc::new(s.encode_utf16().collect()))
                     .clone(),
             ),
         }
@@ -449,16 +506,24 @@ impl<'p, 'w> Machine<'p, 'w> {
                 arith(*op, ty, &l, &r)?
             }
             Rvalue::Concat(parts) => {
-                let mut out = Vec::new();
+                let mut pieces = Vec::with_capacity(parts.len());
                 for p in parts {
                     match self.operand(locals, p) {
-                        Value::Str(s) => out.extend_from_slice(&s),
+                        Value::Str(s) => pieces.push(s),
                         other => {
                             if let Value::Str(s) = to_string_from(&other, &Ty::Object, program)? {
-                                out.extend_from_slice(&s);
+                                pieces.push(s);
                             }
                         }
                     }
+                }
+                let len = pieces
+                    .iter()
+                    .fold(0, |n: usize, s| n.saturating_add(s.len()));
+                let mut out = Vec::new();
+                try_grow_text(&mut out, len)?;
+                for s in pieces {
+                    out.extend_from_slice(&s);
                 }
                 Value::from_utf16(out)
             }
@@ -515,13 +580,29 @@ impl<'p, 'w> Machine<'p, 'w> {
                     sizes.push(n as usize);
                 }
                 if total > MAX_ARRAY {
-                    return Err(Exc::new(OUT_OF_MEMORY, "Java heap space").into());
+                    return Err(out_of_memory().into());
                 }
                 if sizes.is_empty() {
                     sizes.push(0);
                     total = 0;
                 }
-                let items = (0..total).map(|_| default_value(elem, program)).collect();
+                let mut items = Vec::new();
+                try_grow(&mut items, total)?;
+                let first = default_value(elem, program);
+                match own_heap_size(&first) {
+                    // A number, Null or the (immutable) empty String: every
+                    // element shares it.
+                    0 => items.resize(total, first),
+                    // A wrapper, record or array per element. Their small
+                    // allocations cannot fail gracefully, so check first that
+                    // they fit.
+                    size if total > 0 => {
+                        check_room(total.saturating_mul(size))?;
+                        items.push(first);
+                        items.extend((1..total).map(|_| default_value(elem, program)));
+                    }
+                    _ => {}
+                }
                 Value::Array(Rc::new(ArrayObj {
                     elem: elem.clone(),
                     dims: sizes,
@@ -545,7 +626,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                 for (k, v) in pairs {
                     let k = self.operand(locals, k);
                     let v = self.operand(locals, v);
-                    map.put(k, v);
+                    map.put(k, v)?;
                 }
                 Value::new_map(map)
             }

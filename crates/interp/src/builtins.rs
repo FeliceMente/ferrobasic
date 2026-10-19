@@ -279,13 +279,11 @@ impl Machine<'_, '_> {
         let num = |x: f64| Ok(Value::Double(x));
         match b {
             Log => {
-                let s = text_of(a(0)?);
-                self.out.log(&s);
+                self.out.log(&utf16_of(a(0)?));
                 Ok(Value::Null)
             }
             LogError => {
-                let s = text_of(a(0)?);
-                self.out.log_error(&s);
+                self.out.log_error(&utf16_of(a(0)?));
                 Ok(Value::Null)
             }
             // Release mode is the reference: LogDebug prints nothing.
@@ -444,7 +442,7 @@ impl Machine<'_, '_> {
                     format!("begin {begin}, end {end}, length {len}"),
                 ))
             } else {
-                Ok(text(s[begin as usize..end as usize].to_vec()))
+                Ok(text(try_copy_text(&s[begin as usize..end as usize])?))
             }
         };
         Ok(match b {
@@ -468,19 +466,29 @@ impl Machine<'_, '_> {
             StrLastIndexOf => Value::Int(strings::last_index_of(s, sa(0)?, len as i32)),
             StrLastIndexOf2 => Value::Int(strings::last_index_of(s, sa(0)?, n(1)?)),
             StrLength => Value::Int(len as i32),
-            StrReplace => text(strings::replace(s, sa(0)?, sa(1)?)),
+            StrReplace => {
+                let (target, with) = (sa(0)?, sa(1)?);
+                let mut out = Vec::new();
+                try_grow_text(&mut out, strings::replaced_len(s, target, with))?;
+                strings::replace_into(&mut out, s, target, with);
+                text(out)
+            }
             StrSubString => bounds(n(0)?, len as i32)?,
             StrSubString2 => bounds(n(0)?, n(1)?)?,
-            StrToLowerCase => text(strings::to_lower(s)),
-            StrToUpperCase => text(strings::to_upper(s)),
-            StrTrim => text(strings::trim(s).to_vec()),
+            StrToLowerCase | StrToUpperCase => text(
+                strings::change_case(s, b == StrToUpperCase, MAX_STRING)
+                    .ok_or_else(out_of_memory)?,
+            ),
+            StrTrim => text(try_copy_text(strings::trim(s))?),
             StrGetBytes => {
                 let charset = to_rust(sa(0)?);
-                let bytes: Vec<u8> = match charset.to_ascii_uppercase().as_str() {
-                    "UTF8" | "UTF-8" => strings::utf8_bytes(s),
-                    _ => return Err(Exc::new(UNSUPPORTED_ENCODING, charset)),
-                };
-                let items: Vec<Value> = bytes.into_iter().map(|b| Value::Byte(b as i8)).collect();
+                if !matches!(charset.to_ascii_uppercase().as_str(), "UTF8" | "UTF-8") {
+                    return Err(Exc::new(UNSUPPORTED_ENCODING, charset));
+                }
+                // Encoded twice, to reserve the array before filling it.
+                let mut items = Vec::new();
+                try_grow(&mut items, strings::utf8_bytes(s).count())?;
+                items.extend(strings::utf8_bytes(s).map(|b| Value::Byte(b as i8)));
                 Value::Array(Rc::new(ArrayObj {
                     elem: Ty::Byte,
                     dims: vec![items.len()],
@@ -511,16 +519,17 @@ impl Machine<'_, '_> {
             .clone()
             .ok_or_else(|| Exc::not_initialized("StringBuilder"))?;
         let n = |i| arg(args, i).and_then(int_of);
-        let piece = |i| -> Result<Vec<u16>, Exc> {
+        let piece = |i| -> Result<Str, Exc> {
             Ok(match arg(args, i)? {
-                Value::Str(s) => s.to_vec(),
-                _ => to_utf16("null"),
+                Value::Str(s) => s.clone(),
+                _ => Rc::new(to_utf16("null")),
             })
         };
         Ok(match b {
             SbAppend => {
                 let p = piece(0)?;
-                sb.borrow_mut().extend(p);
+                try_grow_text(&mut sb.borrow_mut(), p.len())?;
+                sb.borrow_mut().extend_from_slice(&p);
                 recv.clone()
             }
             SbInsert => {
@@ -533,7 +542,8 @@ impl Machine<'_, '_> {
                     ));
                 }
                 let at = offset as usize;
-                sb.borrow_mut().splice(at..at, p);
+                try_grow_text(&mut sb.borrow_mut(), p.len())?;
+                sb.borrow_mut().splice(at..at, p.iter().copied());
                 recv.clone()
             }
             SbRemove => {
@@ -550,7 +560,7 @@ impl Machine<'_, '_> {
                 recv.clone()
             }
             SbLength => Value::Int(sb.borrow().len() as i32),
-            SbToString => text(sb.borrow().clone()),
+            SbToString => text(try_copy_text(&sb.borrow())?),
             _ => return Err(Exc::internal("not a StringBuilder member")),
         })
     }
@@ -634,6 +644,7 @@ impl Machine<'_, '_> {
         Ok(match b {
             ListAdd => {
                 growable()?;
+                try_grow(&mut items.borrow_mut(), 1)?;
                 items.borrow_mut().push(a(0)?.clone());
                 list.modified();
                 Value::Null
@@ -641,6 +652,7 @@ impl Machine<'_, '_> {
             ListAddAll => {
                 let src = list_arg(0)?.to_vec()?;
                 growable()?;
+                try_grow(&mut items.borrow_mut(), src.len())?;
                 items.borrow_mut().extend(src);
                 list.modified();
                 Value::Null
@@ -649,6 +661,7 @@ impl Machine<'_, '_> {
                 let src = list_arg(1)?.to_vec()?;
                 growable()?;
                 let at = for_add(n(0)?)?;
+                try_grow(&mut items.borrow_mut(), src.len())?;
                 items.borrow_mut().splice(at..at, src);
                 list.modified();
                 Value::Null
@@ -656,6 +669,7 @@ impl Machine<'_, '_> {
             ListInsertAt => {
                 growable()?;
                 let at = for_add(n(0)?)?;
+                try_grow(&mut items.borrow_mut(), 1)?;
                 items.borrow_mut().insert(at, a(1)?.clone());
                 list.modified();
                 Value::Null
@@ -810,7 +824,7 @@ impl Machine<'_, '_> {
         Ok(match b {
             MapPut => {
                 let (k, v) = (a(0)?.clone(), a(1)?.clone());
-                map.borrow_mut().put(k, v).unwrap_or(Value::Null)
+                map.borrow_mut().put(k, v)?.unwrap_or(Value::Null)
             }
             MapGet => map.borrow().get(a(0)?).cloned().unwrap_or(Value::Null),
             MapGetDefault => match map.borrow().get(a(0)?) {
