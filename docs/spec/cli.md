@@ -63,9 +63,21 @@ ferro version | help
   - the default output is the input's file stem in the current directory, with
     `.exe` on Windows: `prices_map.bas` → `./prices_map`;
   - `-o` overrides it;
-  - an existing output file is replaced;
+  - an existing output file is replaced, but `bundle` refuses (exit code 2,
+    nothing written) an output that is the input file itself or the running
+    `ferro`, whether directly, through a symlink or as a hard link, or that
+    exists and is not a regular file (a directory, a device such as
+    `/dev/null`, a pipe). Any other symlink at the output is replaced, not
+    followed;
   - the output gets the executable permission bits on Unix.
 - In 0.0.1 this command was called `build`; `build` now has the meaning below.
+- Arguments are bytes, not necessarily UTF-8. File names may contain any
+  bytes. Arguments passed to `AppStart`, by `run` or by a standalone binary,
+  are decoded as UTF-8 with undecodable bytes replaced by U+FFFD, as the JVM
+  does.
+- Output that cannot be written (stdout or stderr closed, or a pipe whose
+  reader has gone, as in `ferro help | head -1`) is dropped silently: it
+  never crashes `ferro` or changes its exit code.
 - `ferro-difftest` drives the conformance tests.
 
 ### Planned commands
@@ -126,6 +138,11 @@ The B4J exit code for an uncaught error is *(open)*; 1 is provisional.
 
 Compile errors go to stderr, one per problem, as
 `path:line:column: error: message`, followed by the source line and a caret.
+
+- Lines and columns start at 1. Columns count characters (Unicode scalar
+  values); the byte order mark that may start a file is not counted.
+- At most 100 errors are printed for a file. Then `... and N more error(s) not
+  shown`, and the last line is always the total, `N error(s)`.
 Warnings use `warning:` and do not fail the command. Messages never use the
 B4X product name. Each says what is missing and at which level or target
 it arrives.

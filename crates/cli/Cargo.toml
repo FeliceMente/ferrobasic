@@ -26,3 +26,9 @@ ferro-interp = { path = "../interp" }
 # (`docs/spec/cli.md`, "Standalone binary format"). macOS only.
 [target.'cfg(target_os = "macos")'.dependencies]
 libsui = "0.16.4"
+
+# Whether two paths are the same file (hard links included) on Windows, where
+# std has no stable file-identity API; protects `ferro bundle`'s input and
+# `ferro` itself from being overwritten. Unix compares device and inode.
+[target.'cfg(not(unix))'.dependencies]
+same-file = "1.0.6"
