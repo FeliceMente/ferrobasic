@@ -465,6 +465,12 @@ fn running_out_of_memory_is_a_java_error() {
             ROOMY,
             "    Dim a(200000000) As Int\n    Log(a.Length)",
         ),
+        // No elements, but a row array for each of the first dimension.
+        (
+            "rows",
+            ROOMY,
+            "    Dim a(50000000, 0) As Int\n    Log(a.Length)",
+        ),
         // Its slots fit, but not a separate List wrapper for each.
         (
             "lists",

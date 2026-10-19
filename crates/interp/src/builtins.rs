@@ -433,7 +433,7 @@ impl Machine<'_, '_> {
             ArrayLength => {
                 let r = recv()?;
                 let arr = as_array(&r)?;
-                Ok(Value::Int(arr.dims.first().copied().unwrap_or(0) as i32))
+                Ok(Value::Int(arr.items.borrow().len() as i32))
             }
             // Normally a statement-level call (see `Machine::call_step`).
             RecordInitialize => {
@@ -506,11 +506,7 @@ impl Machine<'_, '_> {
                 let mut items = Vec::new();
                 try_grow(&mut items, strings::utf8_bytes(s).count())?;
                 items.extend(strings::utf8_bytes(s).map(|b| Value::Byte(b as i8)));
-                Value::Array(Rc::new(ArrayObj {
-                    elem: Ty::Byte,
-                    dims: vec![items.len()],
-                    items: Rc::new(RefCell::new(items)),
-                }))
+                Value::new_array(Ty::Byte, 1, items)
             }
             _ => return Err(Exc::internal("not a String member")),
         })

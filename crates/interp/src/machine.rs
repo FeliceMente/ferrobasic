@@ -397,8 +397,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                 let array = self.operand(locals, array);
                 let indices = self.operands(locals, indices);
                 let value = self.operand(locals, value);
-                let a = as_array(&array)?;
-                let i = flat_index(a, &indices)?;
+                let (a, i) = element(as_array(&array)?, &indices)?;
                 let value = checked_store(&a.elem, value, self.program)?;
                 a.items.borrow_mut()[i] = value;
             }
@@ -555,8 +554,7 @@ impl<'p, 'w> Machine<'p, 'w> {
             Rvalue::Index { array, indices } => {
                 let array = self.operand(locals, array);
                 let indices = self.operands(locals, indices);
-                let a = as_array(&array)?;
-                let i = flat_index(a, &indices)?;
+                let (a, i) = element(as_array(&array)?, &indices)?;
                 a.items.borrow()[i].clone()
             }
             Rvalue::Field { record, field } => {
@@ -570,44 +568,36 @@ impl<'p, 'w> Machine<'p, 'w> {
             }
             Rvalue::NewArray { elem, dims } => {
                 let mut sizes = Vec::with_capacity(dims.len());
-                let mut total: usize = 1;
                 for d in dims {
                     let n = int_of(&self.operand(locals, d))?;
                     if n < 0 {
                         return Err(Exc::new(NEGATIVE_ARRAY_SIZE, n.to_string()).into());
                     }
-                    total = total.saturating_mul(n as usize);
                     sizes.push(n as usize);
-                }
-                if total > MAX_ARRAY {
-                    return Err(out_of_memory().into());
                 }
                 if sizes.is_empty() {
                     sizes.push(0);
-                    total = 0;
                 }
-                let mut items = Vec::new();
-                try_grow(&mut items, total)?;
-                let first = default_value(elem, program);
-                match own_heap_size(&first) {
-                    // A number, Null or the (immutable) empty String: every
-                    // element shares it.
-                    0 => items.resize(total, first),
-                    // A wrapper, record or array per element. Their small
-                    // allocations cannot fail gracefully, so check first that
-                    // they fit.
-                    size if total > 0 => {
-                        check_room(total.saturating_mul(size))?;
-                        items.push(first);
-                        items.extend((1..total).map(|_| default_value(elem, program)));
-                    }
-                    _ => {}
+                // Elements, and the rows that hold them: n0 + n0·n1 + ….
+                let (mut slots, mut count) = (0usize, 1usize);
+                for &n in &sizes {
+                    count = count.saturating_mul(n);
+                    slots = slots.saturating_add(count);
                 }
-                Value::Array(Rc::new(ArrayObj {
-                    elem: elem.clone(),
-                    dims: sizes,
-                    items: Rc::new(RefCell::new(items)),
-                }))
+                if slots > MAX_ARRAY {
+                    return Err(out_of_memory().into());
+                }
+                let rows = slots - count;
+                // Rows, and a wrapper, record or array per element, are small
+                // allocations that cannot fail gracefully: check first that
+                // they fit.
+                let element = default_value(elem, program);
+                let row = Value::new_array(Ty::Int, 1, Vec::new());
+                check_room(
+                    rows.saturating_mul(own_heap_size(&row))
+                        .saturating_add(count.saturating_mul(own_heap_size(&element))),
+                )?;
+                new_array(elem, &sizes, &element, program)?
             }
             Rvalue::ArrayLiteral { elem, items } => {
                 let items: Vec<Value> = self
@@ -615,11 +605,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                     .into_iter()
                     .map(|v| coerce(elem, v))
                     .collect();
-                Value::Array(Rc::new(ArrayObj {
-                    elem: elem.clone(),
-                    dims: vec![items.len()],
-                    items: Rc::new(RefCell::new(items)),
-                }))
+                Value::new_array(elem.clone(), 1, items)
             }
             Rvalue::CreateMap(pairs) => {
                 let mut map = OrderedMap::default();
@@ -666,20 +652,50 @@ pub fn as_array(v: &Value) -> Result<&Rc<ArrayObj>, Exc> {
     }
 }
 
-/// Row-major position of `indices`, each checked against its dimension.
-fn flat_index(a: &ArrayObj, indices: &[Value]) -> Result<usize, Exc> {
-    if indices.len() != a.dims.len() {
+/// The innermost array and the position in it that `indices` name. As in
+/// Java (`a[i][j]`), each index selects a row, checked against that row's
+/// length; a `Null` row raises `NullPointerException`.
+fn element(a: &Rc<ArrayObj>, indices: &[Value]) -> Result<(Rc<ArrayObj>, usize), Exc> {
+    let Some((last, rows)) = indices.split_last() else {
+        return Err(Exc::internal("no array index"));
+    };
+    if indices.len() != a.rank {
         return Err(Exc::internal("wrong number of array indices"));
     }
-    let mut flat = 0usize;
-    for (idx, &dim) in indices.iter().zip(&a.dims) {
+    let checked = |a: &ArrayObj, idx: &Value| -> Result<usize, Exc> {
         let i = int_of(idx)?;
-        if i < 0 || i as usize >= dim {
-            return Err(Exc::index(ARRAY_INDEX_OUT_OF_BOUNDS, i as i64, dim));
+        let len = a.items.borrow().len();
+        if i < 0 || i as usize >= len {
+            return Err(Exc::index(ARRAY_INDEX_OUT_OF_BOUNDS, i as i64, len));
         }
-        flat = flat * dim + i as usize;
+        Ok(i as usize)
+    };
+    let mut array = a.clone();
+    for idx in rows {
+        let row = array.items.borrow()[checked(&array, idx)?].clone();
+        array = as_array(&row)?.clone();
     }
-    Ok(flat)
+    let i = checked(&array, last)?;
+    Ok((array, i))
+}
+
+/// `new T[n0][n1]…` with the sizes already checked: an array of arrays.
+/// `element` is `elem`'s default value; elements share it when it has no
+/// identity (a number, Null or the immutable empty String), else each gets
+/// a fresh one.
+fn new_array(elem: &Ty, sizes: &[usize], element: &Value, program: &Program) -> Result<Value, Exc> {
+    let mut items = Vec::new();
+    try_grow(&mut items, sizes[0])?;
+    if sizes.len() > 1 {
+        for _ in 0..sizes[0] {
+            items.push(new_array(elem, &sizes[1..], element, program)?);
+        }
+    } else if own_heap_size(element) == 0 {
+        items.resize(sizes[0], element.clone());
+    } else {
+        items.extend((0..sizes[0]).map(|_| default_value(elem, program)));
+    }
+    Ok(Value::new_array(elem.clone(), sizes.len(), items))
 }
 
 fn arith_zero() -> Exc {

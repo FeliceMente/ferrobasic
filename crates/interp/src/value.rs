@@ -181,10 +181,24 @@ pub type SbRef = Shared<Vec<u16>>;
 
 #[derive(Debug)]
 pub struct ArrayObj {
+    /// The element type of the innermost arrays.
     pub elem: Ty,
-    /// One length per dimension; elements are stored row-major.
-    pub dims: Vec<usize>,
+    /// As in Java, an array of rank n > 1 is an array of arrays of rank
+    /// n - 1 (its rows), which can be shared, replaced or `Null`.
+    pub rank: usize,
     pub items: Shared<Vec<Value>>,
+}
+
+impl ArrayObj {
+    /// The type of the elements: the base type, or for a rank above 1 the
+    /// type of the rows.
+    pub fn item_ty(&self) -> Ty {
+        if self.rank > 1 {
+            Ty::Array(Box::new(self.elem.clone()), (self.rank - 1) as u8)
+        } else {
+            self.elem.clone()
+        }
+    }
 }
 
 /// A `Type` record: a Java object whose fields exist from the start (with
@@ -350,6 +364,14 @@ impl Value {
         Value::List(Rc::new(RefCell::new(Some(Rc::new(ListObj::new(
             items, kind,
         ))))))
+    }
+
+    pub fn new_array(elem: Ty, rank: usize, items: Vec<Value>) -> Value {
+        Value::Array(Rc::new(ArrayObj {
+            elem,
+            rank,
+            items: Rc::new(RefCell::new(items)),
+        }))
     }
 
     pub fn new_map(map: OrderedMap) -> Value {
@@ -808,7 +830,7 @@ pub fn java_class_name(v: &Value, program: &Program) -> Option<String> {
         }
         Value::Exc(e) => e.as_ref()?.kind.into(),
         Value::Array(a) => {
-            let mut s = "[".repeat(a.dims.len().max(1));
+            let mut s = "[".repeat(a.rank.max(1));
             s.push_str(&array_descriptor(&a.elem));
             s
         }
@@ -1077,7 +1099,7 @@ impl<'p, 'o> Printer<'p, 'o> {
             },
             Value::Array(a) => {
                 // Java prints the identity hash code, which no test can compare.
-                let mut name = "[".repeat(a.dims.len().max(1));
+                let mut name = "[".repeat(a.rank.max(1));
                 name.push_str(&array_descriptor(&a.elem));
                 self.put(&format!("{name}@{:x}", (ptr(a) >> 4) & 0x7fff_ffff))?;
             }
