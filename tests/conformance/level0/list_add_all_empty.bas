@@ -35,4 +35,10 @@ Sub AppStart (Args() As String)
     Catch
         Log("view invalidated")
     End Try
+    ' Even an invalidated view refuses first.
+    Try
+        Front.AddAll(Empty)
+    Catch
+        Log(LastException.Message.Contains("Unsupported"))
+    End Try
 End Sub

@@ -647,6 +647,13 @@ impl Machine<'_, '_> {
             .borrow()
             .clone()
             .ok_or_else(|| Exc::not_initialized("List"))?;
+        // `Collections.unmodifiableList.addAll` refuses before it looks at
+        // the view, so even a view whose parent changed (only the argument
+        // is checked first).
+        if list.kind == ListKind::ReadOnly && matches!(b, ListAddAll | ListAddAllAt) {
+            list_arg(if b == ListAddAll { 0 } else { 1 })?;
+            return Err(Exc::bare(UNSUPPORTED));
+        }
         // Any access through a sub-list whose parent changed raises here.
         let size = list.len()?;
         let unsupported = || Exc::bare(UNSUPPORTED);
@@ -690,8 +697,8 @@ impl Machine<'_, '_> {
                 list.modified();
                 Value::Null
             }
-            // `Collections.unmodifiableList` refuses at once; `ArrayList`
-            // and `Arrays.asList` check the index, then read the source.
+            // A `SubList` view refused above; `ArrayList` and
+            // `Arrays.asList` check the index, then read the source.
             // `Arrays.asList` only fails when there is something to add, and
             // `ArrayList` counts even an empty addition as a modification.
             ListAddAll | ListAddAllAt => {
@@ -700,9 +707,6 @@ impl Machine<'_, '_> {
                 } else {
                     (Some(n(0)?), list_arg(1)?)
                 };
-                if list.kind == ListKind::ReadOnly {
-                    return Err(unsupported());
-                }
                 let at = at.map(for_add).transpose()?.unwrap_or(size);
                 let src = src.to_vec()?;
                 if src.is_empty() {

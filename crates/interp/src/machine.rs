@@ -398,7 +398,9 @@ impl<'p, 'w> Machine<'p, 'w> {
                 let indices = self.operands(locals, indices);
                 let value = self.operand(locals, value);
                 let (a, i) = element(as_array(&array)?, &indices)?;
-                let value = checked_store(&a.elem, value, self.program)?;
+                // A replaced row can be of a higher rank (an `Int(,)` row in
+                // an `Object(,)`): its own element type decides.
+                let value = checked_store(&a.item_ty(), value, self.program)?;
                 a.items.borrow_mut()[i] = value;
             }
             StatementKind::SetField {
@@ -590,11 +592,13 @@ impl<'p, 'w> Machine<'p, 'w> {
                 let rows = slots - count;
                 // Rows, and a wrapper, record or array per element, are small
                 // allocations that cannot fail gracefully: check first that
-                // they fit.
+                // they fit, together with the slots that hold them.
                 let element = default_value(elem, program);
                 let row = Value::new_array(Ty::Int, 1, Vec::new());
                 check_room(
-                    rows.saturating_mul(own_heap_size(&row))
+                    slots
+                        .saturating_mul(std::mem::size_of::<Value>())
+                        .saturating_add(rows.saturating_mul(own_heap_size(&row)))
                         .saturating_add(count.saturating_mul(own_heap_size(&element))),
                 )?;
                 new_array(elem, &sizes, &element, program)?
