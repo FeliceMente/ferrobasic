@@ -612,16 +612,18 @@ fn holds_values(v: &Value) -> bool {
 }
 
 /// Moves the values in `values` that can hold others onto `work`, and frees
-/// the rest (numbers, Strings, StringBuilders, exceptions) at once. Whichever
-/// vector has room takes the other's values, so this usually allocates
-/// nothing; if memory has run out even for that, the values are leaked
-/// rather than aborting.
+/// the rest (numbers, Strings, StringBuilders, exceptions) at once. The
+/// values go into `work`, or `work` goes into `values` if only that has room
+/// for both, so this usually allocates nothing (and `work` grows by
+/// doubling otherwise); if memory has run out even for that, the values are
+/// leaked rather than aborting.
 fn absorb(work: &mut Vec<Value>, mut values: Vec<Value>) {
     values.retain(holds_values);
     if values.is_empty() {
         return;
     }
-    if work.capacity() - work.len() < values.len() {
+    if work.capacity() - work.len() < values.len() && values.capacity() - values.len() >= work.len()
+    {
         std::mem::swap(work, &mut values);
     }
     if work.try_reserve(values.len()).is_ok() {
@@ -1053,7 +1055,14 @@ impl<'p, 'o> Printer<'p, 'o> {
             },
             Value::Exc(e) => match e {
                 None => self.put("null")?,
-                Some(e) => self.put(&e.to_java_string())?,
+                // `Throwable.toString`, without building it first.
+                Some(e) => {
+                    self.put(e.kind)?;
+                    if let Some(message) = &e.message {
+                        self.put(": ")?;
+                        self.put(message)?;
+                    }
+                }
             },
             Value::Array(a) => {
                 // Java prints the identity hash code, which no test can compare.
@@ -1086,7 +1095,9 @@ impl<'p, 'o> Printer<'p, 'o> {
         let Some(rec) = self.program.records.get(r.id.0 as usize) else {
             return self.put("[]");
         };
-        let values = r.fields.borrow().clone();
+        let mut values = Vec::new();
+        try_grow(&mut values, r.fields.borrow().len())?;
+        values.extend_from_slice(&r.fields.borrow());
         self.enter(ptr(r))?;
         self.put("[IsInitialized=")?;
         self.put(if r.initialized.get() { "true" } else { "false" })?;
