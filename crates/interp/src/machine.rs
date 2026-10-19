@@ -656,15 +656,16 @@ pub fn as_array(v: &Value) -> Result<&Rc<ArrayObj>, Exc> {
     }
 }
 
-/// The innermost array and the position in it that `indices` name. As in
-/// Java (`a[i][j]`), each index selects a row, checked against that row's
-/// length; a `Null` row raises `NullPointerException`.
+/// The array and the position in it that `indices` name: each index but
+/// the last selects a row, checked against that row's length, as Java's
+/// `a[i][j]` does; a `Null` row raises `NullPointerException`. Fewer
+/// indices than the rank name a row. (The MIR passes one index at a time.)
 fn element(a: &Rc<ArrayObj>, indices: &[Value]) -> Result<(Rc<ArrayObj>, usize), Exc> {
     let Some((last, rows)) = indices.split_last() else {
         return Err(Exc::internal("no array index"));
     };
-    if indices.len() != a.rank {
-        return Err(Exc::internal("wrong number of array indices"));
+    if indices.len() > a.rank {
+        return Err(Exc::internal("too many array indices"));
     }
     let checked = |a: &ArrayObj, idx: &Value| -> Result<usize, Exc> {
         let i = int_of(idx)?;

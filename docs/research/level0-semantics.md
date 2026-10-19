@@ -157,6 +157,12 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   array: changing a row through the list changes the array, and `Set`
   replaces a row (with an array of the row's type, or `Null`; anything else
   raises `ArrayStoreException`).
+- B4X arrays are Java arrays (jCore takes them as `int[]`, `Object[]`, …), so
+  `Grid(i, j)` is Java's `grid[i][j]`, evaluated as the JLS says (§15.10.4,
+  §15.26.1): `grid[i]` selects and checks the row before `j` is evaluated,
+  and an assignment selects the row before it evaluates the value. This
+  shows when evaluating `j` or the value replaces the row, and when the row
+  index is out of range.
 - `AddAll` / `AddAllAt` call Java's `addAll`
   ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L97-L105)), which
   (**measured**, JDK 21) behaves by list class:

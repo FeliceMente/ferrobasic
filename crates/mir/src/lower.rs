@@ -421,12 +421,11 @@ impl<'m> Builder<'m> {
                 self.write_var(*var, value);
             }
             Place::Index { array, indices } => {
-                let array = self.operand(array);
-                let indices = indices.iter().map(|e| self.operand(e)).collect();
+                let (array, index) = self.select_row(array, indices);
                 let value = self.operand(value);
                 self.push(StatementKind::SetIndex {
                     array,
-                    indices,
+                    indices: vec![index],
                     value,
                 });
             }
@@ -705,6 +704,31 @@ impl<'m> Builder<'m> {
     // ----- Expressions -------------------------------------------------------
 
     /// Lowers `e` to an operand, emitting the code that computes it.
+    /// `a(i, j, k)` as Java evaluates `a[i][j][k]`: each index selects a
+    /// row (checked, and kept in a temporary) before the next index is
+    /// evaluated, as rows can be replaced. Returns the innermost row and
+    /// the last index.
+    fn select_row(&mut self, array: &h::Expr, indices: &[h::Expr]) -> (Operand, Operand) {
+        let mut row = self.operand(array);
+        let mut ty = array.ty.clone();
+        let (last, rows) = indices
+            .split_last()
+            .expect("an index expression has an index");
+        for index in rows {
+            let index = self.operand(index);
+            ty = match ty {
+                Ty::Array(elem, rank) if rank > 1 => Ty::Array(elem, rank - 1),
+                other => other,
+            };
+            let value = Rvalue::Index {
+                array: row,
+                indices: vec![index],
+            };
+            row = Operand::Local(self.assign_temp(value, &ty));
+        }
+        (row, self.operand(last))
+    }
+
     fn operand(&mut self, e: &h::Expr) -> Operand {
         let value = self.rvalue(e);
         self.as_operand(value, &e.ty)
@@ -776,9 +800,11 @@ impl<'m> Builder<'m> {
                 }
             }
             ExprKind::Index { array, indices } => {
-                let array = self.operand(array);
-                let indices = indices.iter().map(|i| self.operand(i)).collect();
-                Rvalue::Index { array, indices }
+                let (array, index) = self.select_row(array, indices);
+                Rvalue::Index {
+                    array,
+                    indices: vec![index],
+                }
             }
             ExprKind::Field { record, field } => Rvalue::Field {
                 record: self.operand(record),
