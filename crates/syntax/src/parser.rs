@@ -104,9 +104,11 @@ struct Parser<'t> {
     pos: usize,
     builder: GreenNodeBuilder<'static>,
     errors: Vec<SyntaxError>,
-    /// Depth of the tree being built, counted in statements and expressions.
-    /// A left-folded chain (`1 + 1 + ...`, `s.Trim.Trim...`) is built in a
-    /// loop but nests one level per operator, so it counts too.
+    /// Levels of statements and expressions around the current position.
+    /// With the height of each finished expression subtree (returned by the
+    /// expression functions) it bounds the depth of the tree: a left-folded
+    /// chain (`1 + 1 + ...`, `s.Trim.Trim...`) is built in a loop, and an
+    /// operator may wrap a subtree that is already deep, so heights count.
     depth: u32,
     /// The current Sub went past `MAX_NESTING`: the rest of it is one error
     /// node, and the errors of the unwinding levels are not reported.
@@ -218,7 +220,8 @@ impl Parser<'_> {
 
     /// Puts the rest of the statement into an `ERROR` node.
     fn recover_to_sep(&mut self) {
-        if self.at_sep() {
+        // After a too-deep error the parser sits at `End Sub`: keep it.
+        if self.at_sep() || self.too_deep {
             return;
         }
         self.start(ERROR);
@@ -260,23 +263,40 @@ impl Parser<'_> {
             return false;
         }
         if self.depth >= MAX_NESTING {
-            self.error(format!(
-                "nested too deeply (more than {MAX_NESTING} levels of statements and \
-                 expressions): split it into several statements"
-            ));
-            self.too_deep = true;
-            self.start(ERROR);
-            while self.current().is_some()
-                && !self.at_sub_start()
-                && !(self.at(END_KW) && self.nth(1) == Some(SUB_KW))
-            {
-                self.bump();
-            }
-            self.finish();
+            self.bail_too_deep();
             return false;
         }
         self.depth += 1;
         true
+    }
+
+    /// Whether a subtree of `height` levels fits below the current levels;
+    /// if not, reports it as [`enter`](Self::enter) does.
+    fn fits(&mut self, height: u32) -> bool {
+        if self.too_deep {
+            return false;
+        }
+        if self.depth + height > MAX_NESTING {
+            self.bail_too_deep();
+            return false;
+        }
+        true
+    }
+
+    fn bail_too_deep(&mut self) {
+        self.error(format!(
+            "nested too deeply (more than {MAX_NESTING} levels of statements and \
+             expressions): split it into several statements"
+        ));
+        self.too_deep = true;
+        self.start(ERROR);
+        while self.current().is_some()
+            && !self.at_sub_start()
+            && !(self.at(END_KW) && self.nth(1) == Some(SUB_KW))
+        {
+            self.bump();
+        }
+        self.finish();
     }
 
     fn leave(&mut self, levels: u32) {
@@ -764,56 +784,62 @@ impl Parser<'_> {
         })
     }
 
-    fn expr(&mut self) {
-        self.expr_bp(0);
+    /// Parses an expression and returns the height of its subtree.
+    fn expr(&mut self) -> u32 {
+        self.expr_bp(0)
     }
 
-    fn expr_list(&mut self) {
+    /// The height of the tallest expression.
+    fn expr_list(&mut self) -> u32 {
+        let mut height = 0;
         loop {
-            self.expr();
+            height = height.max(self.expr());
             if !self.eat(COMMA) {
                 break;
             }
         }
+        height
     }
 
-    fn expr_bp(&mut self, min_bp: u8) {
+    fn expr_bp(&mut self, min_bp: u8) -> u32 {
         if !self.enter() {
-            return;
+            return 0;
         }
-        let mut levels = 1;
         let checkpoint = self.checkpoint();
-        if self.at(MINUS) {
+        let mut height = if self.at(MINUS) {
             self.start(PREFIX_EXPR);
             self.bump();
-            self.expr_bp(PREFIX_BINDING_POWER);
+            let operand = self.expr_bp(PREFIX_BINDING_POWER);
             self.finish();
+            operand + 1
         } else {
-            self.postfix_expr();
-        }
+            self.postfix_expr()
+        };
         while let Some((left, right)) = self.current().and_then(infix_binding_power) {
-            if left < min_bp || !self.enter() {
+            // Each operator wraps the tree so far: check its height first.
+            if left < min_bp || !self.fits(height + 1) {
                 break;
             }
-            levels += 1;
             self.start_at(checkpoint, BIN_EXPR);
             self.bump();
-            self.expr_bp(right);
+            let rhs = self.expr_bp(right);
             self.finish();
+            height = height.max(rhs) + 1;
         }
-        self.leave(levels);
+        self.leave(1);
+        height
     }
 
-    fn postfix_expr(&mut self) {
+    fn postfix_expr(&mut self) -> u32 {
         let checkpoint = self.checkpoint();
-        self.primary();
-        let mut levels = 0;
+        let mut height = self.primary();
         loop {
-            if (self.at(DOT) || self.at(L_PAREN)) && !self.enter() {
+            // A member access or call wraps the tree so far.
+            if (self.at(DOT) || self.at(L_PAREN)) && !self.fits(height + 1) {
                 break;
             }
             if self.at(DOT) {
-                levels += 1;
+                height += 1;
                 self.start_at(checkpoint, MEMBER_EXPR);
                 self.bump();
                 // Member names may be spelled like keywords: `Bit.And`, `x.As(T)`.
@@ -826,33 +852,39 @@ impl Parser<'_> {
                 }
                 self.finish();
             } else if self.at(L_PAREN) {
-                levels += 1;
                 self.start_at(checkpoint, CALL_EXPR);
-                self.arg_list();
+                let args = self.arg_list();
                 self.finish();
+                height = height.max(args) + 1;
             } else {
                 break;
             }
         }
-        self.leave(levels);
+        height
     }
 
-    fn arg_list(&mut self) {
+    /// `(args)`; returns the height of the `ARG_LIST` subtree.
+    fn arg_list(&mut self) -> u32 {
         self.start(ARG_LIST);
         self.bump();
-        if !self.at(R_PAREN) {
-            self.expr_list();
-        }
+        let height = if self.at(R_PAREN) {
+            0
+        } else {
+            self.expr_list()
+        };
         self.expect(R_PAREN, "`)`");
         self.finish();
+        height + 1
     }
 
-    fn primary(&mut self) {
+    /// Parses a primary expression and returns the height of its subtree.
+    fn primary(&mut self) -> u32 {
         match self.current() {
             Some(INT | REAL | STRING | TRUE_KW | FALSE_KW | NULL_KW) => {
                 self.start(LITERAL);
                 self.bump();
                 self.finish();
+                1
             }
             Some(IDENT)
                 if self.current_text().eq_ignore_ascii_case("Array")
@@ -863,35 +895,40 @@ impl Parser<'_> {
                 self.bump();
                 // The element type: `()` after it is the (possibly empty) value list.
                 self.type_ref_with(false);
-                if self.at(L_PAREN) {
-                    self.arg_list();
+                let values = if self.at(L_PAREN) {
+                    self.arg_list()
                 } else {
                     self.error("expected `(` after `Array As <type>`");
-                }
+                    0
+                };
                 self.finish();
+                values.max(1) + 1
             }
             Some(IDENT)
                 if self.current_text().eq_ignore_ascii_case("CreateMap")
                     && self.nth(1) == Some(L_PAREN) =>
             {
-                self.create_map();
+                self.create_map()
             }
             Some(kind) if is_name_token(kind) => {
                 self.start(NAME_REF);
                 self.bump();
                 self.finish();
+                1
             }
             Some(ME_KW) => {
                 self.start(ME_EXPR);
                 self.bump();
                 self.finish();
+                1
             }
             Some(L_PAREN) => {
                 self.start(PAREN_EXPR);
                 self.bump();
-                self.expr();
+                let inner = self.expr();
                 self.expect(R_PAREN, "`)`");
                 self.finish();
+                inner + 1
             }
             Some(SMART_STRING_START) => self.smart_string(),
             _ => {
@@ -901,22 +938,25 @@ impl Parser<'_> {
                     self.bump();
                     self.finish();
                 }
+                1
             }
         }
     }
 
     /// `CreateMap(k1: v1, k2: v2)`; here `:` is not a statement separator.
-    fn create_map(&mut self) {
+    fn create_map(&mut self) -> u32 {
         self.start(CREATE_MAP_EXPR);
         self.bump();
         self.bump();
+        let mut height = 0;
         if !self.at(R_PAREN) {
             loop {
                 self.start(MAP_ENTRY);
-                self.expr();
+                let key = self.expr();
                 self.expect(COLON, "`:` between key and value");
-                self.expr();
+                let value = self.expr();
                 self.finish();
+                height = height.max(key.max(value) + 1);
                 if !self.eat(COMMA) {
                     break;
                 }
@@ -924,19 +964,24 @@ impl Parser<'_> {
         }
         self.expect(R_PAREN, "`)`");
         self.finish();
+        height + 1
     }
 
-    fn smart_string(&mut self) {
+    /// Returns the height of the `SMART_STRING` subtree.
+    fn smart_string(&mut self) -> u32 {
         self.start(SMART_STRING);
         self.bump();
+        let mut height = 0;
         loop {
             match self.current() {
                 Some(SMART_STRING_TEXT) => self.bump(),
                 Some(PLACEHOLDER_START) => {
                     self.start(PLACEHOLDER);
                     self.bump();
-                    self.expr();
-                    if !self.eat(PLACEHOLDER_END) {
+                    height = height.max(self.expr() + 1);
+                    // After a too-deep error the parser sits at `End Sub`:
+                    // searching on for `}` would swallow the next Subs.
+                    if !self.too_deep && !self.eat(PLACEHOLDER_END) {
                         self.error("expected `}` to close the placeholder");
                         while !matches!(
                             self.current(),
@@ -957,5 +1002,6 @@ impl Parser<'_> {
             }
         }
         self.finish();
+        height + 1
     }
 }

@@ -388,3 +388,47 @@ fn a_comment_after_a_line_continuation_is_reported() {
         "{errors:?}"
     );
 }
+
+/// An operator, member access or call may wrap a subtree that is already
+/// deep: the limit counts the height of the whole tree, not only the path
+/// being parsed.
+#[test]
+fn nesting_counts_the_height_of_wrapped_subtrees() {
+    let grouped = |start: &str, tail: &str| {
+        let mut e = start.to_string();
+        for _ in 0..3 {
+            e = format!("({e}){}", tail.repeat(600));
+        }
+        e
+    };
+    let deep = |body: String| {
+        let errors = parse_errors(&in_sub(&body));
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("nested too deeply"), "{errors:?}");
+    };
+    deep(format!("x = {}", grouped("1", " + 1")));
+    deep(format!("Log({})", grouped("s", ".Trim")));
+    deep(format!("Log({})", grouped("f", "(1)")));
+    // Two groups of 300 stay within the limit.
+    let mut e = "1".to_string();
+    for _ in 0..2 {
+        e = format!("({e}){}", " + 1".repeat(300));
+    }
+    parse_ok(&in_sub(&format!("x = {e}")));
+}
+
+/// After a too-deep error inside a smart-string placeholder, the next Sub is
+/// still parsed (and its errors reported) on its own.
+#[test]
+fn a_too_deep_placeholder_does_not_swallow_the_next_sub() {
+    let deep = in_sub(&format!("Log($\"${{{}}}\"$)", vec!["1"; 5000].join("+")));
+    let next = in_sub("x = = 1").replace("AppStart", "Other");
+    let errors = parse_errors(&format!("{deep}{next}"));
+    assert!(errors[0].contains("nested too deeply"), "{errors:?}");
+    assert!(
+        errors.iter().any(|e| e == "expected an expression"),
+        "{errors:?}"
+    );
+    let root = crate::parse(&format!("{deep}{next}")).syntax();
+    assert_eq!(count(&root, SUB_DECL), 2);
+}
