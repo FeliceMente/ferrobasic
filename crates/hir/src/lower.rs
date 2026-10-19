@@ -876,13 +876,14 @@ impl Lowerer {
         let scrutinee = self.expr(&scrutinee);
         // As `BA.switchObjectToInt`: numbers match by numeric value, anything
         // else with `equals` on the boxed values (so String "1" does not match
-        // Int 1). A Char scrutinee converts its cases to Char, as the docs'
+        // Int 1, and an Object holding Int 1 matches Case 1.0). A Char
+        // scrutinee converts its cases to Char, as the docs'
         // `Select Txt.CharAt(i)` / `Case "A"` example needs.
         let (kind, domain) = match &scrutinee.ty {
             t if t.is_numeric() => (CmpKind::Numeric, Ty::Double),
             Ty::Char => (CmpKind::Char, Ty::Char),
-            Ty::Error => (CmpKind::Object, Ty::Error),
-            _ => (CmpKind::Object, Ty::Object),
+            Ty::Error => (CmpKind::Switch, Ty::Error),
+            _ => (CmpKind::Switch, Ty::Object),
         };
         let scrutinee = self.coerce(scrutinee, &domain);
         let mut cases = Vec::new();

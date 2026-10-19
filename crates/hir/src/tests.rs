@@ -340,8 +340,8 @@ fn select_kinds() {
         }
         _ => None,
     });
-    // Strings match with `equals`, like any non-numeric value.
-    assert_eq!(kind, Some(CmpKind::Object));
+    // Strings match as `BA.switchObjectToInt` does, with `equals`.
+    assert_eq!(kind, Some(CmpKind::Switch));
 }
 
 #[test]
@@ -391,7 +391,7 @@ fn select_matches_like_switch_object_to_int() {
     ));
     match &app_start(&m).body[0].kind {
         StmtKind::Select { kind, cases, .. } => {
-            assert_eq!(*kind, CmpKind::Object);
+            assert_eq!(*kind, CmpKind::Switch);
             assert_eq!(show(&cases[0].values[0]), "conv(Int->Object, 1)");
         }
         other => panic!("{other:?}"),

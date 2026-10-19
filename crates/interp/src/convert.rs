@@ -137,7 +137,7 @@ pub fn numeric_cast(v: &Value, to: &Ty) -> Option<Value> {
     })
 }
 
-fn class_cast(v: &Value, to: &str, program: &Program) -> Exc {
+pub fn class_cast(v: &Value, to: &str, program: &Program) -> Exc {
     let from = java_class_name(v, program).unwrap_or_else(|| "null".into());
     Exc::new(
         CLASS_CAST,
