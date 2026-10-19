@@ -214,3 +214,32 @@ fn map_churn_keeps_the_order() {
         "first\n100000\nlast\n100000\n",
     );
 }
+
+/// An empty array of Lists, records or arrays has no elements, even though
+/// a non-empty one creates each element.
+#[test]
+fn empty_reference_arrays_are_empty() {
+    let (stdout, outcome) = run("Sub Process_Globals
+    Type Point (X As Int)
+End Sub
+
+Sub AppStart (Args() As String)
+    Dim Lists(0) As List
+    Dim Points(0) As Point
+    Dim Arrays(0) As Int()
+    For Each l As List In Lists
+        Log(\"list\")
+    Next
+    For Each p As Point In Points
+        Log(\"point\")
+    Next
+    Dim AsList As List
+    AsList.Initialize2(Lists)
+    Log(Lists.Length & \" \" & Points.Length & \" \" & Arrays.Length & \" \" & AsList.Size)
+    Dim Two(2) As List
+    Log(Two.Length & \" \" & Two(1).IsInitialized)
+End Sub
+");
+    assert_eq!(outcome.error, None);
+    assert_eq!(stdout, "0 0 0 0\n2 false\n");
+}

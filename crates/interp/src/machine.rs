@@ -593,7 +593,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                     // A wrapper, record or array per element. Their small
                     // allocations cannot fail gracefully, so check first that
                     // they fit.
-                    size => {
+                    size if total > 0 => {
                         let mut probe: Vec<u8> = Vec::new();
                         probe
                             .try_reserve_exact(total.saturating_mul(size))
@@ -602,6 +602,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                         items.push(first);
                         items.extend((1..total).map(|_| default_value(elem, program)));
                     }
+                    _ => {}
                 }
                 Value::Array(Rc::new(ArrayObj {
                     elem: elem.clone(),

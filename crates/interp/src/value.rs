@@ -987,7 +987,7 @@ impl<'p, 'o> Printer<'p, 'o> {
 
     /// Appends text; very long text raises `OutOfMemoryError`.
     fn put(&mut self, s: &str) -> Result<(), Exc> {
-        try_grow_text(self.out, s.len())?;
+        try_grow_text(self.out, s.encode_utf16().count())?;
         self.out.extend(s.encode_utf16());
         Ok(())
     }
