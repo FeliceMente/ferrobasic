@@ -101,13 +101,16 @@ impl Output<'_> {
     /// [`to_rust`]), encoding it piece by piece: a huge String needs no
     /// second copy.
     pub fn log(&mut self, text: &[u16]) {
+        let mut wrote = false;
         encode_line(text, &mut self.buf, |buf| {
             if buf.len() >= CHUNK {
                 let _ = self.stdout.write_all(buf);
                 buf.clear();
+                wrote = true;
             }
         });
-        if self.buf.len() >= CHUNK {
+        // A long line is written whole, its line feed included.
+        if wrote || self.buf.len() >= CHUNK {
             self.flush();
         }
     }
@@ -594,11 +597,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                     // allocations cannot fail gracefully, so check first that
                     // they fit.
                     size if total > 0 => {
-                        let mut probe: Vec<u8> = Vec::new();
-                        probe
-                            .try_reserve_exact(total.saturating_mul(size))
-                            .map_err(|_| out_of_memory())?;
-                        drop(probe);
+                        check_room(total.saturating_mul(size))?;
                         items.push(first);
                         items.extend((1..total).map(|_| default_value(elem, program)));
                     }

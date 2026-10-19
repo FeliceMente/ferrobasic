@@ -296,6 +296,15 @@ pub fn try_grow_text(v: &mut Vec<u16>, extra: usize) -> Result<(), Exc> {
     try_grow(v, extra)
 }
 
+/// Checks that `bytes` more could be allocated now, before work whose
+/// allocations cannot fail gracefully (many small objects, or Rust's own
+/// string functions). A check, not a guarantee.
+pub fn check_room(bytes: usize) -> Result<(), Exc> {
+    Vec::<u8>::new()
+        .try_reserve_exact(bytes)
+        .map_err(|_| out_of_memory())
+}
+
 /// A copy of `s`, or `OutOfMemoryError`.
 pub fn try_copy_text(s: &[u16]) -> Result<Vec<u16>, Exc> {
     let mut copy = Vec::new();
@@ -446,14 +455,16 @@ impl OrderedMap {
         self.live = 0;
     }
 
-    /// Removes the holes. Allocates nothing: the index keeps its capacity,
-    /// which already holds every live key.
+    /// Removes the holes, in time proportional to the entries (not to the
+    /// index's capacity), allocating nothing.
     fn compact(&mut self) {
         if self.entries.len() != self.live {
             self.entries.retain(Option::is_some);
-            self.index.clear();
+            // Only the live keys move: their positions are updated in place.
             for (i, (k, _)) in self.entries.iter().flatten().enumerate() {
-                self.index.insert(HKey::of(k), i);
+                if let Some(at) = self.index.get_mut(&HKey::of(k)) {
+                    *at = i;
+                }
             }
         }
     }

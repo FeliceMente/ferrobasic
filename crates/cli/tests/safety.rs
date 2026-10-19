@@ -473,6 +473,10 @@ fn running_out_of_memory_is_a_java_error() {
             "    Dim s As String = \"x\"\n    For i = 1 To 25\n        s = s & s\n    Next\n    Dim l As List\n    l.Initialize\n    For i = 1 To 64\n        l.Add(s)\n    Next\n    Dim t As String = l\n    Log(t.Length)",
         ),
         (
+            "upper",
+            "    Dim s As String = \"x\"\n    For i = 1 To 28\n        s = s & s\n    Next\n    Dim t As String = s.ToUpperCase\n    Log(t.Length)",
+        ),
+        (
             "replace",
             "    Dim s As String = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"\n    For i = 1 To 6\n        s = s.Replace(\"x\", s)\n    Next\n    Log(s.Length)",
         ),

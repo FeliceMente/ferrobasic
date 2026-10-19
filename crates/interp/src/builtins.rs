@@ -475,8 +475,32 @@ impl Machine<'_, '_> {
             }
             StrSubString => bounds(n(0)?, len as i32)?,
             StrSubString2 => bounds(n(0)?, n(1)?)?,
-            StrToLowerCase => text(strings::to_lower(s)),
-            StrToUpperCase => text(strings::to_upper(s)),
+            StrToLowerCase | StrToUpperCase => {
+                // The mapping works on Rust copies of the text (UTF-8 in and
+                // out, then the UTF-16 result): check first that they fit. It
+                // can also lengthen the text (`ß` → `SS`).
+                let utf8 = s.iter().fold(0usize, |n, &c| {
+                    n.saturating_add(match c {
+                        0..=0x7f => 1,
+                        0x80..=0x7ff => 2,
+                        _ => 3,
+                    })
+                });
+                check_room(
+                    s.len()
+                        .saturating_mul(2)
+                        .saturating_add(utf8.saturating_mul(2)),
+                )?;
+                let mapped = if b == StrToLowerCase {
+                    strings::to_lower(s)
+                } else {
+                    strings::to_upper(s)
+                };
+                if mapped.len() > MAX_STRING {
+                    return Err(out_of_memory());
+                }
+                text(mapped)
+            }
             StrTrim => text(try_copy_text(strings::trim(s))?),
             StrGetBytes => {
                 let charset = to_rust(sa(0)?);

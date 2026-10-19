@@ -2182,3 +2182,29 @@ fn long_lines_are_written_in_pieces() {
     assert_eq!(String::from_utf8(out).unwrap(), expected);
     assert_eq!(String::from_utf8(err).unwrap(), expected);
 }
+
+/// A line longer than the buffer is written out whole, line feed included,
+/// before `Log` returns.
+#[test]
+fn long_lines_are_flushed_whole() {
+    #[derive(Clone, Default)]
+    struct Shared(std::rc::Rc<std::cell::RefCell<Vec<u8>>>);
+    impl std::io::Write for Shared {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.borrow_mut().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let p = program(|_, _| {});
+    let (mut out, mut err) = (Shared::default(), Vec::new());
+    let seen = out.clone();
+    let mut m = crate::machine::Machine::new(&p, &mut out, &mut err);
+    m.out.log(&vec![b'x' as u16; 70_000]);
+    assert_eq!(seen.0.borrow().len(), 70_001);
+    assert_eq!(seen.0.borrow().last(), Some(&b'\n'));
+    m.out.log(&crate::strings::to_utf16("short"));
+    assert_eq!(seen.0.borrow().len(), 70_001, "short lines stay buffered");
+}
