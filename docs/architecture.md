@@ -107,5 +107,5 @@ implementation of the language inside the extension.
 | --- | --- | --- |
 | Compiler language | Rust | inkwell for LLVM, rowan for the CST, salsa for incrementality, tower-lsp |
 | First real backend | Java source, as B4X does | Direct bytecode through a class-file library later |
-| License | To decide | Apache-2.0/MIT or EUPL-1.2 |
+| License | MIT | Permissive, so programs built with FerroBASIC carry no conditions beyond the notice; see `LICENSE` |
 | Project name | FerroBASIC | CLI `ferro`, crates `ferro-*` |

@@ -379,6 +379,9 @@ with the same OS and architecture.
 > `ferro compile` (M4); `bundle` stays, as the quickest way to ship a program
 > that behaves exactly like `ferro run`.
 
+- FerroBASIC is MIT-licensed. Your program stays yours, but the executable
+  contains a copy of `ferro`, so when you give it to others, include
+  FerroBASIC's [licence notice](../LICENSE), for example in your documentation.
 - On Linux it depends only on the system C library.
 - For a fully static Linux binary, build `ferro` for musl first:
 
