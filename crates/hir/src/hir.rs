@@ -270,6 +270,11 @@ pub enum CmpKind {
     Char,
     /// Reference values (`x = Null`, Object `equals`).
     Object,
+    /// A `Select` case, as `BA.switchObjectToInt` matches it: if the
+    /// scrutinee holds a number, by `doubleValue` (a case that is not a
+    /// number is a `ClassCastException`), else with the scrutinee's
+    /// `equals` (a `Null` scrutinee is a `NullPointerException`).
+    Switch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

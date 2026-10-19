@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 ferro-mir = { path = "../mir" }
+libm = "0.2.16"
 
 [dev-dependencies]
 ferro-syntax = { path = "../syntax" }

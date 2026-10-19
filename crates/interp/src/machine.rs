@@ -11,7 +11,7 @@ use ferro_mir::{
     Rvalue, StatementKind, Terminator, TextRange, Ty,
 };
 
-use crate::convert::{checked_store, coerce, convert, default_value, to_string_from};
+use crate::convert::{checked_store, class_cast, coerce, convert, default_value, to_string_from};
 use crate::number::{JavaRandom, number_format, parse_java_double};
 use crate::strings::{compare_to, to_rust};
 use crate::value::*;
@@ -816,6 +816,19 @@ pub fn compare(
                 )),
             },
         },
+        CmpKind::Switch => {
+            if matches!(l, Value::Null) {
+                Err(Exc::bare(NULL_POINTER))
+            } else if l.is_number() {
+                match r {
+                    Value::Null => Err(Exc::bare(NULL_POINTER)),
+                    _ if r.is_number() => compare(op, CmpKind::Numeric, l, r, program),
+                    _ => Err(class_cast(r, "java.lang.Number", program)),
+                }
+            } else {
+                compare(op, CmpKind::Object, l, r, program)
+            }
+        }
     }
 }
 
