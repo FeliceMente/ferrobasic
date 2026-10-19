@@ -243,3 +243,17 @@ End Sub
     assert_eq!(outcome.error, None);
     assert_eq!(stdout, "0 0 0 0\n2 false\n");
 }
+
+/// An array of rank 2 is an array of rows, as in Java: each element of
+/// every row gets its own List.
+#[test]
+fn multi_dimensional_arrays_have_an_element_per_cell() {
+    runs(
+        "    Dim Grid(2, 2) As List
+    Grid(0, 0).Initialize
+    Log(Grid(0, 1).IsInitialized & \" \" & Grid(1, 0).IsInitialized)
+    Dim Empty(3, 0) As Int
+    Log(Empty.Length)",
+        "false false\n3\n",
+    );
+}

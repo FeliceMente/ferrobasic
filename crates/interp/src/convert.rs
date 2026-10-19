@@ -17,13 +17,11 @@ pub fn default_value(ty: &Ty, program: &Program) -> Value {
         Ty::String => Value::Str(Rc::new(Vec::new())),
         Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception => fresh_wrapper(ty),
         // The contract says "an empty array of rank 1"; an array type of a
-        // higher rank gets an empty array with as many (zero) dimensions,
-        // so that indexing it reports an index error, not a rank mismatch.
-        Ty::Array(elem, rank) => Value::Array(Rc::new(ArrayObj {
-            elem: (**elem).clone(),
-            dims: vec![0; (*rank).max(1) as usize],
-            items: Rc::new(RefCell::new(Vec::new())),
-        })),
+        // higher rank gets an empty array of that rank, so that indexing it
+        // reports an index error, not a rank mismatch.
+        Ty::Array(elem, rank) => {
+            Value::new_array((**elem).clone(), (*rank).max(1) as usize, Vec::new())
+        }
         // B4J records are Java objects: `Dim p As T` creates one whose
         // fields hold Java defaults; `Initialize` (the record's `init`
         // function) then gives them their B4X defaults.
@@ -236,7 +234,7 @@ pub fn checked_store(elem: &Ty, v: Value, program: &Program) -> Result<Value, Ex
         | (Ty::Exception, Value::Exc(_)) => true,
         (Ty::Record(id), Value::Record(r)) => r.id == *id,
         (Ty::Array(e, rank), Value::Array(a)) => {
-            array_assignable(&a.elem, a.dims.len(), e, *rank as usize)
+            array_assignable(&a.elem, a.rank, e, *rank as usize)
         }
         _ => false,
     };
@@ -284,9 +282,7 @@ pub fn convert(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value,
         Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception => rewrap(v, to, program),
         Ty::Array(elem, rank) => match &v {
             Value::Null => Ok(v),
-            Value::Array(a) if array_assignable(&a.elem, a.dims.len(), elem, *rank as usize) => {
-                Ok(v)
-            }
+            Value::Array(a) if array_assignable(&a.elem, a.rank, elem, *rank as usize) => Ok(v),
             _ => Err(class_cast(&v, &array_class_name(elem, *rank), program)),
         },
         Ty::Record(id) => match &v {
@@ -371,11 +367,12 @@ fn rewrap(v: Value, to: &Ty, program: &Program) -> Result<Value, Exc> {
 /// array of references it shares the array's storage (`Arrays.asList`); for
 /// an array of primitives the elements are copied into boxes.
 pub fn array_to_list(a: &Rc<ArrayObj>) -> Value {
-    let list = if a.elem.is_primitive() || a.dims.len() > 1 {
+    let list = if a.elem.is_primitive() && a.rank == 1 {
         ListObj::new(a.items.borrow().clone(), ListKind::FixedSize)
     } else {
-        // Stores through the list are checked against the array's type.
-        ListObj::shared(a.items.clone(), ListKind::FixedSize, Some(a.elem.clone()))
+        // `Arrays.asList` of an `Object[]` (an array of rows, for a higher
+        // rank): stores through the list are checked against its type.
+        ListObj::shared(a.items.clone(), ListKind::FixedSize, Some(a.item_ty()))
     };
     Value::List(Rc::new(RefCell::new(Some(Rc::new(list)))))
 }

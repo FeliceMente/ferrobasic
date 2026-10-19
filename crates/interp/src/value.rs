@@ -181,10 +181,24 @@ pub type SbRef = Shared<Vec<u16>>;
 
 #[derive(Debug)]
 pub struct ArrayObj {
+    /// The element type of the innermost arrays.
     pub elem: Ty,
-    /// One length per dimension; elements are stored row-major.
-    pub dims: Vec<usize>,
+    /// As in Java, an array of rank n > 1 is an array of arrays of rank
+    /// n - 1 (its rows), which can be shared, replaced or `Null`.
+    pub rank: usize,
     pub items: Shared<Vec<Value>>,
+}
+
+impl ArrayObj {
+    /// The type of the elements: the base type, or for a rank above 1 the
+    /// type of the rows.
+    pub fn item_ty(&self) -> Ty {
+        if self.rank > 1 {
+            Ty::Array(Box::new(self.elem.clone()), (self.rank - 1) as u8)
+        } else {
+            self.elem.clone()
+        }
+    }
 }
 
 /// A `Type` record: a Java object whose fields exist from the start (with
@@ -220,6 +234,7 @@ pub const ILLEGAL_ARGUMENT: &str = "java.lang.IllegalArgumentException";
 pub const NEGATIVE_ARRAY_SIZE: &str = "java.lang.NegativeArraySizeException";
 pub const OUT_OF_MEMORY: &str = "java.lang.OutOfMemoryError";
 pub const NO_SUCH_FIELD: &str = "java.lang.NoSuchFieldException";
+pub const NO_SUCH_ELEMENT: &str = "java.util.NoSuchElementException";
 pub const UNSUPPORTED_ENCODING: &str = "java.io.UnsupportedEncodingException";
 /// Not a Java exception: the program broke the MIR contract.
 pub const INTERNAL: &str = "ferro.InternalError";
@@ -352,6 +367,14 @@ impl Value {
         ))))))
     }
 
+    pub fn new_array(elem: Ty, rank: usize, items: Vec<Value>) -> Value {
+        Value::Array(Rc::new(ArrayObj {
+            elem,
+            rank,
+            items: Rc::new(RefCell::new(items)),
+        }))
+    }
+
     pub fn new_map(map: OrderedMap) -> Value {
         Value::Map(Rc::new(RefCell::new(Some(Rc::new(RefCell::new(map))))))
     }
@@ -403,6 +426,31 @@ pub struct OrderedMap {
     entries: Vec<Option<(Value, Value)>>,
     index: HashMap<HKey, usize>,
     live: usize,
+    cursor: Cursor,
+}
+
+/// The state behind `GetKeyAt` and `GetValueAt`. B4J's map (`MyMap`) keeps
+/// an iterator, the index it stands at, and the entry it last returned, and
+/// that state shows through: an index past the end raises
+/// `NoSuchElementException` after the iterator has moved, and a negative
+/// index returns the entry last returned (see [`OrderedMap::positional`]).
+#[derive(Debug, Default)]
+struct Cursor {
+    /// The iterator: the position of the next entry it returns. Every
+    /// change to the map drops it.
+    next: Option<usize>,
+    /// The index the iterator stands at; kept when the iterator is dropped.
+    position: i32,
+    /// The entry last returned.
+    current: Option<Current>,
+}
+
+#[derive(Debug)]
+enum Current {
+    /// Still in the map, at this slot: its value is the current one.
+    Slot(usize),
+    /// Removed since: Java's entry keeps its key and its last value.
+    Removed(Value, Value),
 }
 
 impl OrderedMap {
@@ -421,6 +469,7 @@ impl OrderedMap {
 
     /// Returns the previous value.
     pub fn put(&mut self, key: Value, value: Value) -> Result<Option<Value>, Exc> {
+        self.cursor.next = None;
         let h = HKey::of(&key);
         if let Some(&i) = self.index.get(&h)
             && let Some((_, v)) = self.entries[i].as_mut()
@@ -436,8 +485,12 @@ impl OrderedMap {
     }
 
     pub fn remove(&mut self, key: &Value) -> Option<Value> {
+        self.cursor.next = None;
         let i = self.index.remove(&HKey::of(key))?;
-        let (_, v) = self.entries[i].take()?;
+        let (k, v) = self.entries[i].take()?;
+        if matches!(self.cursor.current, Some(Current::Slot(c)) if c == i) {
+            self.cursor.current = Some(Current::Removed(k, v.clone()));
+        }
         self.live -= 1;
         if self.live == 0 {
             self.entries.clear();
@@ -450,6 +503,12 @@ impl OrderedMap {
     }
 
     pub fn clear(&mut self) {
+        self.cursor.next = None;
+        if let Some(Current::Slot(i)) = self.cursor.current
+            && let Some((k, v)) = self.entries[i].take()
+        {
+            self.cursor.current = Some(Current::Removed(k, v));
+        }
         self.entries.clear();
         self.index.clear();
         self.live = 0;
@@ -459,6 +518,9 @@ impl OrderedMap {
     /// index's capacity), allocating nothing.
     fn compact(&mut self) {
         if self.entries.len() != self.live {
+            if let Some(Current::Slot(i)) = &mut self.cursor.current {
+                *i = self.entries[..*i].iter().flatten().count();
+            }
             self.entries.retain(Option::is_some);
             // Only the live keys move: their positions are updated in place.
             for (i, (k, _)) in self.entries.iter().flatten().enumerate() {
@@ -475,6 +537,52 @@ impl OrderedMap {
         try_grow(&mut copy, self.live)?;
         copy.extend(self.iter().map(part));
         Ok(copy)
+    }
+
+    /// `GetKeyAt(index)` / `GetValueAt(index)`, as B4J's `MyMap.getEntry`:
+    /// the iterator moves on when `index` is the next one, and otherwise
+    /// starts again and walks `index + 1` entries.
+    pub fn positional(&mut self, index: i32) -> Result<(Value, Value), Exc> {
+        self.compact();
+        let live = self.live;
+        let c = &mut self.cursor;
+        if let Some(next) = c.next {
+            if c.position == index {
+            } else if c.position == index.wrapping_sub(1) {
+                if next >= live {
+                    return Err(Exc::bare(NO_SUCH_ELEMENT));
+                }
+                c.current = Some(Current::Slot(next));
+                c.next = Some(next + 1);
+                c.position = index;
+            } else {
+                c.next = None;
+            }
+        }
+        if c.next.is_none() {
+            if let Ok(n) = usize::try_from(index) {
+                if n >= live {
+                    // It returned every entry before running out.
+                    if live > 0 {
+                        c.current = Some(Current::Slot(live - 1));
+                    }
+                    c.next = Some(live);
+                    return Err(Exc::bare(NO_SUCH_ELEMENT));
+                }
+                c.current = Some(Current::Slot(n));
+                c.next = Some(n + 1);
+            } else {
+                c.next = Some(0);
+            }
+            c.position = index;
+        }
+        match &c.current {
+            Some(Current::Slot(i)) => self.entries[*i]
+                .clone()
+                .ok_or_else(|| Exc::internal("map cursor")),
+            Some(Current::Removed(k, v)) => Ok((k.clone(), v.clone())),
+            None => Err(Exc::bare(NULL_POINTER)),
+        }
     }
 
     /// The entry at a position, in insertion order.
@@ -547,7 +655,12 @@ impl ListObj {
 
 impl OrderedMap {
     fn take_values(&mut self, work: &mut Vec<Value>) {
-        for (k, v) in std::mem::take(&mut self.entries).into_iter().flatten() {
+        let removed = match self.cursor.current.take() {
+            Some(Current::Removed(k, v)) => Some((k, v)),
+            _ => None,
+        };
+        let entries = std::mem::take(&mut self.entries);
+        for (k, v) in entries.into_iter().flatten().chain(removed) {
             for value in [k, v] {
                 if holds_values(&value) {
                     if work.try_reserve(1).is_ok() {
@@ -808,7 +921,7 @@ pub fn java_class_name(v: &Value, program: &Program) -> Option<String> {
         }
         Value::Exc(e) => e.as_ref()?.kind.into(),
         Value::Array(a) => {
-            let mut s = "[".repeat(a.dims.len().max(1));
+            let mut s = "[".repeat(a.rank.max(1));
             s.push_str(&array_descriptor(&a.elem));
             s
         }
@@ -1077,7 +1190,7 @@ impl<'p, 'o> Printer<'p, 'o> {
             },
             Value::Array(a) => {
                 // Java prints the identity hash code, which no test can compare.
-                let mut name = "[".repeat(a.dims.len().max(1));
+                let mut name = "[".repeat(a.rank.max(1));
                 name.push_str(&array_descriptor(&a.elem));
                 self.put(&format!("{name}@{:x}", (ptr(a) >> 4) & 0x7fff_ffff))?;
             }
