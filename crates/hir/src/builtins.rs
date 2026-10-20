@@ -230,11 +230,21 @@ impl Builtin {
     }
 }
 
+/// Every Level 0 built-in, in declaration order.
+pub fn all() -> &'static [Signature] {
+    SIGNATURES
+}
+
 /// Looks up a member (or, with `Owner::Global`, a keyword) by name.
 pub fn lookup(owner: Owner, name: &str) -> Option<&'static Signature> {
     SIGNATURES
         .iter()
         .find(|s| s.owner == owner && s.name.eq_ignore_ascii_case(name))
+}
+
+/// The names [`later_level`] knows.
+pub fn later_level_names() -> impl Iterator<Item = &'static str> {
+    LATER.iter().map(|&(name, _)| name)
 }
 
 /// The owner whose members a value of type `ty` has.
@@ -251,45 +261,47 @@ pub fn owner_of(ty: &Ty) -> Option<Owner> {
     })
 }
 
+/// Keywords and objects of later levels, with what each one needs.
+const LATER: &[(&str, &str)] = &[
+    ("Sleep", "resumable subs (Level 2)"),
+    ("Wait", "resumable subs (Level 2)"),
+    ("CallSub", "dynamic calls (Level 2)"),
+    ("CallSub2", "dynamic calls (Level 2)"),
+    ("CallSub3", "dynamic calls (Level 2)"),
+    ("CallSubDelayed", "dynamic calls (Level 2)"),
+    ("CallSubDelayed2", "dynamic calls (Level 2)"),
+    ("CallSubDelayed3", "dynamic calls (Level 2)"),
+    ("SubExists", "dynamic calls (Level 2)"),
+    ("Sender", "events (Level 1)"),
+    ("Me", "classes (Level 1)"),
+    ("StartMessageLoop", "the message loop (Level 2)"),
+    ("StopMessageLoop", "the message loop (Level 2)"),
+    ("DateTime", "the DateTime object (Level 1)"),
+    ("File", "the File object (Level 3)"),
+    ("Regex", "the Regex object (Level 1)"),
+    ("Timer", "timers and events (Level 1)"),
+    (
+        "BytesToString",
+        "byte and char arrays conversions (Level 1)",
+    ),
+    (
+        "CharsToString",
+        "byte and char arrays conversions (Level 1)",
+    ),
+    (
+        "GetEnvironmentVariable",
+        "the process environment (Level 1)",
+    ),
+    ("GetSystemProperty", "the process environment (Level 1)"),
+    ("SetSystemProperty", "the process environment (Level 1)"),
+    ("IsDevTool", "the process environment (Level 1)"),
+    ("Density", "UI support (Level 4)"),
+    ("DipToCurrent", "UI support (Level 4)"),
+];
+
 /// Keywords and objects of later levels, for a precise diagnostic instead of
 /// "unknown name". The text says what is missing.
 pub fn later_level(name: &str) -> Option<&'static str> {
-    const LATER: &[(&str, &str)] = &[
-        ("Sleep", "resumable subs (Level 2)"),
-        ("Wait", "resumable subs (Level 2)"),
-        ("CallSub", "dynamic calls (Level 2)"),
-        ("CallSub2", "dynamic calls (Level 2)"),
-        ("CallSub3", "dynamic calls (Level 2)"),
-        ("CallSubDelayed", "dynamic calls (Level 2)"),
-        ("CallSubDelayed2", "dynamic calls (Level 2)"),
-        ("CallSubDelayed3", "dynamic calls (Level 2)"),
-        ("SubExists", "dynamic calls (Level 2)"),
-        ("Sender", "events (Level 1)"),
-        ("Me", "classes (Level 1)"),
-        ("StartMessageLoop", "the message loop (Level 2)"),
-        ("StopMessageLoop", "the message loop (Level 2)"),
-        ("DateTime", "the DateTime object (Level 1)"),
-        ("File", "the File object (Level 3)"),
-        ("Regex", "the Regex object (Level 1)"),
-        ("Timer", "timers and events (Level 1)"),
-        (
-            "BytesToString",
-            "byte and char arrays conversions (Level 1)",
-        ),
-        (
-            "CharsToString",
-            "byte and char arrays conversions (Level 1)",
-        ),
-        (
-            "GetEnvironmentVariable",
-            "the process environment (Level 1)",
-        ),
-        ("GetSystemProperty", "the process environment (Level 1)"),
-        ("SetSystemProperty", "the process environment (Level 1)"),
-        ("IsDevTool", "the process environment (Level 1)"),
-        ("Density", "UI support (Level 4)"),
-        ("DipToCurrent", "UI support (Level 4)"),
-    ];
     LATER
         .iter()
         .find(|(n, _)| n.eq_ignore_ascii_case(name))
