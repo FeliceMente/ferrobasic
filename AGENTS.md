@@ -20,6 +20,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 
 ## Read before working
 
+- `docs/language-support.md` — what is supported today and what is not yet.
 - `docs/architecture.md` — components, IR, backends, tooling.
 - `docs/porting.md` — what "builds without changes" requires, layer by layer.
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
@@ -51,7 +52,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - Never require changes to B4X sources, project files or layouts. An unsupported
   construct gets a precise diagnostic (what is missing, on which target) and an
   entry in `docs/deviations.md`. Never build something that silently behaves differently.
-- Every language feature lands with at least one conformance test.
+- Every language feature lands with at least one conformance test, and
+  updates its row in `docs/language-support.md`.
 - If B4X semantics are unclear, do NOT invent them: add a test with
   `status = "pending-recording"` in its `.meta.toml` (plus `ferro_rejects = true`
   if FerroBASIC rejects it meanwhile) and an entry in `docs/open-questions.md`.

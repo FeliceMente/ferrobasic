@@ -89,6 +89,7 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 ## Documentation
 
 - [Tutorial: the `ferro` command line](docs/tutorial.md)
+- [Language support: what works today and what does not yet](docs/language-support.md)
 - [Architecture](docs/architecture.md)
 - [Porting existing B4X projects](docs/porting.md)
 - [Language spec, Level 0](docs/spec/level0.md), [grammar](docs/spec/level0.ebnf) and [built-ins](docs/spec/level0-builtins.md)
