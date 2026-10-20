@@ -28,8 +28,13 @@ fails while the crate list in the notices and `Cargo.lock` disagree.
   those crates, and `generate.sh` then fails until they are updated.
   `cargo about clarify <file> path <crate directory>` prints the new entry.
 - `about.hbs` is the template. It also holds the notices that do not come
-  from a crate: the Rust standard library's, and musl's `COPYRIGHT`
-  (version 1.2.5).
+  from a crate in `Cargo.lock`: musl's `COPYRIGHT` (version 1.2.5), and the
+  Rust standard library's. The latter are copied by hand from
+  `share/doc/rust/COPYRIGHT-library.html` in the toolchain (`rustc --print
+  sysroot`), keeping the parts linked on Linux, Windows and macOS and leaving
+  out other platforms' crates and build- or test-only ones. After a Rust
+  upgrade, compare that file with the template and update both the list and
+  the Rust version it names.
 
 The list covers every platform at once, so a given executable contains only
 part of it. It also lists some crates `ferro` never links, such as those
