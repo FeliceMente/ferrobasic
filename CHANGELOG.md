@@ -5,6 +5,16 @@ command line may still change. Expected outputs are still derived by hand
 from the original runtime's source and from JDK 21, not yet recorded from
 B4J itself (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+- A B4J console project (`.b4j`), or the folder that holds it, is an input
+  of `ferro check`, `run` and `bundle`. A project Level 0 cannot run is an
+  error at each header line that stands in the way: a UI `AppType`, another
+  library, another module, a file. Before, such a project ran its main
+  module as if nothing were missing.
+- A module file whose header says `Type=Class` (or any type other than
+  `StaticCode`) is an error that says so.
+
 ## 0.0.2 (pre-alpha)
 
 ### Command line
