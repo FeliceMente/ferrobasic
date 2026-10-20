@@ -173,6 +173,40 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   - a `SubList` view (`Collections.unmodifiableList`) always raises
     `UnsupportedOperationException`.
 
+### Built-in members (source, docs)
+
+The members a program calls on a value are thin wrappers over Java, so
+their behaviour is Java's. Checked by running the same calls on OpenJDK 21
+(the `string_members`, `string_builder`, `list_members` and `map_members`
+tests):
+
+- **String** members are `java.lang.String`'s
+  ([core reference, String](https://www.b4x.com/b4j/help/core.html#string),
+  **docs**): `CharAt`, `IndexOf`, `SubString2` and `Length` count UTF-16
+  code units; `CompareTo` returns the difference of the first differing code
+  units, or of the lengths; `Replace` is literal, left to right; `Trim`
+  removes code units up to U+0020 only; an index out of range raises
+  `StringIndexOutOfBoundsException`. Case mapping is the open question on
+  locales; outside Turkish, Azeri and Lithuanian it is the Unicode default
+  (`"Straße".ToUpperCase` is `STRASSE`).
+- **StringBuilder** wraps `java.lang.StringBuilder`
+  ([`StringBuilderWrapper.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/StringBuilderWrapper.java)):
+  `Append`, `Insert` and `Remove` return the wrapper, so calls chain;
+  `Remove(Start, End)` is `delete`, which stops at the length when `End` is
+  past it; an offset out of range raises `StringIndexOutOfBoundsException`.
+- **List** ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java)):
+  `InsertAt`, `RemoveAt`, `Set` and `IndexOf` are `ArrayList`'s `add`,
+  `remove`, `set` and `indexOf` (`equals`, so boxed types matter).
+  `Sort(True)` is `Collections.sort`; `Sort(False)` sorts with the reversed
+  comparison; `SortCaseInsensitive` compares the items' `toString()` with
+  `compareToIgnoreCase`; `SortType` / `SortTypeCaseInsensitive` compare the
+  named field the same ways, and return at once on an empty list. Every sort
+  is `Collections.sort`, which is stable, also when descending.
+- **Map** ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java)): `Remove`
+  returns the removed value or `Null`; `GetDefault` returns the default when
+  the key is missing or its value is `Null`; `ContainsKey` is
+  `containsKey`, so a key with a `Null` value is present.
+
 ### Number parsing (source, measured)
 
 - `IsNumber(Text)` is `Double.parseDouble(Text)` without an exception
