@@ -245,7 +245,7 @@ is embedded with `libsui` instead (see below).
   - So does an executable that cannot locate or read its own file: it never
     falls back to the CLI in place of its program.
 - Linux (ELF) and Windows (PE) ignore appended bytes, so the result runs as is.
-  Verified on Linux x86_64; Windows is not tested yet.
+  Verified on Linux x86_64 and Windows x64.
 - **macOS**: `codesign` rejects a Mach-O file with bytes after its last
   segment ("main executable failed strict validation"), and Apple Silicon
   refuses to run unsigned binaries. So the package is embedded with
