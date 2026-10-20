@@ -431,7 +431,9 @@ program is damaged.
 
 ## 10. What Level 0 does not have yet
 
-The compiler tells you when you use one of these:
+[language-support.md](language-support.md) lists, area by area, what works
+today and what does not yet. These are the main gaps, and the compiler tells
+you when you use one of them:
 
 - **classes and several modules:** `Class_Globals` (Level 1);
 - **libraries:** `DateTime`, `File`, `Regex`, `Timer`;
