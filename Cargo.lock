@@ -177,6 +177,9 @@ dependencies = [
 [[package]]
 name = "ferro-project"
 version = "0.0.3-dev"
+dependencies = [
+ "ferro-syntax",
+]
 
 [[package]]
 name = "ferro-syntax"
