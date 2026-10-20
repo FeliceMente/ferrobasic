@@ -156,7 +156,13 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 ## Project
 
 - [x] Choose the licence: MIT (`LICENSE`).
-- [ ] Ship the licence notices of FerroBASIC's dependencies with released
-      binaries (e.g. generated with `cargo-about`).
+- [x] Ship the licence notices of FerroBASIC's dependencies with released
+      binaries: `THIRD-PARTY-NOTICES.txt`, generated with `cargo-about`
+      (`tools/licenses/`), compiled into `ferro` and printed by
+      `ferro licenses`.
+- [ ] Trim `libsui`'s dependencies: on macOS it brings in about 40 crates
+      (image decoding, compression, hashing) that `ferro` never uses. Check
+      whether its features can be turned off, which would shorten the
+      notices and shrink the macOS binary.
 - [ ] Evaluate Cranelift for the REPL JIT and debug builds.
 - [ ] Evaluate `zig cc` / `cargo-zigbuild` as the cross-linker.
