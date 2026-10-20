@@ -338,8 +338,9 @@ fn smart_text_len(text: &str) -> usize {
 }
 
 /// Length of a B4J header ending with an `@EndOfDesignText@` line, if the
-/// text starts with one. Every line before it must look like `Key=Value`.
-fn header_len(text: &str) -> Option<usize> {
+/// text (after any BOM) starts with one. Every line before it must look like
+/// `Key=Value`. Project files and module files share this header.
+pub fn header_len(text: &str) -> Option<usize> {
     let mut offset = 0;
     while offset < text.len() {
         let line = &text[offset..offset + line_len(&text[offset..])];
