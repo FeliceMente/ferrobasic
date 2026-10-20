@@ -63,7 +63,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - No target-specific code in `syntax`, `hir` or `mir`.
 - `crates/runtime` (planned, M4) must stay `no_std`-compatible.
 - No `unsafe` outside crates that explicitly opt in and document why.
-- Keep external dependencies few and justified in the PR description.
+- Keep external dependencies few and justified in the PR description. After
+  adding, removing or updating one, regenerate `THIRD-PARTY-NOTICES.txt` with
+  `tools/licenses/generate.sh` (a test fails until you do).
 - Never use the B4X name in binaries, crate names or user-facing messages;
   "B4X-compatible" in documentation is fine.
 - Never commit third-party B4X libraries, B4X binaries or corpus projects whose

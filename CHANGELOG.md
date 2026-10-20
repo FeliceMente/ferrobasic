@@ -7,6 +7,11 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- `ferro licenses` prints FerroBASIC's licence and the notices of the
+  third-party code compiled into `ferro`, and so into every program built
+  with `ferro bundle`. Whoever distributes such a program must include
+  them: `ferro licenses > NOTICES.txt`. The notices are also in
+  `THIRD-PARTY-NOTICES.txt`.
 - CI on GitHub Actions: formatting, clippy and the tests on Linux, Windows,
   macOS arm64 and macOS Intel, plus a static Linux build, for release pull
   requests and on demand. `ferro run` and `ferro bundle` are now tested on

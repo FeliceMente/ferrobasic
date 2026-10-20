@@ -30,7 +30,9 @@ fn help_starts_with_version_and_platform() {
         assert!(out.status.success(), "{args:?}");
         let stdout = String::from_utf8(out.stdout).unwrap();
         assert!(stdout.starts_with(&header), "{args:?}: {stdout}");
-        for command in ["check", "run", "bundle", "version", "help", "compile"] {
+        for command in [
+            "check", "run", "bundle", "licenses", "version", "help", "compile",
+        ] {
             assert!(stdout.contains(&format!("\n  {command} ")), "{command}");
         }
     }
@@ -58,6 +60,7 @@ fn messages_do_not_use_product_names() {
     for args in [
         &["help"][..],
         &["version"],
+        &["licenses"],
         &["frob"],
         &["build"],
         &["compile"],
