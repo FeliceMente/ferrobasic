@@ -19,19 +19,24 @@ Every command takes one `<input>`:
 | Input | Meaning |
 | --- | --- |
 | `file.bas` | One code module. Two forms are accepted: the module members alone (as in `tests/conformance`), or a B4J module file with its header (lines `Key=Value` up to `@EndOfDesignText@`). A header must have `Type=StaticCode` or no `Type` at all. |
-| `project.b4j` | A B4J project. The header is read by `ferro-project`; the main module is the text after `@EndOfDesignText@`. |
-| `dir/` | A directory containing exactly one `.b4j`. |
+| `project.b4j` | A B4J project. The header is read by `ferro-project`; the main module is the text after `@EndOfDesignText@`. A file whose extension is `.b4j`, in any case, is read as a project. |
+| `dir/` | A directory containing exactly one `.b4j`. A directory with none, or with several, is a usage error (exit code 2) that says so. |
 
-Level 0 accepts a `.b4j` only if it is a non-UI project:
+Level 0 accepts a `.b4j` only if it is a console project
+([project-files.md](project-files.md#at-level-0)):
 
-- the libraries are only `jCore`;
-- there are no extra modules (`NumberOfModules=0`);
-- there are no `Files`.
+- `AppType=StandardJava`;
+- the only library is jCore;
+- there are no other modules (`Module<n>`) and no files (`File<n>`).
 
-Anything else is rejected with a diagnostic that names the cause, for example:
-`project uses library 'jFX': not supported at Level 0`. The value of `AppType`
-for non-UI projects is *(open)* until the project-file format is documented
-(`docs/spec/project-files.md`, M0).
+Anything else is a compile error (exit code 3) at its header line, naming the
+cause, for example:
+
+```text
+App.b4j:4:1: error: the project uses library `jfx`: only jCore is supported at Level 0
+```
+
+Every such problem is reported, together with the program's other errors.
 
 Source text:
 
