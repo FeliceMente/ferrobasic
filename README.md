@@ -94,7 +94,7 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 - [CLI, interpreter and standalone builds](docs/spec/cli.md)
 - [Level 0 semantics from public sources](docs/research/level0-semantics.md)
 - [Compatibility testing](docs/compatibility-testing.md)
-- [Roadmap](docs/roadmap.md)
+- [Roadmap](docs/roadmap.md) and [changelog](CHANGELOG.md)
 - [Open questions](docs/open-questions.md) and [deviations](docs/deviations.md)
 
 ## License
