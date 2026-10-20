@@ -48,7 +48,10 @@ tests/conformance/level0/
 `status` in `.meta.toml` is one of `pending-recording`, `recorded`,
 `deviation` (see `docs/deviations.md`) or `negative` (must be rejected).
 A test whose program must stop on an uncaught error names its kind in
-`uncaught_error` (for example `"java.lang.RuntimeException"`).
+`uncaught_error` (for example `"java.lang.RuntimeException"`), and exits
+with code 1. A test whose program ends with `ExitApplication2(n)` gives the
+code as `exit_code = n` (0 to 255; not with `uncaught_error`, and not for a
+program FerroBASIC rejects). Otherwise the program must exit with code 0.
 
 Two more keys describe what FerroBASIC does, for the tests it handles
 differently from B4X:
