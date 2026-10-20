@@ -41,6 +41,7 @@ crates/
 tests/conformance/  test programs with recorded expected outputs
 tests/corpus/     real-world B4X projects (licence-checked)
 tools/recorder/   records expected outputs from the original toolchain
+tools/licenses/   generates THIRD-PARTY-NOTICES.txt
 docs/             architecture, porting, spec, testing, roadmap
 ```
 
@@ -103,8 +104,14 @@ FerroBASIC is released under the [MIT License](LICENSE).
 
 Programs you write, check, run, bundle or compile with FerroBASIC remain
 yours, under whatever licence you choose. A bundled executable contains a copy
-of `ferro`, so when you distribute one, include FerroBASIC's copyright and
-licence notice, for example in your program's documentation.
+of `ferro`, which includes third-party code under MIT and similar licences
+([THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)). So when you distribute
+one, include the notices `ferro licenses` prints, FerroBASIC's licence
+first, for example as a `NOTICES.txt` next to the program:
+
+```sh
+ferro licenses > NOTICES.txt
+```
 
 Unless you state otherwise, any contribution you submit for inclusion in
 FerroBASIC is licensed under the MIT License, without additional terms.
