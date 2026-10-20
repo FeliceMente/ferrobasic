@@ -85,8 +85,11 @@ fn a_console_project_runs_from_its_file_or_its_directory() {
 #[test]
 fn a_bundled_directory_is_named_after_its_project() {
     let dir = Scratch::new("bundle");
-    dir.file("hello/Hello.b4j", CONSOLE);
-    let out = ferro(&dir.0, &["bundle", "hello"]);
+    // The folder's name differs from the project's: on a file system that
+    // ignores case (macOS, Windows), `Hello` would be the folder `hello`
+    // itself, which bundle refuses to overwrite.
+    dir.file("app/Hello.b4j", CONSOLE);
+    let out = ferro(&dir.0, &["bundle", "app"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
     let exe = dir.0.join(format!("Hello{}", std::env::consts::EXE_SUFFIX));
     let out = run_written(Command::new(&exe).arg("x"));

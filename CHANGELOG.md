@@ -7,6 +7,11 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- CI on GitHub Actions: formatting, clippy and the tests on Linux, Windows,
+  macOS arm64 and macOS Intel, plus a static Linux build, for release pull
+  requests and on demand. `ferro run` and `ferro bundle` are now tested on
+  Windows and on macOS Intel.
+
 - A B4J console project (`.b4j`), or the folder that holds it, is an input
   of `ferro check`, `run` and `bundle`. A project Level 0 cannot run is an
   error at each header line that stands in the way: a UI `AppType`, another
