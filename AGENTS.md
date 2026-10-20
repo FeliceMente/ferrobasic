@@ -84,7 +84,10 @@ cargo run -p ferro-difftest -- --target interp   # compare against recordings (o
 ## Before closing a task
 
 1. `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
-   `cargo test --workspace` all pass.
+   `cargo test --workspace` all pass. CI (`.github/workflows/ci.yml`) runs
+   them on Linux, Windows and macOS only for pull requests into `main` and
+   on demand (see `docs/compatibility-testing.md`, "CI"), so run clippy for
+   the other targets locally too when touching platform-specific code.
 2. New behaviour has conformance tests; open questions and deviations are recorded.
 3. Docs in `docs/` reflect any design change; `docs/tutorial.md` shows real
    `ferro` output, so re-run its examples when CLI behaviour changes.
