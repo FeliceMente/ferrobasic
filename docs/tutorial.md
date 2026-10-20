@@ -65,6 +65,12 @@ Hello, world!
 The file can be just the module's members, as here. A B4J module file, with its
 `Key=Value` header lines up to `@EndOfDesignText@`, works too.
 
+So does a B4J console project: give `ferro` its `.b4j` file, or the folder
+that holds it. At Level 0 the project must be a console program
+(`AppType=StandardJava`) whose only library is jCore, with no other modules
+and no files. Anything else is reported as an error at its line of the
+project file, so you see at once what stands in the way.
+
 ## 3. Arguments and exit codes
 
 `ferro run` passes everything after `--` to `AppStart`. Save this as
@@ -419,8 +425,8 @@ The compiler tells you when you use one of these:
 - **libraries:** `DateTime`, `File`, `Regex`, `Timer`;
 - **resumable subs and events:** `Sleep`, `Wait For` (Level 2);
 - **conditional compilation:** `#If`;
-- **real project files:** `ferro` reads single modules today, and `.b4j`
-  projects come next.
+- **projects with more than a console module:** UI projects, other
+  libraries, several modules and project files.
 
 See [roadmap.md](roadmap.md) for when each arrives, and
 [deviations.md](deviations.md) for known differences from B4J.

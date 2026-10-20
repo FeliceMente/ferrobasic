@@ -58,7 +58,8 @@ related tests stay `pending-recording`.
 - [ ] Comparing Strings with `<` / `>`, and comparing a String with a number.
 - [ ] Changing a `List` or `Map` while iterating it with `For Each`.
 - [ ] Output and exit code of a B4J non-UI program that stops on an uncaught error.
-- [ ] `AppType` value of a non-UI `.b4j` project.
+- [x] `AppType` value of a non-UI `.b4j` project: `StandardJava`
+      ([public samples](spec/project-files.md#sources)).
 - [ ] Whether `LogDebug` prints in release mode (provisionally not).
 - [ ] Exact text of JDK-generated exception messages seen through
       `LastException.Message` (index and number-parse errors), and which JDK.
