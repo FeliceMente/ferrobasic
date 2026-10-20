@@ -41,6 +41,9 @@ pub struct Program {
     pub deviation: Option<String>,
     /// The kind of the uncaught error that stops the program, if any.
     pub uncaught_error: Option<String>,
+    /// The exit code the program ends with: `exit_code` (a program that calls
+    /// `ExitApplication2`), else 1 with an uncaught error, else 0.
+    pub exit_code: i32,
 }
 
 impl Program {
@@ -162,9 +165,23 @@ fn from_meta(path: PathBuf, name: String, meta: &str) -> Result<Program, String>
     if (status == Status::Deviation) != deviation.is_some() {
         return Err("a deviation test, and only one, names its entry in `deviation`".into());
     }
+    let uncaught_error = string(meta, "uncaught_error")?;
+    let rejected = ferro_rejects || status == Status::Negative;
+    let exit_code = match value(meta, "exit_code")? {
+        None => i32::from(uncaught_error.is_some()),
+        Some(_) if uncaught_error.is_some() => {
+            return Err("exit_code and uncaught_error exclude each other".into());
+        }
+        Some(_) if rejected => return Err("a program FerroBASIC rejects has no exit code".into()),
+        Some(v) => match v.parse::<i32>() {
+            Ok(code) if (0..=255).contains(&code) => code,
+            _ => return Err(format!("exit_code must be a number from 0 to 255, not {v}")),
+        },
+    };
     let program = Program {
-        rejected: ferro_rejects || status == Status::Negative,
-        uncaught_error: string(meta, "uncaught_error")?,
+        rejected,
+        uncaught_error,
+        exit_code,
         path,
         name,
         status,
@@ -263,6 +280,27 @@ mod tests {
         let p =
             meta("status = \"pending-recording\"\nuncaught_error = \"a.B#C\"  # kind\n").unwrap();
         assert_eq!(p.uncaught_error.as_deref(), Some("a.B#C"));
+        assert_eq!(p.exit_code, 1);
+    }
+
+    #[test]
+    fn reads_the_exit_code() {
+        assert_eq!(meta("status = \"recorded\"\n").unwrap().exit_code, 0);
+        assert_eq!(
+            meta("status = \"recorded\"\nexit_code = 3  # ExitApplication2\n")
+                .unwrap()
+                .exit_code,
+            3
+        );
+        for bad in [
+            "status = \"recorded\"\nexit_code = 256\n",
+            "status = \"recorded\"\nexit_code = -1\n",
+            "status = \"recorded\"\nexit_code = \"3\"\n",
+            "status = \"recorded\"\nexit_code = 3\nuncaught_error = \"a.B\"\n",
+            "status = \"negative\"\nexit_code = 3\n",
+        ] {
+            assert!(meta(bad).is_err(), "{bad:?}");
+        }
     }
 
     #[test]
