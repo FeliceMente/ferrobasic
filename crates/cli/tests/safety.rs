@@ -275,14 +275,24 @@ fn bundle_protects_an_input_read_from_a_fifo() {
 }
 
 /// Arguments and file names are bytes, not necessarily UTF-8. `AppStart`
-/// receives undecodable bytes as U+FFFD, like on the JVM.
+/// receives undecodable bytes as U+FFFD, like on the JVM. File names are
+/// tested where the file system can hold them.
 #[cfg(unix)]
 #[test]
 fn non_utf8_arguments_and_file_names_work() {
     use std::os::unix::ffi::OsStrExt;
     let dir = Scratch::new("bytes");
-    let name = std::ffi::OsStr::from_bytes(b"pr\xffog.bas");
-    fs::write(dir.0.join(name), PROGRAM).unwrap();
+    let mut name = std::ffi::OsStr::from_bytes(b"pr\xffog.bas");
+    if let Err(e) = fs::write(dir.0.join(name), PROGRAM) {
+        // APFS (macOS) stores only UTF-8 names and refuses others with
+        // EILSEQ; the arguments are still tested there.
+        assert!(
+            cfg!(target_os = "macos") && e.raw_os_error() == Some(92),
+            "{e}"
+        );
+        name = std::ffi::OsStr::new("prog.bas");
+        fs::write(dir.0.join(name), PROGRAM).unwrap();
+    }
     let arg = std::ffi::OsStr::from_bytes(b"a\xffb");
 
     let out = ferro_in(&dir.0, &[os("run"), name, os("--"), arg]);
