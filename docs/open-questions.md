@@ -97,6 +97,10 @@ needs a recorded test):
       HotSpot replaces with CPU intrinsics, whose last bit may depend on the
       JVM and CPU; FerroBASIC uses the platform's maths library. Needs recordings from the reference machine. (`ASin`, `ACos`,
       `ATan`, `ATan2` are settled: fdlibm, bit for bit.)
+- [ ] The type of `IIf`'s result, and so how it converts when assigned or
+      printed (`Dim n As Int = IIf(True, 1, 2.5)`, `Log(IIf(True, 3, 4.5))`).
+      That it evaluates only the chosen branch is settled. Fixture:
+      `level0/iif_branches`.
 - [ ] Whether all `Case` values are evaluated before matching, as they would
       be if the compiler passes them to `BA.switchObjectToInt` as arguments;
       FerroBASIC evaluates them in order until one matches. It only matters
