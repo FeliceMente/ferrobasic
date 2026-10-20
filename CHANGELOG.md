@@ -7,6 +7,9 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- `docs/language-support.md` lists what FerroBASIC supports today and what it
+  does not yet, area by area: types, statements, built-in objects, keywords,
+  directives.
 - `ferro licenses` prints FerroBASIC's licence and the notices of the
   third-party code compiled into `ferro`, and so into every program built
   with `ferro bundle`. Whoever distributes such a program must include
