@@ -25,6 +25,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
 - `docs/spec/level0-builtins.md` — keywords and library members at Level 0.
 - `docs/spec/cli.md` — `ferro check/run/bundle`, planned commands, exit codes, standalone binaries.
+- `docs/spec/project-files.md` — project (`.b4j`) and module (`.bas`) file headers, and their sources.
 - `docs/research/level0-semantics.md` — where each Level 0 rule comes from.
 - `docs/compatibility-testing.md` — how compatibility is measured.
 - `docs/open-questions.md` — unresolved B4X semantics. Check here before guessing.
