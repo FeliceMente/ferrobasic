@@ -2151,3 +2151,60 @@ fn case_insensitive_sorts_and_null() {
         "A\nb\nnull\no\njava.lang.NullPointerException\n"
     );
 }
+
+/// Output still buffered when the machine goes away (also when it unwinds)
+/// is written out.
+#[test]
+fn buffered_output_is_flushed_on_drop() {
+    let p = program(|_, _| {});
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    {
+        let mut m = crate::machine::Machine::new(&p, &mut out, &mut err);
+        m.out.log(&crate::strings::to_utf16("kept"));
+    }
+    assert_eq!(out, b"kept\n");
+}
+
+/// Long lines are encoded and written piece by piece, with the same bytes.
+#[test]
+fn long_lines_are_written_in_pieces() {
+    let p = program(|_, _| {});
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut text: Vec<u16> = "é€".encode_utf16().collect::<Vec<_>>().repeat(50_000);
+    text.push(0xD800);
+    text.extend("😀".encode_utf16());
+    {
+        let mut m = crate::machine::Machine::new(&p, &mut out, &mut err);
+        m.out.log(&text);
+        m.out.log_error(&text);
+    }
+    let expected = format!("{}?😀\n", "é€".repeat(50_000));
+    assert_eq!(String::from_utf8(out).unwrap(), expected);
+    assert_eq!(String::from_utf8(err).unwrap(), expected);
+}
+
+/// A line longer than the buffer is written out whole, line feed included,
+/// before `Log` returns.
+#[test]
+fn long_lines_are_flushed_whole() {
+    #[derive(Clone, Default)]
+    struct Shared(std::rc::Rc<std::cell::RefCell<Vec<u8>>>);
+    impl std::io::Write for Shared {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.borrow_mut().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let p = program(|_, _| {});
+    let (mut out, mut err) = (Shared::default(), Vec::new());
+    let seen = out.clone();
+    let mut m = crate::machine::Machine::new(&p, &mut out, &mut err);
+    m.out.log(&vec![b'x' as u16; 70_000]);
+    assert_eq!(seen.0.borrow().len(), 70_001);
+    assert_eq!(seen.0.borrow().last(), Some(&b'\n'));
+    m.out.log(&crate::strings::to_utf16("short"));
+    assert_eq!(seen.0.borrow().len(), 70_001, "short lines stay buffered");
+}

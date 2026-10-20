@@ -27,6 +27,8 @@ pub fn lex(text: &str) -> (Vec<Token>, Vec<LexError>) {
         tokens: Vec::new(),
         errors: Vec::new(),
         line_start: true,
+        smart_depth: 0,
+        reported_too_deep: false,
     };
     lexer.prologue();
     while !lexer.at_end() {
@@ -42,7 +44,16 @@ struct Lexer<'a> {
     errors: Vec<LexError>,
     /// Only whitespace since the last line break: a `#` starts a directive.
     line_start: bool,
+    /// Smart strings open around the current position, each inside a
+    /// placeholder of the one before.
+    smart_depth: u32,
+    /// The too-deep error is reported once per file.
+    reported_too_deep: bool,
 }
+
+/// Deepest nesting of smart strings (`$"${$"..."$}"$`). Smart strings are
+/// lexed recursively, so an unbounded depth would overflow the stack.
+const MAX_SMART_NESTING: u32 = 100;
 
 impl Lexer<'_> {
     fn at_end(&self) -> bool {
@@ -122,6 +133,16 @@ impl Lexer<'_> {
                 let len = self.continuation_len().unwrap();
                 self.push(LINE_CONTINUATION, len);
             }
+            '_' if self.continuation_before_comment() => {
+                // Whether a comment may follow a line continuation is open
+                // (`docs/open-questions.md`): say so instead of reading `_`
+                // as a name.
+                self.error(
+                    self.pos,
+                    "a line continuation `_` must end its line: move the comment to another line",
+                );
+                self.push(ERROR_TOKEN, 1);
+            }
             c if c.is_alphabetic() || c == '_' => {
                 let len = self.take_while(|c| c.is_alphanumeric() || c == '_');
                 let kind = SyntaxKind::from_keyword(&rest[..len]).unwrap_or(IDENT);
@@ -129,7 +150,25 @@ impl Lexer<'_> {
             }
             '0'..='9' => self.number(),
             '"' => self.string(),
-            '$' if rest.starts_with("$\"") => self.smart_string(),
+            '$' if rest.starts_with("$\"") && self.smart_depth >= MAX_SMART_NESTING => {
+                // Too deep: report it once, then lex the rest of this string
+                // as plain code, which never recurses.
+                if !self.reported_too_deep {
+                    self.reported_too_deep = true;
+                    self.error(
+                        self.pos,
+                        format!(
+                            "smart strings nested too deeply (more than {MAX_SMART_NESTING} levels)"
+                        ),
+                    );
+                }
+                self.push(ERROR_TOKEN, 1);
+            }
+            '$' if rest.starts_with("$\"") => {
+                self.smart_depth += 1;
+                self.smart_string();
+                self.smart_depth -= 1;
+            }
             '}' if in_placeholder => return false,
             '<' if rest.starts_with("<>") => self.push(NEQ, 2),
             '<' if rest.starts_with("<=") => self.push(LT_EQ, 2),
@@ -162,6 +201,15 @@ impl Lexer<'_> {
 
     /// Length of a line continuation starting at the current `_`: the `_`
     /// must follow whitespace and be followed only by spaces and a line break.
+    /// ` _ ' comment`: a `_` after a space, followed only by spaces and a
+    /// comment.
+    fn continuation_before_comment(&self) -> bool {
+        self.src[..self.pos].ends_with([' ', '\t'])
+            && self.rest()[1..]
+                .trim_start_matches([' ', '\t'])
+                .starts_with('\'')
+    }
+
     fn continuation_len(&self) -> Option<usize> {
         let after_space = self.src[..self.pos].ends_with([' ', '\t']);
         if !after_space {

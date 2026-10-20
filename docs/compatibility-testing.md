@@ -50,6 +50,26 @@ tests/conformance/level0/
 A test whose program must stop on an uncaught error names its kind in
 `uncaught_error` (for example `"java.lang.RuntimeException"`).
 
+Two more keys describe what FerroBASIC does, for the tests it handles
+differently from B4X:
+
+- `deviation = "D1"`: required for a `deviation` test, and only there; the
+  entry in `docs/deviations.md`.
+- `ferro_rejects = true`: FerroBASIC refuses to compile the program on
+  purpose, either by a documented deviation or until a recording shows what
+  B4X does (for a `pending-recording` test of an open question). Such a test
+  has no `.provisional` output.
+
+Every crate's harness reads the corpus through `crates/corpus` (all
+subdirectories of `tests/conformance`; a missing `.meta.toml`, an unknown
+`status` or an empty corpus is an error). The front-end harness checks that
+every program FerroBASIC accepts parses and type-checks cleanly, and that
+every one it rejects (`negative`, or `ferro_rejects`) gets an error. The
+later stages only run the accepted ones.
+
+Git must not convert the line endings of these files: `.gitattributes`
+marks `tests/conformance/**` as binary-exact (`-text`).
+
 ### Provisional outputs
 
 While the recorder does not exist, a test may carry a `<name>.provisional`

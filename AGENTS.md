@@ -15,7 +15,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - Language: Rust (stable, edition 2024). Workspace in `crates/`, one crate per
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
 - Current milestone: **M0 → M1** — lexer, parser, lossless CST, then the
-  Level 0 interpreter, `ferro run` and standalone `ferro build` (see
+  Level 0 interpreter, `ferro run` and standalone `ferro bundle` (see
   `docs/spec/cli.md`). The recorder is deferred. See `docs/roadmap.md`.
 
 ## Read before working
@@ -24,7 +24,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - `docs/porting.md` — what "builds without changes" requires, layer by layer.
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
 - `docs/spec/level0-builtins.md` — keywords and library members at Level 0.
-- `docs/spec/cli.md` — `ferro check/run/build`, exit codes, standalone binaries.
+- `docs/spec/cli.md` — `ferro check/run/bundle`, planned commands, exit codes, standalone binaries.
 - `docs/research/level0-semantics.md` — where each Level 0 rule comes from.
 - `docs/compatibility-testing.md` — how compatibility is measured.
 - `docs/open-questions.md` — unresolved B4X semantics. Check here before guessing.
@@ -52,8 +52,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   entry in `docs/deviations.md`. Never build something that silently behaves differently.
 - Every language feature lands with at least one conformance test.
 - If B4X semantics are unclear, do NOT invent them: add a test with
-  `status = "pending-recording"` in its `.meta.toml` and an entry in
-  `docs/open-questions.md`.
+  `status = "pending-recording"` in its `.meta.toml` (plus `ferro_rejects = true`
+  if FerroBASIC rejects it meanwhile) and an entry in `docs/open-questions.md`.
+  Harnesses read the corpus through `crates/corpus`.
 - A mismatch found by the program generator is minimized and kept as a regression test.
 - The CST is lossless (whitespace and comments included): LSP and the formatter
   depend on it.
@@ -75,7 +76,7 @@ cargo test --workspace
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p ferro-cli -- run tests/conformance/level0/<file>.bas
-cargo run -p ferro-cli -- build tests/conformance/level0/<file>.bas -o /tmp/prog
+cargo run -p ferro-cli -- bundle tests/conformance/level0/<file>.bas -o /tmp/prog
 cargo run -p ferro-difftest -- --target interp   # compare against recordings (once implemented)
 ```
 

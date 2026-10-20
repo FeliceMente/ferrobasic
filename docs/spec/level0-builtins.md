@@ -27,12 +27,12 @@ A member not listed here gets a precise diagnostic. For example:
 | `cPI`, `cE` | Java `Math.PI`, `Math.E` |
 | `Not(Value As Boolean) As Boolean` | logical not |
 | `IIf(Condition, TrueValue, FalseValue)` | evaluates only the chosen branch. The result type is `Object` unless `.As(T)` is used *(open)*. |
-| `Abs`, `Sqrt`, `Power`, `Floor`, `Ceil`, `Sin`, `Cos`, `Tan`, `ASin`, `ACos`, `ATan`, `ATan2`, `SinD`, `CosD`, `TanD`, `ASinD`, `ACosD`, `ATanD`, `ATan2D`, `Logarithm(Number, Base)`, `Max`, `Min` | `Double` in and out, Java `Math` semantics. The `D` variants use degrees. |
+| `Abs`, `Sqrt`, `Power`, `Floor`, `Ceil`, `Sin`, `Cos`, `Tan`, `ASin`, `ACos`, `ATan`, `ATan2`, `SinD`, `CosD`, `TanD`, `ASinD`, `ACosD`, `ATanD`, `ATan2D`, `Logarithm(Number, Base)`, `Max`, `Min` | `Double` in and out, Java `Math` semantics; `ASin`, `ACos`, `ATan` and `ATan2` match Java bit for bit (fdlibm). The `D` variants use degrees: `ASinD(x)` is `ASin(x) / π * 180`, in that order. |
 | `Round(Number As Double) As Long` | Java `Math.round`: halves round up (`Round(-2.5)` is `-2`) |
 | `Round2(Number As Double, DecimalPlaces As Int) As Double` | `Math.round(x * 10^d) / 10^d` |
 | `NumberFormat(Number, MinimumIntegers, MaximumFractions)` | see [level0.md](level0.md#strings) |
 | `NumberFormat2(Number, MinimumIntegers, MaximumFractions, MinimumFractions, GroupingUsed)` | same, with a minimum number of fraction digits and optional grouping |
-| `IsNumber(Text As String) As Boolean` | `True` if Java `Double.parseDouble` accepts the text |
+| `IsNumber(Text As String) As Boolean` | `True` if Java `Double.parseDouble` accepts the text; `Null` raises `NullPointerException` |
 | `Asc(Char As Char) As Int`, `Chr(UnicodeValue As Int) As Char` | UTF-16 code unit ↔ Int |
 | `Rnd(Min As Int, Max As Int) As Int`, `RndSeed(Seed As Long)` | `Min + nextInt(Max - Min)` on the `java.util.Random` algorithm (a 48-bit LCG), so a seeded sequence matches B4J exactly. Unseeded output is not compared. |
 | `ExitApplication`, `ExitApplication2(ExitCode As Int)` | end the process with code 0 / `ExitCode` |
@@ -41,7 +41,7 @@ A member not listed here gets a precise diagnostic. For example:
 | `CreateMap(k1: v1, k2: v2, …) As Map` | an initialised `Map` with the pairs in order |
 | `GetType(object As Object) As String` | *(open)*: B4J returns the Java class name (`java.lang.Integer`). Level 0 returns the same names for primitives, boxes, `String`, `List` and `Map`; other values are a deviation. |
 | `x.As(T)` | inline cast, same rules as assigning to a variable of type `T` |
-| `Bit.And`, `Bit.Or`, `Bit.Xor`, `Bit.Not`, `Bit.ShiftLeft`, `Bit.ShiftRight`, `Bit.UnsignedShiftRight`, `Bit.ToHexString`, `Bit.ToBinaryString`, `Bit.ToOctalString`, `Bit.ParseInt(Value, Radix)` | Java `int` semantics |
+| `Bit.And`, `Bit.Or`, `Bit.Xor`, `Bit.Not`, `Bit.ShiftLeft`, `Bit.ShiftRight`, `Bit.UnsignedShiftRight`, `Bit.ToHexString`, `Bit.ToBinaryString`, `Bit.ToOctalString`, `Bit.ParseInt(Value, Radix)` | Java `int` semantics; `ParseInt` accepts any Unicode decimal digit, as `Integer.parseInt` does |
 
 Not in Level 0: `Sleep`, `CallSub*`, `CallSubDelayed*`, `Sender`, `Me`,
 `StartMessageLoop`/`StopMessageLoop`, `File`, `DateTime`, `Regex`, `Timer`,
@@ -83,9 +83,9 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 | Member | Behaviour |
 | --- | --- |
 | `Initialize` | new empty list |
-| `Initialize2(Array As List)` | shares the given list. An array argument gives a fixed-size list: `Add`/`RemoveAt` then raise `UnsupportedOperationException`. |
+| `Initialize2(Array As List)` | shares the given list. An array argument gives a fixed-size list: `Add`/`RemoveAt` then raise `UnsupportedOperationException`. An array of rank 2 or more gives a list of its rows, shared with the array. |
 | `IsInitialized As Boolean` | |
-| `Add(Item)`, `AddAll(List)`, `AddAllAt(Index, List)`, `InsertAt(Index, Item)` | |
+| `Add(Item)`, `AddAll(List)`, `AddAllAt(Index, List)`, `InsertAt(Index, Item)` | on a fixed-size list, adding nothing is allowed (after the index check); on a `SubList` view, `AddAll` always raises `UnsupportedOperationException`; `AddAll` of nothing still invalidates the list's views |
 | `Get(Index) As Object`, `Set(Index, Item)`, `RemoveAt(Index)` | out of range → `IndexOutOfBoundsException` |
 | `Clear`, `Size As Int` | |
 | `IndexOf(Item) As Int` | `equals` comparison, so boxed types matter |
@@ -111,7 +111,7 @@ case-sensitive, and boxes of different numeric types are different keys.
 | `GetDefault(Key, Default) As Object` | `Default` if missing or `Null` |
 | `Remove(Key) As Object`, `ContainsKey(Key) As Boolean`, `Clear`, `Size As Int` | |
 | `Keys`, `Values` | for `For Each`; a snapshot iterator is *(open)* |
-| `GetKeyAt(Index)`, `GetValueAt(Index)` | deprecated but supported; positional, in insertion order |
+| `GetKeyAt(Index)`, `GetValueAt(Index)` | deprecated but supported; positional, in insertion order. Past the end: `NoSuchElementException`; the cached position behind them shows through on bad indices ([research](../research/level0-semantics.md#map-source)) |
 
 ## Printing collections
 

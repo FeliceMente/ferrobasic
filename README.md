@@ -36,6 +36,7 @@ crates/
   mir/            typed IR and lowering
   interp/         reference interpreter and REPL
   difftest/       differential runner, normalizer, differ, report
+  corpus/         the conformance corpus, as the test harnesses read it
   cli/            the `ferro` command
 tests/conformance/  test programs with recorded expected outputs
 tests/corpus/     real-world B4X projects (licence-checked)
@@ -62,7 +63,7 @@ Running and building a Level 0 program:
 ```sh
 ferro check prog.bas              # parse and type-check
 ferro run prog.bas -- a b         # run with the reference interpreter
-ferro build prog.bas -o prog      # bundle into a standalone executable
+ferro bundle prog.bas -o prog     # bundle into a standalone executable
 ./prog a b
 ```
 
@@ -70,11 +71,12 @@ A standalone binary is `ferro` with the program appended: it needs neither
 FerroBASIC nor a JVM, only the system C library (or nothing at all when
 `ferro` is built for `x86_64-unknown-linux-musl`).
 
-> **Note:** at Level 0, `ferro build` *bundles* rather than compiles. The
-> executable is the `ferro` interpreter plus the program's checked source,
-> which is parsed and interpreted at start-up exactly as `ferro run` does. So
-> it runs at interpreter speed, and the source can be recovered from the file.
-> Native code generation (M4) will replace this behind the same command.
+> **Note:** `ferro bundle` does not compile. The executable is the `ferro`
+> interpreter plus the program's checked source, which is parsed and interpreted at
+> start-up exactly as `ferro run` does. So it runs at interpreter speed, and the
+> source can be recovered from the file. Native code will come with
+> `ferro compile` (M4); `bundle` stays, as the quickest way to ship a program
+> that behaves exactly like `ferro run`.
 
 ## Working with AI coding agents
 
@@ -92,10 +94,17 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 - [CLI, interpreter and standalone builds](docs/spec/cli.md)
 - [Level 0 semantics from public sources](docs/research/level0-semantics.md)
 - [Compatibility testing](docs/compatibility-testing.md)
-- [Roadmap](docs/roadmap.md)
+- [Roadmap](docs/roadmap.md) and [changelog](CHANGELOG.md)
 - [Open questions](docs/open-questions.md) and [deviations](docs/deviations.md)
 
 ## License
 
-Not chosen yet (candidates: Apache-2.0/MIT dual licence, or EUPL-1.2).
-Until a LICENSE file is added, all rights are reserved by the authors.
+FerroBASIC is released under the [MIT License](LICENSE).
+
+Programs you write, check, run, bundle or compile with FerroBASIC remain
+yours, under whatever licence you choose. A bundled executable contains a copy
+of `ferro`, so when you distribute one, include FerroBASIC's copyright and
+licence notice, for example in your program's documentation.
+
+Unless you state otherwise, any contribution you submit for inclusion in
+FerroBASIC is licensed under the MIT License, without additional terms.

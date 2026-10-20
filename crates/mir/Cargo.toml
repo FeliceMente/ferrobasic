@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
+license.workspace = true
 publish = false
 
 [lints]
@@ -13,3 +14,6 @@ workspace = true
 [dependencies]
 ferro-hir = { path = "../hir" }
 ferro-syntax = { path = "../syntax" }
+
+[dev-dependencies]
+ferro-corpus = { path = "../corpus" }

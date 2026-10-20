@@ -11,7 +11,7 @@ use ferro_mir::{
     Rvalue, StatementKind, Terminator, TextRange, Ty,
 };
 
-use crate::convert::{checked_store, coerce, convert, default_value, to_string_from};
+use crate::convert::{checked_store, class_cast, coerce, convert, default_value, to_string_from};
 use crate::number::{JavaRandom, number_format, parse_java_double};
 use crate::strings::{compare_to, to_rust};
 use crate::value::*;
@@ -21,8 +21,29 @@ use crate::value::*;
 /// 1 MB thread stack holds roughly this many small B4J frames.
 pub const MAX_DEPTH: usize = 10_000;
 
-/// Largest array a program may allocate, in elements.
+/// Largest array a program may allocate, in elements. Smaller ones can
+/// still fail to allocate: both raise `OutOfMemoryError`.
 const MAX_ARRAY: usize = 1 << 28;
+
+/// Roughly how many bytes a default element allocates for itself: shared
+/// values (numbers, Null, Strings) count nothing.
+fn own_heap_size(v: &Value) -> usize {
+    // An `Rc` adds two counters; the allocator adds its own overhead.
+    let rc = 2 * std::mem::size_of::<usize>() + 16;
+    match v {
+        Value::List(_) | Value::Map(_) | Value::Sb(_) => {
+            rc + std::mem::size_of::<RefCell<Option<Rc<()>>>>()
+        }
+        Value::Record(r) => {
+            rc + std::mem::size_of::<RecordObj>()
+                + r.fields.borrow().len() * std::mem::size_of::<Value>()
+        }
+        Value::Array(_) => {
+            2 * rc + std::mem::size_of::<ArrayObj>() + std::mem::size_of::<RefCell<Vec<Value>>>()
+        }
+        _ => 0,
+    }
+}
 
 /// Why execution stopped early.
 pub enum Stop {
@@ -64,27 +85,46 @@ struct Frame {
     ret_to: Option<LocalId>,
 }
 
-/// Buffered stdout (flushed when large, before writing to stderr and at the
-/// end of the run) and unbuffered stderr.
+/// Buffered stdout (flushed when large, before writing to stderr, at the
+/// end of the run and if the run unwinds) and unbuffered stderr.
 pub struct Output<'w> {
     stdout: &'w mut dyn Write,
     stderr: &'w mut dyn Write,
     buf: Vec<u8>,
 }
 
+/// Output is written in pieces of about this many bytes.
+const CHUNK: usize = 1 << 16;
+
 impl Output<'_> {
-    pub fn log(&mut self, text: &str) {
-        self.buf.extend_from_slice(text.as_bytes());
-        self.buf.push(b'\n');
-        if self.buf.len() >= 1 << 16 {
+    /// Writes a line, as UTF-8 (an unpaired surrogate becomes `?`, as in
+    /// [`to_rust`]), encoding it piece by piece: a huge String needs no
+    /// second copy.
+    pub fn log(&mut self, text: &[u16]) {
+        let mut wrote = false;
+        encode_line(text, &mut self.buf, |buf| {
+            if buf.len() >= CHUNK {
+                let _ = self.stdout.write_all(buf);
+                buf.clear();
+                wrote = true;
+            }
+        });
+        // A long line is written whole, its line feed included.
+        if wrote || self.buf.len() >= CHUNK {
             self.flush();
         }
     }
 
-    pub fn log_error(&mut self, text: &str) {
+    pub fn log_error(&mut self, text: &[u16]) {
         self.flush();
-        let _ = self.stderr.write_all(text.as_bytes());
-        let _ = self.stderr.write_all(b"\n");
+        let mut buf = Vec::new();
+        encode_line(text, &mut buf, |buf| {
+            if buf.len() >= CHUNK {
+                let _ = self.stderr.write_all(buf);
+                buf.clear();
+            }
+        });
+        let _ = self.stderr.write_all(&buf);
         let _ = self.stderr.flush();
     }
 
@@ -93,6 +133,23 @@ impl Output<'_> {
         let _ = self.stdout.write_all(&self.buf);
         let _ = self.stdout.flush();
         self.buf.clear();
+    }
+}
+
+/// Appends `text` and a line feed to `buf` as UTF-8, calling `drain` as
+/// it grows.
+fn encode_line(text: &[u16], buf: &mut Vec<u8>, mut drain: impl FnMut(&mut Vec<u8>)) {
+    for c in char::decode_utf16(text.iter().copied()) {
+        let mut utf8 = [0; 4];
+        buf.extend_from_slice(c.unwrap_or('?').encode_utf8(&mut utf8).as_bytes());
+        drain(buf);
+    }
+    buf.push(b'\n');
+}
+
+impl Drop for Output<'_> {
+    fn drop(&mut self) {
+        self.flush();
     }
 }
 
@@ -272,7 +329,7 @@ impl<'p, 'w> Machine<'p, 'w> {
             Constant::String(s) => Value::Str(
                 self.strings
                     .entry(s.as_ptr() as usize)
-                    .or_insert_with(|| s.encode_utf16().collect::<Vec<_>>().into())
+                    .or_insert_with(|| Rc::new(s.encode_utf16().collect()))
                     .clone(),
             ),
         }
@@ -340,9 +397,10 @@ impl<'p, 'w> Machine<'p, 'w> {
                 let array = self.operand(locals, array);
                 let indices = self.operands(locals, indices);
                 let value = self.operand(locals, value);
-                let a = as_array(&array)?;
-                let i = flat_index(a, &indices)?;
-                let value = checked_store(&a.elem, value, self.program)?;
+                let (a, i) = element(as_array(&array)?, &indices)?;
+                // A replaced row can be of a higher rank (an `Int(,)` row in
+                // an `Object(,)`): its own element type decides.
+                let value = checked_store(&a.item_ty(), value, self.program)?;
                 a.items.borrow_mut()[i] = value;
             }
             StatementKind::SetField {
@@ -449,16 +507,24 @@ impl<'p, 'w> Machine<'p, 'w> {
                 arith(*op, ty, &l, &r)?
             }
             Rvalue::Concat(parts) => {
-                let mut out = Vec::new();
+                let mut pieces = Vec::with_capacity(parts.len());
                 for p in parts {
                     match self.operand(locals, p) {
-                        Value::Str(s) => out.extend_from_slice(&s),
+                        Value::Str(s) => pieces.push(s),
                         other => {
                             if let Value::Str(s) = to_string_from(&other, &Ty::Object, program)? {
-                                out.extend_from_slice(&s);
+                                pieces.push(s);
                             }
                         }
                     }
+                }
+                let len = pieces
+                    .iter()
+                    .fold(0, |n: usize, s| n.saturating_add(s.len()));
+                let mut out = Vec::new();
+                try_grow_text(&mut out, len)?;
+                for s in pieces {
+                    out.extend_from_slice(&s);
                 }
                 Value::from_utf16(out)
             }
@@ -490,8 +556,7 @@ impl<'p, 'w> Machine<'p, 'w> {
             Rvalue::Index { array, indices } => {
                 let array = self.operand(locals, array);
                 let indices = self.operands(locals, indices);
-                let a = as_array(&array)?;
-                let i = flat_index(a, &indices)?;
+                let (a, i) = element(as_array(&array)?, &indices)?;
                 a.items.borrow()[i].clone()
             }
             Rvalue::Field { record, field } => {
@@ -505,28 +570,38 @@ impl<'p, 'w> Machine<'p, 'w> {
             }
             Rvalue::NewArray { elem, dims } => {
                 let mut sizes = Vec::with_capacity(dims.len());
-                let mut total: usize = 1;
                 for d in dims {
                     let n = int_of(&self.operand(locals, d))?;
                     if n < 0 {
                         return Err(Exc::new(NEGATIVE_ARRAY_SIZE, n.to_string()).into());
                     }
-                    total = total.saturating_mul(n as usize);
                     sizes.push(n as usize);
-                }
-                if total > MAX_ARRAY {
-                    return Err(Exc::new(OUT_OF_MEMORY, "Java heap space").into());
                 }
                 if sizes.is_empty() {
                     sizes.push(0);
-                    total = 0;
                 }
-                let items = (0..total).map(|_| default_value(elem, program)).collect();
-                Value::Array(Rc::new(ArrayObj {
-                    elem: elem.clone(),
-                    dims: sizes,
-                    items: Rc::new(RefCell::new(items)),
-                }))
+                // Elements, and the rows that hold them: n0 + n0·n1 + ….
+                let (mut slots, mut count) = (0usize, 1usize);
+                for &n in &sizes {
+                    count = count.saturating_mul(n);
+                    slots = slots.saturating_add(count);
+                }
+                if slots > MAX_ARRAY {
+                    return Err(out_of_memory().into());
+                }
+                let rows = slots - count;
+                // Rows, and a wrapper, record or array per element, are small
+                // allocations that cannot fail gracefully: check first that
+                // they fit, together with the slots that hold them.
+                let element = default_value(elem, program);
+                let row = Value::new_array(Ty::Int, 1, Vec::new());
+                check_room(
+                    slots
+                        .saturating_mul(std::mem::size_of::<Value>())
+                        .saturating_add(rows.saturating_mul(own_heap_size(&row)))
+                        .saturating_add(count.saturating_mul(own_heap_size(&element))),
+                )?;
+                new_array(elem, &sizes, &element, program)?
             }
             Rvalue::ArrayLiteral { elem, items } => {
                 let items: Vec<Value> = self
@@ -534,18 +609,14 @@ impl<'p, 'w> Machine<'p, 'w> {
                     .into_iter()
                     .map(|v| coerce(elem, v))
                     .collect();
-                Value::Array(Rc::new(ArrayObj {
-                    elem: elem.clone(),
-                    dims: vec![items.len()],
-                    items: Rc::new(RefCell::new(items)),
-                }))
+                Value::new_array(elem.clone(), 1, items)
             }
             Rvalue::CreateMap(pairs) => {
                 let mut map = OrderedMap::default();
                 for (k, v) in pairs {
                     let k = self.operand(locals, k);
                     let v = self.operand(locals, v);
-                    map.put(k, v);
+                    map.put(k, v)?;
                 }
                 Value::new_map(map)
             }
@@ -585,20 +656,51 @@ pub fn as_array(v: &Value) -> Result<&Rc<ArrayObj>, Exc> {
     }
 }
 
-/// Row-major position of `indices`, each checked against its dimension.
-fn flat_index(a: &ArrayObj, indices: &[Value]) -> Result<usize, Exc> {
-    if indices.len() != a.dims.len() {
-        return Err(Exc::internal("wrong number of array indices"));
+/// The array and the position in it that `indices` name: each index but
+/// the last selects a row, checked against that row's length, as Java's
+/// `a[i][j]` does; a `Null` row raises `NullPointerException`. Fewer
+/// indices than the rank name a row. (The MIR passes one index at a time.)
+fn element(a: &Rc<ArrayObj>, indices: &[Value]) -> Result<(Rc<ArrayObj>, usize), Exc> {
+    let Some((last, rows)) = indices.split_last() else {
+        return Err(Exc::internal("no array index"));
+    };
+    if indices.len() > a.rank {
+        return Err(Exc::internal("too many array indices"));
     }
-    let mut flat = 0usize;
-    for (idx, &dim) in indices.iter().zip(&a.dims) {
+    let checked = |a: &ArrayObj, idx: &Value| -> Result<usize, Exc> {
         let i = int_of(idx)?;
-        if i < 0 || i as usize >= dim {
-            return Err(Exc::index(ARRAY_INDEX_OUT_OF_BOUNDS, i as i64, dim));
+        let len = a.items.borrow().len();
+        if i < 0 || i as usize >= len {
+            return Err(Exc::index(ARRAY_INDEX_OUT_OF_BOUNDS, i as i64, len));
         }
-        flat = flat * dim + i as usize;
+        Ok(i as usize)
+    };
+    let mut array = a.clone();
+    for idx in rows {
+        let row = array.items.borrow()[checked(&array, idx)?].clone();
+        array = as_array(&row)?.clone();
     }
-    Ok(flat)
+    let i = checked(&array, last)?;
+    Ok((array, i))
+}
+
+/// `new T[n0][n1]…` with the sizes already checked: an array of arrays.
+/// `element` is `elem`'s default value; elements share it when it has no
+/// identity (a number, Null or the immutable empty String), else each gets
+/// a fresh one.
+fn new_array(elem: &Ty, sizes: &[usize], element: &Value, program: &Program) -> Result<Value, Exc> {
+    let mut items = Vec::new();
+    try_grow(&mut items, sizes[0])?;
+    if sizes.len() > 1 {
+        for _ in 0..sizes[0] {
+            items.push(new_array(elem, &sizes[1..], element, program)?);
+        }
+    } else if own_heap_size(element) == 0 {
+        items.resize(sizes[0], element.clone());
+    } else {
+        items.extend((0..sizes[0]).map(|_| default_value(elem, program)));
+    }
+    Ok(Value::new_array(elem.clone(), sizes.len(), items))
 }
 
 fn arith_zero() -> Exc {
@@ -735,6 +837,19 @@ pub fn compare(
                 )),
             },
         },
+        CmpKind::Switch => {
+            if matches!(l, Value::Null) {
+                Err(Exc::bare(NULL_POINTER))
+            } else if l.is_number() {
+                match r {
+                    Value::Null => Err(Exc::bare(NULL_POINTER)),
+                    _ if r.is_number() => compare(op, CmpKind::Numeric, l, r, program),
+                    _ => Err(class_cast(r, "java.lang.Number", program)),
+                }
+            } else {
+                compare(op, CmpKind::Object, l, r, program)
+            }
+        }
     }
 }
 

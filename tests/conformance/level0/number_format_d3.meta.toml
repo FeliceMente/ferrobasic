@@ -1,0 +1,17 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "deviation"   # pending-recording | recorded | deviation | negative
+deviation = "D3"   # docs/deviations.md
+level = 0
+features = ["number-format"]
+
+# No .provisional: the reference output (JDK 21) is
+#   2.85517575702976E19
+#   28,551,757,570,297,602,000
+# and FerroBASIC knowingly differs on the second line.
+
+# Filled in by tools/recorder when the expected output is recorded:
+# [recording]
+# product = "B4J"
+# version = ""
+# platform = ""
+# date = ""

@@ -24,31 +24,46 @@ fn parse_sci(s: &str) -> Decimal {
     }
 }
 
-/// The digits Java's `Double.toString` / `Float.toString` select: the
-/// shortest decimal that rounds to the value (Rust's `{:e}`), except that
-/// when it has a single digit, Java picks the closest decimal of length 1 or
-/// 2 (JDK 19 javadoc), e.g. `4.9E-324` rather than `5E-324`.
-fn java_digits(shortest: String, two: String, round_trips: impl Fn(&str) -> bool) -> Decimal {
-    let d1 = parse_sci(&shortest);
-    if d1.digits.len() == 1 && round_trips(&two) {
-        let d2 = parse_sci(&two);
-        if d2.digits.len() == 2 {
-            return d2;
+/// The digits Java's `Double.toString` / `Float.toString` select (JDK 19
+/// javadoc): among the decimals of the shortest length that round to the
+/// value, the closest one, and of two equally close, the one with an even
+/// last digit; a single digit is lengthened to the closest decimal of length
+/// 2, e.g. `4.9E-324` rather than `5E-324`.
+///
+/// Rust's `{:e}` gives the shortest length, but not always the closest
+/// decimal of that length; `{:.N$e}` gives the closest, rounding the exact
+/// value half-even, which is Java's tie rule.
+fn java_digits(
+    shortest: &str,
+    closest: impl Fn(usize) -> String,
+    round_trips: impl Fn(&str) -> bool,
+) -> Decimal {
+    let d1 = parse_sci(shortest);
+    let len = d1.digits.len().max(2);
+    let candidate = closest(len - 1);
+    if round_trips(&candidate) {
+        let d = parse_sci(&candidate);
+        if d.digits.len() == len {
+            return d;
         }
     }
     d1
 }
 
 fn digits_f64(x: f64) -> Decimal {
-    java_digits(format!("{x:e}"), format!("{x:.1e}"), |s| {
-        s.parse::<f64>() == Ok(x)
-    })
+    java_digits(
+        &format!("{x:e}"),
+        |p| format!("{x:.p$e}"),
+        |s| s.parse::<f64>() == Ok(x),
+    )
 }
 
 fn digits_f32(x: f32) -> Decimal {
-    java_digits(format!("{x:e}"), format!("{x:.1e}"), |s| {
-        s.parse::<f32>() == Ok(x)
-    })
+    java_digits(
+        &format!("{x:e}"),
+        |p| format!("{x:.p$e}"),
+        |s| s.parse::<f32>() == Ok(x),
+    )
 }
 
 /// Java's layout: plain for 1e-3 ≤ |x| < 1e7, otherwise `d.dddE±n`, with at
@@ -130,6 +145,122 @@ pub fn number_to_string(x: f64) -> String {
     s
 }
 
+/// The digits `DecimalFormat` formats a positive double from. Its
+/// `DigitList` takes them from the JDK's older conversion
+/// (`FloatingDecimal`), not from `Double.toString`. Measured against JDK 21,
+/// the two agree except on:
+///
+/// - integers from 2^53 to 2^63: the older one gives the exact integer, with
+///   its last 0, 1 or 2 digits rounded depending on the binary exponent
+///   (`DROPPED_DIGITS`);
+/// - other powers of two: it takes the shortest decimal within a quarter of
+///   the gap above on both sides, where `Double.toString` allows half the
+///   gap above (`power_of_two_digits`);
+/// - subnormals, and a few other values (3 in 100,000 random doubles, all
+///   above 2^63) where it gives 16 or 17 digits although fewer round-trip;
+///   these are not reproduced (`docs/deviations.md`, D3).
+fn format_digits(a: f64) -> Decimal {
+    /// Low digits dropped, for binary exponents 53 to 62.
+    const DROPPED_DIGITS: [u32; 10] = [0, 0, 0, 0, 0, 1, 1, 1, 2, 2];
+    let bits = a.to_bits();
+    let exponent = ((bits >> 52) & 0x7ff) as i32 - 1023;
+    if !(53..63).contains(&exponent) {
+        if bits & ((1 << 52) - 1) == 0 && exponent > -1022 {
+            return power_of_two_digits(a, exponent);
+        }
+        return digits_f64(a);
+    }
+    // Integral: every double from 2^53 up is.
+    let unit = 10u64.pow(DROPPED_DIGITS[exponent as usize - 53]);
+    let n = a as u64;
+    let rounded = (n / unit + u64::from(n % unit * 2 >= unit)) * unit;
+    let text = rounded.to_string();
+    let digits = text.trim_end_matches('0').bytes().collect();
+    Decimal {
+        digits,
+        exp: text.len() as i32 - 1,
+    }
+}
+
+/// The shortest decimal within 2^(e-54) of `a` = 2^e, and of those the
+/// closest: `{:.N$e}` gives the closest of each length.
+fn power_of_two_digits(a: f64, e: i32) -> Decimal {
+    for precision in 0..17 {
+        let candidate = parse_sci(&format!("{a:.precision$e}"));
+        // candidate = m × 10^k
+        let m = candidate
+            .digits
+            .iter()
+            .fold(0u64, |m, d| m * 10 + u64::from(d - b'0'));
+        let k = candidate.exp - (candidate.digits.len() as i32 - 1);
+        // |m·10^k − 2^e| ≤ 2^(e−54), times 2^54:
+        // 2^e·(2^54 − 1) ≤ m·10^k·2^54 ≤ 2^e·(2^54 + 1), in integers.
+        let mut x = Big::from(m);
+        let mut lo = Big::from((1 << 54) - 1);
+        let mut hi = Big::from((1 << 54) + 1);
+        x.shl(54 + (-e).max(0) as u32);
+        lo.shl(e.max(0) as u32);
+        hi.shl(e.max(0) as u32);
+        for _ in 0..k.max(0) {
+            x.mul_small(10);
+        }
+        for _ in 0..(-k).max(0) {
+            lo.mul_small(10);
+            hi.mul_small(10);
+        }
+        if lo.cmp(&x).is_le() && x.cmp(&hi).is_le() {
+            return candidate;
+        }
+    }
+    digits_f64(a)
+}
+
+/// A non-negative integer, as little-endian 32-bit limbs.
+struct Big(Vec<u32>);
+
+impl Big {
+    fn from(n: u64) -> Big {
+        Big(vec![n as u32, (n >> 32) as u32])
+    }
+
+    fn mul_small(&mut self, factor: u32) {
+        let mut carry = 0u64;
+        for limb in &mut self.0 {
+            let v = u64::from(*limb) * u64::from(factor) + carry;
+            *limb = v as u32;
+            carry = v >> 32;
+        }
+        if carry > 0 {
+            self.0.push(carry as u32);
+        }
+    }
+
+    fn shl(&mut self, bits: u32) {
+        let mut carry = 0u32;
+        let shift = bits % 32;
+        if shift > 0 {
+            for limb in &mut self.0 {
+                let v = *limb;
+                *limb = (v << shift) | carry;
+                carry = v >> (32 - shift);
+            }
+            self.0.push(carry);
+        }
+        self.0
+            .splice(0..0, std::iter::repeat_n(0, (bits / 32) as usize));
+    }
+
+    fn cmp(&self, other: &Big) -> std::cmp::Ordering {
+        let len = self.0.len().max(other.0.len());
+        let limb = |b: &Big, i: usize| b.0.get(i).copied().unwrap_or(0);
+        (0..len)
+            .rev()
+            .map(|i| limb(self, i).cmp(&limb(other, i)))
+            .find(|o| o.is_ne())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+
 /// Java `DecimalFormat` limits for doubles.
 const DOUBLE_INTEGER_DIGITS: i32 = 309;
 const DOUBLE_FRACTION_DIGITS: i32 = 340;
@@ -155,11 +286,11 @@ pub fn number_format(x: f64, min_int: i32, max_frac: i32, min_frac: i32, groupin
     let min_int = min_int.clamp(0, DOUBLE_INTEGER_DIGITS) as usize;
     let a = x.abs();
 
-    // Integer and fraction digits of the shortest representation (what
-    // Java's `DigitList` starts from), rounded when they do not fit.
+    // Integer and fraction digits of the digits Java's `DigitList` starts
+    // from (see `format_digits`), rounded when they do not fit.
     let (mut int, mut frac) = (String::new(), String::new());
     if a != 0.0 {
-        let d = digits_f64(a);
+        let d = format_digits(a);
         let n = d.digits.len() as i64;
         let point = d.exp as i64 + 1;
         for i in 0..point.max(0) {
@@ -568,5 +699,48 @@ mod tests {
         let (mut a, mut b) = (JavaRandom::new(7), JavaRandom::new(7));
         assert_eq!(a.next_int(16), Some(b.next(31) >> 27));
         assert_eq!(r.next_int(0), None);
+    }
+}
+
+#[cfg(test)]
+mod java_data {
+    use super::*;
+
+    /// `tests/data/java_numbers.tsv`: Java's own output for each value.
+    #[test]
+    fn number_format_and_to_string_match_jdk_21() {
+        let settings = [
+            (0, 0, 0, true),
+            (1, 2, 0, true),
+            (1, 3, 0, false),
+            (0, 5, 2, true),
+            (1, 10, 0, true),
+        ];
+        let data = include_str!("../tests/data/java_numbers.tsv");
+        let mut rows = 0;
+        for line in data.lines().filter(|l| !l.starts_with('#')) {
+            let f: Vec<&str> = line.split('\t').collect();
+            let d = f64::from_bits(u64::from_str_radix(f[0], 16).unwrap());
+            let fl = f32::from_bits(u32::from_str_radix(f[2], 16).unwrap());
+            assert_eq!(java_double_to_string(d), f[1], "{line}");
+            assert_eq!(java_float_to_string(fl), f[3], "{line}");
+            for (i, (min_int, max_frac, min_frac, grouping)) in settings.into_iter().enumerate() {
+                let got = number_format(d, min_int, max_frac, min_frac, grouping);
+                assert_eq!(got, f[4 + i], "{line}");
+            }
+            rows += 1;
+        }
+        assert!(rows > 900);
+    }
+
+    /// Deviation D3: where JDK 21 gives 28,551,757,570,297,602,000.
+    #[test]
+    fn number_format_d3_gives_the_shortest_digits() {
+        let x = f64::from_bits(0x43f8_c3c3_83c8_aa8a);
+        assert_eq!(java_double_to_string(x), "2.85517575702976E19");
+        assert_eq!(
+            number_format(x, 0, 0, 0, true),
+            "28,551,757,570,297,600,000"
+        );
     }
 }

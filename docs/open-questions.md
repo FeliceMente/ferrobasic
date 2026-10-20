@@ -64,8 +64,13 @@ related tests stay `pending-recording`.
       `LastException.Message` (index and number-parse errors), and which JDK.
 - [ ] Default JVM locale on the recording machine (affects `ToLowerCase` /
       `ToUpperCase` for Turkish, Azeri and Lithuanian locales).
-- [ ] Standalone binaries on macOS: whether ad-hoc re-signing works with
-      appended payload bytes (see `docs/spec/cli.md`).
+- [x] Standalone binaries on macOS: re-signing appended payload bytes does
+      not work (`codesign`: "main executable failed strict validation", on
+      Apple Silicon and Intel). The package is embedded with `libsui`
+      instead (see `docs/spec/cli.md`).
+- [ ] Planned CLI (`docs/spec/cli.md`, "Planned commands"): the final target
+      names; whether `js` is its own backend or goes through `wasm`; the
+      format and timing of a `ferro.toml` project file.
 
 Provisional runtime behaviour in `crates/mir` and `crates/interp` (each
 needs a recorded test):
@@ -77,8 +82,24 @@ needs a recorded test):
 - [ ] Call depth before `java.lang.StackOverflowError` (FerroBASIC: 10,000
       frames). The error is not caught by `Try`, as Java `Error`s escape the
       generated `catch (Exception e)`.
+- [ ] How deeply nested Lists, Maps and records can be compared or printed
+      before Java's recursive `equals` / `toString` overflow (FerroBASIC: 1000
+      levels), and whether a record whose List holds the record overflows when
+      printed (FerroBASIC: it does, as the List prints through its wrapper).
+      Fixtures: `level0/deep_printing`, `deep_equals`, `self_printing_record`.
+- [ ] When B4J raises `java.lang.OutOfMemoryError` depends on the JVM's heap
+      size, which a recording must state. FerroBASIC always says `Java heap
+      space`; the JDK words an over-long String differently.
 - [ ] How a record prints (`Log(p)`), and `GetType` of a record.
 - [ ] How a variable of type `Exception` and an array print.
+- [ ] `Sin`, `Cos`, `Tan`, `Power` and `Logarithm` call `Math` methods that
+      HotSpot replaces with CPU intrinsics, whose last bit may depend on the
+      JVM and CPU; FerroBASIC uses the platform's maths library. Needs recordings from the reference machine. (`ASin`, `ACos`,
+      `ATan`, `ATan2` are settled: fdlibm, bit for bit.)
+- [ ] Whether all `Case` values are evaluated before matching, as they would
+      be if the compiler passes them to `BA.switchObjectToInt` as arguments;
+      FerroBASIC evaluates them in order until one matches. It only matters
+      for cases with side effects.
 - [ ] Exact texts of JDK-generated messages (`ClassCastException`,
       `IndexOutOfBoundsException`, …) seen through `LastException.Message`.
 - [x] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class),
@@ -101,6 +122,16 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.
+- [ ] A `For` with an undeclared counter, or `For Each v As T`, inside
+      `Process_Globals`: does B4X declare a module variable, a local, or
+      reject it? FerroBASIC rejects it until a recording shows
+      (`docs/spec/level0.md`, "Program structure"). Fixture:
+      `level0/process_globals_for`.
+- [ ] Whether a comment may follow a line continuation (` _ ' comment`);
+      FerroBASIC rejects it. Fixture: `level0/continuation_comment`.
+- [ ] How deep B4J (javac) lets expressions and blocks nest before failing;
+      FerroBASIC stops at 1000 levels (`docs/deviations.md`). Fixture:
+      `level0/deep_nesting`.
 
 ## Porting
 
@@ -119,6 +150,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 
 ## Project
 
-- [ ] Choose the licence: Apache-2.0/MIT dual or EUPL-1.2.
+- [x] Choose the licence: MIT (`LICENSE`).
+- [ ] Ship the licence notices of FerroBASIC's dependencies with released
+      binaries (e.g. generated with `cargo-about`).
 - [ ] Evaluate Cranelift for the REPL JIT and debug builds.
 - [ ] Evaluate `zig cc` / `cargo-zigbuild` as the cross-linker.

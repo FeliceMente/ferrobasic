@@ -50,12 +50,21 @@ End Sub
 - A program is one code module: the members of the main module of a B4J
   non-UI project.
 - `Sub Process_Globals` (optional) declares module variables. It runs once,
-  before anything else.
+  before anything else. Statements there run too, but a `For` or `For Each`
+  variable must be declared first (`Dim i As Int`): the implicit `Int`
+  counter of other Subs is *(open)* there, so it is a compile error.
 - `Sub AppStart (Args() As String)` is the entry point. It is called after
   `Process_Globals` with the command-line arguments. The program ends when
   `AppStart` returns, with exit code 0.
 - A program without `AppStart` is rejected with a diagnostic.
 - `ExitApplication` / `ExitApplication2(code)` end the program at once.
+- **Nesting limit:** statements and expressions may nest at most 1000 levels
+  deep in a Sub, counting each operator of a chain such as `1 + 1 + ...` and
+  each member access of `s.Trim.Trim...` as a level; smart strings may nest
+  100 deep. Deeper code is a compile error, one per Sub, instead of a crash.
+  B4J's own limit (javac's) is *(open)*.
+- A line continuation ` _` must end its line: whether a comment may follow it
+  is *(open)*, so ` _ ' comment` is a compile error.
 - `#Region` / `#End Region` lines are trivia. Project attributes (`#Name: value`)
   are parsed and kept. Level 0 ignores them, except as listed in [cli.md](cli.md).
 - Unsupported constructs get a diagnostic naming the construct and the level
@@ -180,8 +189,12 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - **`If`**: single line `If c Then s [Else s]`, or the block form with `Else If`
   (two words) and `Else`.
 - **`Select expr`**: each `Case` holds a list of expressions, compared in order.
-  - Numbers match by numeric value (as Double); other values match with `equals`
-    on the boxed values, so String "1" does not match `Case 1`. With a Char
+  - Numbers match by numeric value (as Double), also when an `Object` holds
+    the number; other values match with `equals` on the boxed values, so
+    String "1" does not match `Case 1`. If an `Object` scrutinee holds a
+    number, a case that is not a number raises `ClassCastException` (`Null`:
+    `NullPointerException`), and a `Null` scrutinee raises
+    `NullPointerException`. With a Char
     scrutinee the cases are converted to Char (`Select Txt.CharAt(i)` with
     `Case "A"`, from the booklet).
   - The first matching `Case` runs, then control leaves the `Select`; there is no
@@ -229,6 +242,9 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - `NumberFormat(x, minInt, maxFrac)`:
   - US locale, with three-digit grouping by `,`;
   - rounding is half-even, on the decimal value of the double;
+  - the digits are those of the JDK's older double conversion, which differs
+    from `Double.toString` on integers from 2^53 to 2^63 and on powers of two
+    ([research](../research/level0-semantics.md#java-exact-numbers-source-measured));
   - for example `NumberFormat(12345.6789, 0, 2)` is `12,345.68`.
 - String members are listed in [level0-builtins.md](level0-builtins.md).
   Indices are zero-based UTF-16 positions.
