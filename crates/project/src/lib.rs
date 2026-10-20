@@ -25,13 +25,20 @@ pub fn header(text: &str) -> Option<Vec<Entry<'_>>> {
     };
     let len = ferro_syntax::lexer::header_len(&text[bom..])?;
     let mut entries = Vec::new();
+    // Lines end as the lexer ends them: CRLF, CR or LF.
     let mut offset = bom;
-    for line in text[bom..bom + len].split_inclusive('\n') {
-        let content = line.trim_end_matches(['\r', '\n']);
-        if let Some((key, value)) = content.split_once('=') {
+    while offset < bom + len {
+        let rest = &text[offset..bom + len];
+        let line = &rest[..rest.find(['\r', '\n']).unwrap_or(rest.len())];
+        if let Some((key, value)) = line.split_once('=') {
             entries.push(Entry { key, value, offset });
         }
-        offset += line.len();
+        let newline = if rest[line.len()..].starts_with("\r\n") {
+            2
+        } else {
+            1
+        };
+        offset += line.len() + newline;
     }
     Some(entries)
 }
@@ -157,6 +164,10 @@ mod tests {
 
     #[test]
     fn reads_the_header_lines() {
+        // CRLF, CR and LF line ends, mixed.
+        let mixed = header("A=1\r\nB=2\rC=3\n@EndOfDesignText@\r\n").unwrap();
+        let read: Vec<_> = mixed.iter().map(|e| (e.key, e.value, e.offset)).collect();
+        assert_eq!(read, [("A", "1", 0), ("B", "2", 5), ("C", "3", 9)]);
         let entries = header(CONSOLE).unwrap();
         assert_eq!(entries.len(), 8);
         assert_eq!(
@@ -235,6 +246,10 @@ mod tests {
                 .message
                 .contains("`Service`")
         );
+        // Lines may also end with a lone CR, as the lexer allows.
+        let problems = check_module("B4J=true\rType=Class\r@EndOfDesignText@\rSub X\rEnd Sub\r");
+        assert_eq!(problems.len(), 1);
+        assert_eq!(problems[0].offset, 9);
     }
 
     #[test]
