@@ -35,7 +35,9 @@ deferred, with `.provisional` outputs standing in
       updated; pending tests with provisional outputs added.
 - [ ] `tools/recorder`: wrap a `.bas` in a B4J console project, build and run it
       with the original toolchain, write `.expected` and `.meta.toml`. *Deferred.*
-- [ ] CI green on Linux, macOS and Windows. *Deferred.*
+- [ ] CI green on Linux, macOS and Windows. The workflow exists
+      (`.github/workflows/ci.yml`; runs on release pull requests and on
+      demand); ticked once its first run is green.
 
 ## M1 task breakdown (first part)
 

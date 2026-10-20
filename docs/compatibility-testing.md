@@ -117,6 +117,26 @@ pass, fail, documented deviation, pending. Accepted deviations live in
 The headline number, per target, is the share of corpus projects that build
 without changes and behave identically to the original.
 
+## CI
+
+`.github/workflows/ci.yml` runs on GitHub Actions:
+
+- `fmt` and `clippy` on Linux;
+- `clippy` and `cargo test --workspace` (every conformance test, in the
+  interpreter and as a standalone binary) on Linux x86_64, Windows, macOS
+  arm64 and macOS Intel;
+- a static Linux build (`x86_64-unknown-linux-musl`), checked by bundling a
+  program and running it.
+
+It runs on pull requests into `main` (releases) and on demand ("Run
+workflow"), not on pull requests into `dev`: the repository is private, so
+every minute comes out of the owner's Actions allowance, and macOS minutes
+count ten times. Pull requests into `dev` are checked locally (AGENTS.md):
+`fmt`, `clippy` (also for `x86_64-pc-windows-gnu`, `aarch64-apple-darwin` and
+`x86_64-apple-darwin`) and the tests. Run the workflow by hand before a
+release, and after a change to platform-specific code (`ferro bundle`, files,
+the command line). A release is merged only with the workflow green.
+
 ## Open points
 
 Tracked in [open-questions.md](open-questions.md#compatibility-testing).
