@@ -90,7 +90,8 @@ debug builds on desktop; `zig cc` / `cargo-zigbuild` as the cross-linker.
 The tooling reuses the compiler's parser and analysis: there is no second
 implementation of the language inside the extension.
 
-1. **One CLI** (`ferro`) with the commands `build`, `run`, `repl`, `check`, `test` and `fmt`.
+1. **One CLI** (`ferro`) with the commands `check`, `run`, `bundle`, `compile`, `targets`,
+   `build`, `repl`, `test` and `fmt` (see `docs/spec/cli.md`, "Commands").
 2. **REPL** on the interpreter: accepts statements and whole Subs, keeps state between inputs.
 3. **Language Server**, in this order: diagnostics, type hover, completion,
    go to definition, rename, formatting.
@@ -106,5 +107,5 @@ implementation of the language inside the extension.
 | --- | --- | --- |
 | Compiler language | Rust | inkwell for LLVM, rowan for the CST, salsa for incrementality, tower-lsp |
 | First real backend | Java source, as B4X does | Direct bytecode through a class-file library later |
-| License | To decide | Apache-2.0/MIT or EUPL-1.2 |
+| License | MIT | Permissive, so programs built with FerroBASIC carry no conditions beyond the notice; see `LICENSE` |
 | Project name | FerroBASIC | CLI `ferro`, crates `ferro-*` |

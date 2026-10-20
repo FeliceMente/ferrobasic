@@ -1,27 +1,56 @@
 //! `ferro`: the FerroBASIC command-line tool.
 //!
-//! `check`, `run` and `build` work for Level 0 modules; `repl`, `test` and
-//! `fmt` are stubs. See `docs/spec/cli.md`.
+//! `check`, `run` and `bundle` work for Level 0 modules; `build`, `compile`,
+//! `targets`, `repl`, `test` and `fmt` are reserved. See `docs/spec/cli.md`.
 
 mod standalone;
 
+use std::ffi::OsString;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const USAGE: &str = "\
-FerroBASIC - a B4X-compatible, multi-target BASIC compiler
-
+/// Everything after the header of `ferro help`.
+const COMMANDS: &str = "\
 Usage: ferro <command> [args]
 
 Commands:
-  check <file>      Parse and type-check a module
-  run <file> [-- <args>...]  Run with the reference interpreter
-  build <file> [-o <output>]  Bundle the program into a standalone executable
-  repl              Start the interactive REPL
-  test              Run conformance tests
-  fmt <file>        Format source files
-  version           Print the version
+  check <file>                    Parse and type-check a module
+  run <file> [-- <args>...]       Run with the reference interpreter
+  bundle <file> [-o <output>]     Bundle the interpreter and the program into
+                                  a standalone executable for this machine
+  version                         Print the version and platform
+  help                            Print this help
+
+Planned (not implemented yet):
+  compile <file> [--target <t>]   Compile for this machine or another target
+  targets                         List the compilation targets
+  build [<project>]               Build a project from its project file
+  repl                            Start the interactive REPL
+  test                            Run conformance tests
+  fmt <file>                      Format source files
 ";
+
+/// `ferro help`: version, platform, description, then the commands.
+fn usage() -> String {
+    format!(
+        "FerroBASIC {} ({})\nA multi-target BASIC compiler and interpreter\n\n{COMMANDS}",
+        env!("CARGO_PKG_VERSION"),
+        platform()
+    )
+}
+
+/// The platform this `ferro` was built for, named like the `--target` values
+/// planned in `docs/spec/cli.md`: `linux-x64`, `macos-arm64`, `windows-x64`…
+/// Unknown operating systems and architectures keep Rust's names.
+fn platform() -> String {
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        other => other,
+    };
+    format!("{}-{arch}", std::env::consts::OS)
+}
 
 /// Exit codes from `docs/spec/cli.md`.
 const EXIT_USAGE: u8 = 2;
@@ -30,16 +59,65 @@ const EXIT_COMPILE_ERRORS: u8 = 3;
 /// Name of the program inside a standalone binary's payload.
 const MAIN_ENTRY: &str = "main.bas";
 
+/// Most compile errors printed for one file; the rest are only counted.
+const MAX_ERRORS_SHOWN: usize = 100;
+
+/// Writes to stdout, ignoring errors: a closed pipe (`ferro help | head`)
+/// must not turn into a panic or change the exit code.
+fn out(text: &str) {
+    let _ = std::io::stdout().lock().write_all(text.as_bytes());
+}
+
+/// Writes to stderr, ignoring errors, for the same reason as [`out`].
+fn err(text: &str) {
+    let _ = std::io::stderr().lock().write_all(text.as_bytes());
+}
+
+/// Arguments for `AppStart`. Like the JVM, undecodable bytes become U+FFFD
+/// rather than stopping the program.
+fn program_args(args: &[OsString]) -> Vec<String> {
+    args.iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Stack for all of `ferro`'s work. The parser limits nesting
+/// (`MAX_NESTING` in `ferro-syntax`), but the later stages and the
+/// interpreter still recurse over trees and values; a large stack keeps any
+/// remaining deep recursion from crashing. Only touched pages use memory.
+const STACK_SIZE: usize = 256 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    let worker = std::thread::Builder::new()
+        .name("ferro".into())
+        .stack_size(STACK_SIZE)
+        .spawn(ferro_main);
+    match worker {
+        Ok(handle) => match handle.join() {
+            Ok(code) => code,
+            Err(panic) => std::panic::resume_unwind(panic),
+        },
+        // No thread available: run on the main thread's smaller stack.
+        Err(_) => ferro_main(),
+    }
+}
+
+fn ferro_main() -> ExitCode {
     // A standalone binary runs its embedded program, with every argument
     // passed to `AppStart`; only a plain `ferro` parses its own CLI.
     if let Some(code) = run_embedded() {
         return code;
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.first().map(String::as_str) {
+    // File names and program arguments may hold any bytes: never assume UTF-8.
+    let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+    let command = args.first().map(|a| a.to_string_lossy());
+    match command.as_deref() {
         Some("version" | "--version" | "-V") => {
-            println!("ferro {}", env!("CARGO_PKG_VERSION"));
+            out(&format!(
+                "ferro {} ({})\n",
+                env!("CARGO_PKG_VERSION"),
+                platform()
+            ));
             ExitCode::SUCCESS
         }
         Some("check") => match &args[1..] {
@@ -54,7 +132,7 @@ fn main() -> ExitCode {
         Some("dump-mir") => match &args[1..] {
             [file] => match compile(Path::new(file)) {
                 Ok((_, module)) => {
-                    print!("{}", ferro_mir::dump(&ferro_mir::lower(&module)));
+                    out(&ferro_mir::dump(&ferro_mir::lower(&module)));
                     ExitCode::SUCCESS
                 }
                 Err(code) => code,
@@ -63,35 +141,50 @@ fn main() -> ExitCode {
         },
         Some("run") => match &args[1..] {
             [file] => run(Path::new(file), &[]),
-            [file, sep, program_args @ ..] if sep == "--" => run(Path::new(file), program_args),
+            [file, sep, rest @ ..] if sep == "--" => run(Path::new(file), &program_args(rest)),
             _ => usage_error("ferro run: expected `ferro run <file> [-- <args>...]`"),
         },
-        Some("build") => match &args[1..] {
-            [file] => build(Path::new(file), None),
-            [file, flag, out] if flag == "-o" => build(Path::new(file), Some(Path::new(out))),
-            _ => usage_error("ferro build: expected `ferro build <file> [-o <output>]`"),
+        Some("bundle") => match &args[1..] {
+            [file] => bundle(Path::new(file), None),
+            [file, flag, out] if flag == "-o" => bundle(Path::new(file), Some(Path::new(out))),
+            _ => usage_error("ferro bundle: expected `ferro bundle <file> [-o <output>]`"),
         },
-        Some(cmd @ ("repl" | "test" | "fmt")) => {
-            eprintln!("ferro {cmd}: not implemented yet (milestone M1)");
-            ExitCode::from(EXIT_USAGE)
-        }
+        // `build` meant `bundle` in 0.0.1: point there.
+        Some("build") => not_implemented(
+            "build",
+            "building projects from their project files arrives with the JVM backend (M3); \
+             to make a standalone executable from a module, use `ferro bundle <file>`",
+        ),
+        Some("compile") => not_implemented(
+            "compile",
+            "compilation arrives with the backends: JVM (M3), native and WebAssembly (M4), \
+             microcontrollers (M5); until then, use `ferro run` or `ferro bundle`",
+        ),
+        Some("targets") => not_implemented("targets", "it arrives with `ferro compile`"),
+        Some(cmd @ ("repl" | "test" | "fmt")) => not_implemented(cmd, "planned for milestone M1"),
         Some("help" | "--help" | "-h") | None => {
-            print!("{USAGE}");
+            out(&usage());
             ExitCode::SUCCESS
         }
         Some(other) => usage_error(&format!("ferro: unknown command '{other}'")),
     }
 }
 
+/// A reserved command (`docs/spec/cli.md`): says what is missing and when it
+/// arrives.
+fn not_implemented(command: &str, detail: &str) -> ExitCode {
+    err(&format!("ferro {command}: not implemented yet: {detail}\n"));
+    ExitCode::from(EXIT_USAGE)
+}
+
 fn usage_error(message: &str) -> ExitCode {
-    eprintln!("{message}\n");
-    eprint!("{USAGE}");
+    err(&format!("{message}\n\n{}", usage()));
     ExitCode::from(EXIT_USAGE)
 }
 
 fn read_source(path: &Path) -> Result<String, ExitCode> {
-    std::fs::read_to_string(path).map_err(|err| {
-        eprintln!("ferro: cannot read {}: {err}", path.display());
+    std::fs::read_to_string(path).map_err(|error| {
+        err(&format!("ferro: cannot read {}: {error}\n", path.display()));
         ExitCode::from(EXIT_USAGE)
     })
 }
@@ -121,13 +214,22 @@ fn compile_text(path: &Path, text: &str) -> Result<ferro_hir::Module, ExitCode> 
             .collect();
         (None, errors)
     };
-    for (range, message) in &errors {
-        eprint!("{}", render_error(path, text, *range, message));
+    // One diagnostic at a time: each holds its whole source line, which can
+    // be long, so never keep them all in memory.
+    let lines = LineIndex::new(text);
+    for (range, message) in errors.iter().take(MAX_ERRORS_SHOWN) {
+        err(&render_error(path, text, &lines, *range, message));
+    }
+    if errors.len() > MAX_ERRORS_SHOWN {
+        err(&format!(
+            "... and {} more error(s) not shown\n",
+            errors.len() - MAX_ERRORS_SHOWN
+        ));
     }
     match module {
         Some(module) if errors.is_empty() => Ok(module),
         _ => {
-            eprintln!("{} error(s)", errors.len());
+            err(&format!("{} error(s)\n", errors.len()));
             Err(ExitCode::from(EXIT_COMPILE_ERRORS))
         }
     }
@@ -157,31 +259,33 @@ fn execute(text: &str, module: &ferro_hir::Module, args: &[String]) -> ExitCode 
     let stderr = std::io::stderr();
     let outcome = ferro_interp::run(&program, args, &mut stdout.lock(), &mut stderr.lock());
     if let Some(error) = &outcome.error {
-        let (line, _) = line_and_column(text, usize::from(error.range.start()));
-        eprintln!("Error occurred on line: {line} (Main)");
-        if error.message.is_empty() {
-            eprintln!("{}", error.kind);
+        let (line, _) = LineIndex::new(text).locate(text, usize::from(error.range.start()));
+        let detail = if error.message.is_empty() {
+            error.kind.to_string()
         } else {
-            eprintln!("{}: {}", error.kind, error.message);
-        }
+            format!("{}: {}", error.kind, error.message)
+        };
+        err(&format!(
+            "Error occurred on line: {line} (Main)\n{detail}\n"
+        ));
     }
     ExitCode::from(exit_status(outcome.exit_code))
 }
 
 /// Runs the program embedded in this executable, if it has one. `None` only
-/// once its own file has been read and has no trailer: an executable that
+/// once its own file has been read and holds no program: an executable that
 /// cannot be inspected must not fall back to the CLI in place of its program.
 fn run_embedded() -> Option<ExitCode> {
     let fail = |what: &dyn std::fmt::Display| {
-        eprintln!("{what}");
+        err(&format!("{what}\n"));
         Some(ExitCode::from(EXIT_USAGE))
     };
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(error) => return fail(&format_args!("cannot locate own executable: {error}")),
     };
-    let embedded = match standalone::read_embedded(&exe) {
-        Ok(Ok(embedded)) => embedded,
+    let entries = match standalone::embedded_program(&exe) {
+        Ok(Ok(entries)) => entries?,
         Ok(Err(error)) => return fail(&format_args!("{}: {error}", exe.display())),
         Err(error) => {
             return fail(&format_args!(
@@ -190,30 +294,30 @@ fn run_embedded() -> Option<ExitCode> {
             ));
         }
     };
-    let entries = embedded.entries?;
-    let source = entries
-        .iter()
-        .find(|e| e.name == MAIN_ENTRY)
-        .and_then(|e| String::from_utf8(e.bytes.clone()).ok());
-    let Some(text) = source else {
-        eprintln!(
+    let Some(entry) = entries.iter().find(|e| e.name == MAIN_ENTRY) else {
+        return fail(&format_args!(
             "{}: embedded program is corrupt: no {MAIN_ENTRY}",
             exe.display()
-        );
-        return Some(ExitCode::from(EXIT_USAGE));
+        ));
     };
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let Ok(text) = String::from_utf8(entry.bytes.clone()) else {
+        return fail(&format_args!(
+            "{}: embedded program is corrupt: {MAIN_ENTRY} is not UTF-8",
+            exe.display()
+        ));
+    };
+    let args = program_args(&std::env::args_os().skip(1).collect::<Vec<_>>());
     // The program was checked at build time; a failure here means the payload
-    // does not come from a matching `ferro build`.
+    // does not come from a matching `ferro bundle`.
     Some(match compile_text(Path::new(MAIN_ENTRY), &text) {
         Ok(module) => execute(&text, &module, &args),
         Err(_) => ExitCode::from(EXIT_USAGE),
     })
 }
 
-/// `ferro build`: check the module, then write this executable followed by
-/// the program (`docs/spec/cli.md`).
-fn build(path: &Path, out: Option<&Path>) -> ExitCode {
+/// `ferro bundle`: check the module, then write this executable with the
+/// program embedded (`docs/spec/cli.md`).
+fn bundle(path: &Path, out: Option<&Path>) -> ExitCode {
     let (text, _) = match compile(path) {
         Ok(compiled) => compiled,
         Err(code) => return code,
@@ -223,23 +327,66 @@ fn build(path: &Path, out: Option<&Path>) -> ExitCode {
         None => default_output(path),
     };
     let written = std::env::current_exe().and_then(|exe| {
-        // A `ferro` that is itself standalone contributes only its executable part.
-        let exe_len = match standalone::read_embedded(&exe)? {
-            Ok(embedded) => embedded.exe_len,
-            Err(error) => return Err(std::io::Error::other(error.to_string())),
-        };
+        check_output(path, &exe, &out).map_err(std::io::Error::other)?;
         let entries = [standalone::Entry {
             name: MAIN_ENTRY.into(),
             bytes: text.into_bytes(),
         }];
+        let bytes = standalone::standalone_bytes(&exe, &entries)?;
         // Sign the staged file: `out` is replaced only by a finished binary.
-        standalone::write_standalone(&exe, exe_len, &entries, &out, sign_for_macos)
+        standalone::write_standalone(&bytes, &out, sign_for_intel_mac)
     });
     if let Err(error) = written {
-        eprintln!("ferro build: cannot write {}: {error}", out.display());
+        err(&format!(
+            "ferro bundle: cannot write {}: {error}\n",
+            out.display()
+        ));
         return ExitCode::from(EXIT_USAGE);
     }
     ExitCode::SUCCESS
+}
+
+/// `ferro bundle` replaces its output, so it refuses an output that is the
+/// input itself or the running `ferro` (directly, through a symlink or as a
+/// hard link), or that exists and is not a regular file (a directory, a
+/// device such as `/dev/null`, a pipe). Any other symlink is replaced, not
+/// followed.
+fn check_output(input: &Path, exe: &Path, out: &Path) -> Result<(), String> {
+    let Ok(meta) = std::fs::symlink_metadata(out) else {
+        return Ok(()); // Nothing there yet.
+    };
+    let same = |other: &Path| same_file(out, other);
+    if same(input) {
+        return Err("it is the input file; choose another output with -o".into());
+    }
+    if same(exe) {
+        return Err("it is the running ferro executable".into());
+    }
+    if !meta.is_file() && !meta.file_type().is_symlink() {
+        return Err("it exists and is not a regular file".into());
+    }
+    Ok(())
+}
+
+/// Whether two paths name the same file, following symlinks, without ever
+/// opening either: opening a FIFO with no writer blocks.
+#[cfg(unix)]
+fn same_file(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+/// Whether two paths name the same file, hard links included. Windows has no
+/// FIFOs in the file system, so opening the paths to compare file identities
+/// (volume serial number and file index) cannot block; only regular files
+/// are compared.
+#[cfg(not(unix))]
+fn same_file(a: &Path, b: &Path) -> bool {
+    let regular = |path: &Path| std::fs::metadata(path).is_ok_and(|m| m.is_file());
+    regular(a) && regular(b) && same_file::is_same_file(a, b).unwrap_or(false)
 }
 
 /// `prices_map.bas` → `./prices_map` (`.exe` on Windows).
@@ -250,26 +397,27 @@ fn default_output(path: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// On macOS the appended bytes invalidate the code signature, and arm64
-/// refuses unsigned binaries: re-sign ad hoc (`docs/spec/cli.md`, open).
-#[cfg(target_os = "macos")]
-fn sign_for_macos(staged: &Path) -> std::io::Result<()> {
+/// On Intel Macs `libsui` leaves the binary unsigned: sign it ad hoc, and
+/// report a failure rather than writing a binary with a broken signature.
+/// On Apple Silicon `libsui` has already signed it.
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+fn sign_for_intel_mac(staged: &Path) -> std::io::Result<()> {
     let status = std::process::Command::new("codesign")
         .args(["--force", "--sign", "-"])
         .arg(staged)
         .status()
-        .map_err(|e| std::io::Error::other(format!("cannot run codesign to re-sign: {e}")))?;
+        .map_err(|e| std::io::Error::other(format!("cannot run codesign: {e}")))?;
     if status.success() {
         Ok(())
     } else {
         Err(std::io::Error::other(format!(
-            "codesign could not re-sign ({status})"
+            "codesign could not sign ({status})"
         )))
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn sign_for_macos(_staged: &Path) -> std::io::Result<()> {
+#[cfg(not(all(target_os = "macos", not(target_arch = "aarch64"))))]
+fn sign_for_intel_mac(_staged: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -279,25 +427,69 @@ fn exit_status(code: i32) -> u8 {
     (code & 0xff) as u8
 }
 
-/// 1-based line and character column of a byte offset; `\r\n`, `\n` and
-/// a lone `\r` each end a line.
-fn line_and_column(text: &str, offset: usize) -> (usize, usize) {
-    let offset = offset.min(text.len());
-    let line_start = text[..offset].rfind(['\n', '\r']).map_or(0, |i| i + 1);
-    let before = &text[..line_start];
-    let line = before.matches('\n').count() + before.matches('\r').count()
-        - before.matches("\r\n").count()
-        + 1;
-    (line, text[line_start..offset].chars().count() + 1)
+/// Where each line of a source text starts, computed once so that many
+/// diagnostics cost no more than one pass. `\r\n`, `\n` and a lone `\r` each
+/// end a line.
+struct LineIndex {
+    starts: Vec<usize>,
+}
+
+impl LineIndex {
+    fn new(text: &str) -> Self {
+        let bytes = text.as_bytes();
+        let mut starts = vec![0];
+        let mut i = 0;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\r' if bytes.get(i + 1) == Some(&b'\n') => {
+                    starts.push(i + 2);
+                    i += 2;
+                    continue;
+                }
+                b'\r' | b'\n' => starts.push(i + 1),
+                _ => {}
+            }
+            i += 1;
+        }
+        Self { starts }
+    }
+
+    /// The 1-based line of a byte offset, and the offset where it starts.
+    fn line_of(&self, offset: usize) -> (usize, usize) {
+        let line = self.starts.partition_point(|&s| s <= offset);
+        (line, self.starts[line - 1])
+    }
+
+    /// 1-based line and column of a byte offset. Columns count characters
+    /// (Unicode scalar values); the byte order mark that may start the file
+    /// is not one of them.
+    fn locate(&self, text: &str, offset: usize) -> (usize, usize) {
+        let offset = offset.min(text.len());
+        let (line, start) = self.line_of(offset);
+        let column = without_bom(text, start, &text[start..offset])
+            .chars()
+            .count()
+            + 1;
+        (line, column)
+    }
+}
+
+/// `part`, which begins at byte `start` of `text`, without the byte order mark
+/// that may start the file.
+fn without_bom<'a>(text: &str, start: usize, part: &'a str) -> &'a str {
+    if start == 0 && text.starts_with('\u{feff}') {
+        part.strip_prefix('\u{feff}').unwrap_or(part)
+    } else {
+        part
+    }
 }
 
 fn dump_cst(path: &Path) -> ExitCode {
     match read_source(path) {
         Ok(text) => {
-            print!(
-                "{}",
-                ferro_syntax::debug_tree(&ferro_syntax::parse(&text).syntax())
-            );
+            out(&ferro_syntax::debug_tree(
+                &ferro_syntax::parse(&text).syntax(),
+            ));
             ExitCode::SUCCESS
         }
         Err(code) => code,
@@ -306,16 +498,21 @@ fn dump_cst(path: &Path) -> ExitCode {
 
 /// `path:line:column: error: message`, then the source line and a caret.
 /// Columns count characters, starting at 1.
-fn render_error(path: &Path, text: &str, range: ferro_syntax::TextRange, message: &str) -> String {
+fn render_error(
+    path: &Path,
+    text: &str,
+    lines: &LineIndex,
+    range: ferro_syntax::TextRange,
+    message: &str,
+) -> String {
     let offset = usize::from(range.start()).min(text.len());
-    let line_start = text[..offset].rfind(['\n', '\r']).map_or(0, |i| i + 1);
+    let (line_number, column) = lines.locate(text, offset);
+    let (_, line_start) = lines.line_of(offset);
     let line_end = text[offset..]
         .find(['\n', '\r'])
         .map_or(text.len(), |i| offset + i);
-    let (line_number, column) = line_and_column(text, offset);
-    let source_line = text[line_start..line_end].trim_start_matches('\u{feff}');
-    let caret_pad: String = text[line_start..offset]
-        .trim_start_matches('\u{feff}')
+    let source_line = without_bom(text, line_start, &text[line_start..line_end]);
+    let caret_pad: String = without_bom(text, line_start, &text[line_start..offset])
         .chars()
         .map(|c| if c == '\t' { '\t' } else { ' ' })
         .collect();
@@ -330,14 +527,42 @@ fn render_error(path: &Path, text: &str, range: ferro_syntax::TextRange, message
 mod tests {
     use super::*;
 
+    fn locate(text: &str, offset: usize) -> (usize, usize) {
+        LineIndex::new(text).locate(text, offset)
+    }
+
     #[test]
     fn lines_count_every_line_ending() {
         let text = "a\r\nb\nc\rd";
-        assert_eq!(line_and_column(text, 0), (1, 1));
-        assert_eq!(line_and_column(text, 3), (2, 1));
-        assert_eq!(line_and_column(text, 5), (3, 1));
-        assert_eq!(line_and_column(text, 7), (4, 1));
-        assert_eq!(line_and_column("x = é1", 6), (1, 6));
+        assert_eq!(locate(text, 0), (1, 1));
+        assert_eq!(locate(text, 3), (2, 1));
+        assert_eq!(locate(text, 5), (3, 1));
+        assert_eq!(locate(text, 7), (4, 1));
+        assert_eq!(locate(text, 8), (4, 2));
+        assert_eq!(locate("x = é1", 6), (1, 6));
+        // A text ending in a line break: the offset past it is on a new line.
+        assert_eq!(locate("a\n", 2), (2, 1));
+    }
+
+    #[test]
+    fn the_byte_order_mark_is_not_a_column() {
+        let text = "\u{feff}x = = 1\n";
+        assert_eq!(locate(text, 3), (1, 1));
+        assert_eq!(locate(text, 7), (1, 5));
+        // Only the mark that starts the file is skipped.
+        assert_eq!(locate("a\n\u{feff}b", 5), (2, 2));
+        let parse = ferro_syntax::parse(text);
+        let error = &parse.errors()[0];
+        let lines = LineIndex::new(text);
+        let rendered = render_error(
+            Path::new("a.bas"),
+            text,
+            &lines,
+            error.range,
+            &error.message,
+        );
+        assert!(rendered.starts_with("a.bas:1:1: error:"), "{rendered}");
+        assert!(rendered.ends_with("\n  x = = 1\n  ^\n"), "{rendered}");
     }
 
     #[test]
@@ -353,7 +578,14 @@ mod tests {
         let text = "Sub A\r\n\tx = = 1\r\nEnd Sub\r\n";
         let parse = ferro_syntax::parse(text);
         let error = &parse.errors()[0];
-        let rendered = render_error(Path::new("a.bas"), text, error.range, &error.message);
+        let lines = LineIndex::new(text);
+        let rendered = render_error(
+            Path::new("a.bas"),
+            text,
+            &lines,
+            error.range,
+            &error.message,
+        );
         assert_eq!(
             rendered,
             "a.bas:2:6: error: expected an expression\n  \tx = = 1\n  \t    ^\n"

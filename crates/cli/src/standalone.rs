@@ -1,19 +1,30 @@
 //! Standalone binaries (`docs/spec/cli.md`, "Standalone binary format").
 //!
-//! `ferro build` writes a copy of the running `ferro` executable followed by
-//! the checked program and a trailer:
+//! `ferro bundle` embeds the checked program, as a *package*, in a copy of the
+//! running `ferro` executable:
 //!
 //! ```text
-//! [ ferro executable ][ payload ][ payload length: u64 LE ][ "FERROBASIC\0PKG" ][ version: u16 LE ]
+//! package = [ payload ][ payload length: u64 LE ][ "FERROBASIC\0PKG" ][ version: u16 LE ]
 //! ```
 //!
-//! At start-up `ferro` looks for the trailer at the end of its own file; when
-//! present it runs the embedded program instead of its CLI.
+//! - Linux and Windows: the package is appended to the executable. At
+//!   start-up `ferro` reads the trailer at the end of its own file.
+//! - macOS: appended bytes cannot be code-signed, so `libsui` stores the
+//!   package in a Mach-O section (Apple Silicon) or inside `__LINKEDIT`
+//!   (Intel), and finds it again at start-up.
+//!
+//! When a package is present, `ferro` runs it instead of its CLI.
 
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Write};
+#[cfg(not(target_os = "macos"))]
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
+
+/// Mach-O section holding the package on macOS (at most 16 bytes).
+#[cfg(target_os = "macos")]
+const SECTION: &str = "__ferro";
 
 /// Marks a standalone binary.
 pub const MAGIC: &[u8; 14] = b"FERROBASIC\0PKG";
@@ -119,7 +130,116 @@ pub fn parse_trailer(tail: &[u8; TRAILER_LEN], file_len: u64) -> Result<Option<u
     Ok(Some(len))
 }
 
+/// Payload and trailer for `entries`: what a standalone binary embeds.
+pub fn package(entries: &[Entry]) -> Vec<u8> {
+    let mut bytes = encode(entries);
+    let len = bytes.len() as u64;
+    bytes.extend_from_slice(&trailer(len));
+    bytes
+}
+
+/// The inverse of [`package`]: `data` must be exactly one package, as
+/// `libsui` returns it on macOS.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn unpack(data: &[u8]) -> Result<Vec<Entry>, PayloadError> {
+    let Some(split) = data.len().checked_sub(TRAILER_LEN) else {
+        return Err(PayloadError::Corrupt("package shorter than its trailer"));
+    };
+    let (payload, tail) = data.split_at(split);
+    match parse_trailer(tail.try_into().unwrap(), data.len() as u64)? {
+        Some(len) if len == payload.len() as u64 => decode(payload),
+        Some(_) => Err(PayloadError::Corrupt("payload length does not match")),
+        None => Err(PayloadError::Corrupt("missing trailer")),
+    }
+}
+
+/// The program embedded in the running executable `exe`, if there is one.
+#[cfg(not(target_os = "macos"))]
+pub fn embedded_program(exe: &Path) -> io::Result<Result<Option<Vec<Entry>>, PayloadError>> {
+    Ok(read_embedded(exe)?.map(|embedded| embedded.entries))
+}
+
+/// The program embedded in the running executable, if there is one.
+#[cfg(target_os = "macos")]
+pub fn embedded_program(_exe: &Path) -> io::Result<Result<Option<Vec<Entry>>, PayloadError>> {
+    Ok(match libsui::find_section(SECTION)? {
+        Some(data) => unpack(data).map(Some),
+        None => Ok(None),
+    })
+}
+
+/// The bytes of a standalone executable: `exe` with `entries` embedded.
+/// A standalone `exe` contributes only its executable part.
+#[cfg(not(target_os = "macos"))]
+pub fn standalone_bytes(exe: &Path, entries: &[Entry]) -> io::Result<Vec<u8>> {
+    let exe_len = match read_embedded(exe)? {
+        Ok(embedded) => embedded.exe_len,
+        Err(error) => return Err(io::Error::other(error.to_string())),
+    };
+    let mut bytes = Vec::new();
+    File::open(exe)?.take(exe_len).read_to_end(&mut bytes)?;
+    bytes.extend_from_slice(&package(entries));
+    Ok(bytes)
+}
+
+/// The bytes of a standalone executable: `exe` with `entries` embedded by
+/// `libsui`. On Apple Silicon it also signs the result ad hoc; on Intel the
+/// caller signs the written file with `codesign`.
+#[cfg(target_os = "macos")]
+pub fn standalone_bytes(exe: &Path, entries: &[Entry]) -> io::Result<Vec<u8>> {
+    let sui = |e: libsui::Error| io::Error::other(e.to_string());
+    #[cfg(not(target_arch = "aarch64"))]
+    let _reserved = ReservedLibsuiTemp::create()?;
+    let macho = libsui::Macho::from(std::fs::read(exe)?)
+        .map_err(sui)?
+        .write_section(SECTION, package(entries))
+        .map_err(sui)?;
+    let mut bytes = Vec::new();
+    #[cfg(target_arch = "aarch64")]
+    macho.build_and_sign(&mut bytes).map_err(sui)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    macho.build(&mut bytes).map_err(sui)?;
+    Ok(bytes)
+}
+
+/// On Intel, `libsui` 0.16.4 copies the executable to
+/// `temp_dir()/sui_tmp_<pid>` with `File::create`, which follows symlinks and
+/// truncates. With a shared `TMPDIR` such as `/tmp`, another user could plant
+/// a symlink there and make `ferro bundle` overwrite a file of the builder.
+/// Creating the path first with `create_new` (which refuses symlinks and
+/// existing files) makes `libsui` open our own regular file; in a sticky
+/// directory nobody else can replace it.
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+struct ReservedLibsuiTemp(PathBuf);
+
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+impl ReservedLibsuiTemp {
+    fn create() -> io::Result<Self> {
+        let path = std::env::temp_dir().join(format!("sui_tmp_{}", std::process::id()));
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|e| {
+                io::Error::new(
+                    e.kind(),
+                    format!("cannot create temporary file {}: {e}", path.display()),
+                )
+            })?;
+        Ok(Self(path))
+    }
+}
+
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+impl Drop for ReservedLibsuiTemp {
+    /// `libsui` removes the file itself; this covers its error paths.
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 /// What the end of an executable holds.
+#[cfg(not(target_os = "macos"))]
 pub struct Embedded {
     /// Length of the executable without payload and trailer.
     pub exe_len: u64,
@@ -128,6 +248,7 @@ pub struct Embedded {
 }
 
 /// Inspects `path`: finds a trailer and decodes the payload if there is one.
+#[cfg(not(target_os = "macos"))]
 pub fn read_embedded(path: &Path) -> io::Result<Result<Embedded, PayloadError>> {
     let mut file = File::open(path)?;
     let file_len = file.metadata()?.len();
@@ -160,28 +281,20 @@ pub fn read_embedded(path: &Path) -> io::Result<Result<Embedded, PayloadError>> 
     }))
 }
 
-/// Writes `exe[..exe_len]`, the payload and the trailer to `out`, replacing
-/// it, with the executable permission bits on Unix. `finish` runs on the
-/// complete staged file before it replaces `out` (macOS signs it there); if
+/// Writes `bytes` (from [`standalone_bytes`]) to `out`, replacing it, with
+/// the executable permission bits on Unix. `finish` runs on the complete
+/// staged file before it replaces `out` (Intel Macs sign it there); if
 /// anything fails, `out` is left as it was.
 pub fn write_standalone(
-    exe: &Path,
-    exe_len: u64,
-    entries: &[Entry],
+    bytes: &[u8],
     out: &Path,
     finish: impl FnOnce(&Path) -> io::Result<()>,
 ) -> io::Result<()> {
-    let mut base = Vec::new();
-    File::open(exe)?.take(exe_len).read_to_end(&mut base)?;
-    let payload = encode(entries);
-    let mut bytes = base;
-    bytes.extend_from_slice(&payload);
-    bytes.extend_from_slice(&trailer(payload.len() as u64));
     // Stage next to the target, then rename: never leave a half-written
     // binary at `out`, and work even when `out` is a running executable.
     let (mut file, staged) = create_staging(out)?;
     let result = (|| {
-        file.write_all(&bytes)?;
+        file.write_all(bytes)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -225,6 +338,33 @@ fn create_staging(out: &Path) -> io::Result<(File, PathBuf)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A fresh directory for one test, removed when dropped, also when the
+    /// test fails.
+    struct TempDir(std::path::PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> TempDir {
+            let dir = std::env::temp_dir()
+                .join(format!("ferro-standalone-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+    }
+
+    impl std::ops::Deref for TempDir {
+        type Target = std::path::Path;
+        fn deref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     fn sample() -> Vec<Entry> {
         vec![
@@ -282,37 +422,48 @@ mod tests {
     }
 
     #[test]
+    fn packages_round_trip() {
+        assert_eq!(unpack(&package(&sample())).unwrap(), sample());
+        let data = package(&sample());
+        for cut in 0..data.len() {
+            assert!(
+                unpack(&data[..cut]).is_err(),
+                "prefix of {cut} bytes accepted"
+            );
+        }
+        // Bytes before the payload make the length disagree.
+        let mut prefixed = vec![0];
+        prefixed.extend_from_slice(&data);
+        assert!(unpack(&prefixed).is_err());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
     fn write_then_read_back() {
-        let dir =
-            std::env::temp_dir().join(format!("ferro-standalone-unit-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("unit");
         let exe = dir.join("fake-ferro");
         std::fs::write(&exe, b"\x7fELF not really an executable").unwrap();
         let out = dir.join("prog");
-        write_standalone(&exe, 10, &sample(), &out, |_| Ok(())).unwrap();
+        let bytes = standalone_bytes(&exe, &sample()).unwrap();
+        write_standalone(&bytes, &out, |_| Ok(())).unwrap();
         let embedded = read_embedded(&out).unwrap().unwrap();
-        assert_eq!(embedded.exe_len, 10);
+        assert_eq!(embedded.exe_len, 29);
         assert_eq!(embedded.entries, Some(sample()));
+        assert_eq!(embedded_program(&out).unwrap().unwrap(), Some(sample()));
         // The plain "executable" has no payload.
-        let plain = read_embedded(&exe).unwrap().unwrap();
-        assert!(plain.entries.is_none());
+        assert_eq!(embedded_program(&exe).unwrap().unwrap(), None);
         // Rebuilding from a standalone binary keeps only its executable part.
         let again = dir.join("again");
-        write_standalone(&out, embedded.exe_len, &sample()[..1], &again, |_| Ok(())).unwrap();
+        let bytes = standalone_bytes(&out, &sample()[..1]).unwrap();
+        write_standalone(&bytes, &again, |_| Ok(())).unwrap();
         let read = read_embedded(&again).unwrap().unwrap();
-        assert_eq!(read.exe_len, 10);
+        assert_eq!(read.exe_len, 29);
         assert_eq!(read.entries.unwrap().len(), 1);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn staging_never_touches_other_files() {
-        let dir =
-            std::env::temp_dir().join(format!("ferro-standalone-stage-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let exe = dir.join("fake-ferro");
-        std::fs::write(&exe, b"exe").unwrap();
+        let dir = TempDir::new("stage");
         let out = dir.join("prog");
         std::fs::write(&out, b"previous").unwrap();
         // A file at the old fixed staging name is left alone.
@@ -321,9 +472,9 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&stray, dir.join(".prog.ferro-tmp")).unwrap();
 
-        // A failing finishing step (codesign on macOS) keeps the old output
-        // and removes the staged file.
-        let err = write_standalone(&exe, 3, &sample(), &out, |staged| {
+        // A failing finishing step (codesign on Intel Macs) keeps the old
+        // output and removes the staged file.
+        let err = write_standalone(b"new", &out, |staged| {
             assert!(staged.exists() && staged != out);
             Err(io::Error::other("signing failed"))
         })
@@ -331,22 +482,18 @@ mod tests {
         assert_eq!(err.to_string(), "signing failed");
         assert_eq!(std::fs::read(&out).unwrap(), b"previous");
 
-        write_standalone(&exe, 3, &sample(), &out, |_| Ok(())).unwrap();
-        assert_eq!(
-            read_embedded(&out).unwrap().unwrap().entries,
-            Some(sample())
-        );
+        write_standalone(b"new", &out, |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), b"new");
         assert_eq!(std::fs::read(&stray).unwrap(), b"unrelated");
-        let mut names: Vec<_> = std::fs::read_dir(&dir)
+        let mut names: Vec<_> = std::fs::read_dir(&*dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().into_string().unwrap())
             .collect();
         names.sort();
-        let mut expected = vec!["fake-ferro", "prog", "prog.ferro-tmp"];
+        let mut expected = vec!["prog", "prog.ferro-tmp"];
         if cfg!(unix) {
             expected.insert(0, ".prog.ferro-tmp");
         }
         assert_eq!(names, expected);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

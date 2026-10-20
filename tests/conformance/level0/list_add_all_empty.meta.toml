@@ -1,0 +1,16 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "pending-recording"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["list-add-all"]
+
+# Hand-derived output, used until a recording exists. See docs/compatibility-testing.md.
+[provisional]
+basis = "source"   # source | generated | docs | forum
+refs = ["docs/research/level0-semantics.md#list-source"]
+
+# Filled in by tools/recorder when the expected output is recorded:
+# [recording]
+# product = "B4J"
+# version = ""
+# platform = ""
+# date = ""

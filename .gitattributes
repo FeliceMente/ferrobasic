@@ -1,0 +1,4 @@
+# Conformance programs and their outputs are compared byte for byte (and a
+# `.bas` must round-trip through the lossless CST), so Git must never convert
+# their line endings, e.g. with core.autocrlf on Windows.
+tests/conformance/** -text

@@ -11,7 +11,6 @@
 //! - [`builtins`]: the Level 0 built-ins.
 
 use std::io::Write;
-use std::rc::Rc;
 
 use ferro_mir::{Program, TextRange, Ty};
 
@@ -63,11 +62,7 @@ pub fn run(
     }
     let mut m = machine::Machine::new(program, stdout, stderr);
     let args: Vec<value::Value> = args.iter().map(|a| value::Value::str(a)).collect();
-    let args = value::Value::Array(Rc::new(value::ArrayObj {
-        elem: Ty::String,
-        dims: vec![args.len()],
-        items: Rc::new(std::cell::RefCell::new(args)),
-    }));
+    let args = value::Value::new_array(Ty::String, 1, args);
     let result = m
         .call(program.init, Vec::new())
         .and_then(|()| m.call(program.entry, vec![args]));

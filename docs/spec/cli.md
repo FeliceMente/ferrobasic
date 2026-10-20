@@ -4,7 +4,7 @@ The first deliverable has two parts:
 
 1. **The `ferro` executable**, built for the host (`cargo build --release -p ferro-cli`).
    It checks and runs Level 0 programs with the reference interpreter.
-2. **Standalone binaries**: `ferro build` turns a Level 0 program into a single
+2. **Standalone binaries**: `ferro bundle` turns a Level 0 program into a single
    native executable for the same OS and architecture as the `ferro` that built it.
    The result runs without FerroBASIC installed and without a JVM.
 
@@ -42,30 +42,94 @@ Source text:
 ## Commands
 
 ```text
-ferro check <input>                  parse and type-check, print diagnostics
-ferro run   <input> [-- <args>...]   check, then interpret; args go to AppStart
-ferro build <input> [-o <output>]    check, then write a standalone executable
+ferro check  <input>                  parse and type-check, print diagnostics
+ferro run    <input> [-- <args>...]   check, then interpret; args go to AppStart
+ferro bundle <input> [-o <output>]    check, then write a standalone executable
 ferro version | help
 ```
 
-- `run` and `build` refuse to continue if `check` reports any error.
-- `build`:
+- `ferro help`, and `ferro` with no arguments, print a header and the
+  commands. The header is `FerroBASIC <version> (<platform>)`, then the line
+  `A multi-target BASIC compiler and interpreter`. `ferro version` prints
+  `ferro <version> (<platform>)`.
+  - The platform is the one `ferro` was built for, named like the planned
+    `--target` values: `<os>-<arch>`, with `x64` and `arm64` for Rust's
+    `x86_64` and `aarch64` (`linux-x64`, `macos-arm64`, `windows-x64`).
+    Other values keep Rust's `std::env::consts` names.
+  - Like every message from `ferro`, they never use the B4X product names.
+- `run` and `bundle` refuse to continue if `check` reports any error.
+- `bundle` writes the interpreter plus the program (see "Standalone binary
+  format"); it does not compile:
   - the default output is the input's file stem in the current directory, with
     `.exe` on Windows: `prices_map.bas` → `./prices_map`;
   - `-o` overrides it;
-  - an existing output file is replaced;
+  - an existing output file is replaced, but `bundle` refuses (exit code 2,
+    nothing written) an output that is the input file itself or the running
+    `ferro`, whether directly, through a symlink or as a hard link, or that
+    exists and is not a regular file (a directory, a device such as
+    `/dev/null`, a pipe). Any other symlink at the output is replaced, not
+    followed;
   - the output gets the executable permission bits on Unix.
-- `repl`, `test` and `fmt` stay stubs. `ferro-difftest` drives the
-  conformance tests.
+- In 0.0.1 this command was called `build`; `build` now has the meaning below.
+- Arguments are bytes, not necessarily UTF-8. File names may contain any
+  bytes. Arguments passed to `AppStart`, by `run` or by a standalone binary,
+  are decoded as UTF-8 with undecodable bytes replaced by U+FFFD, as the JVM
+  does.
+- Output that cannot be written (stdout or stderr closed, or a pipe whose
+  reader has gone, as in `ferro help | head -1`) is dropped silently: it
+  never crashes `ferro` or changes its exit code.
+- `ferro-difftest` drives the conformance tests.
+
+### Planned commands
+
+These names are reserved. Until a command is implemented it exits with code 2
+and a message saying what is missing and when it arrives, and it never does
+something else instead (`ferro build` on a module points to `ferro bundle`).
+
+| Command | Meaning | Arrives with |
+| --- | --- | --- |
+| `ferro compile <input> [--target <t>] [--emit <kind>] [-o <output>]` | compile one module or project for this machine (no `--target`) or for another target | JVM backend (M3), native and WebAssembly (M4), microcontrollers (M5) |
+| `ferro targets` | list the targets and what each needs installed | `compile` |
+| `ferro build [<project>]` | build a project from its project file: compile for the project's default target, then package the result where the target needs it | JVM backend (M3) |
+| `ferro repl`, `ferro test`, `ferro fmt` | interactive REPL, conformance runner, formatter | M1 and later |
+
+Decisions behind them:
+
+- **One verb for every target.** Generating source (Java, JavaScript) is
+  compiling too, so there is no separate `transpile`: the target says where
+  the program runs, `--emit` chooses the form of the output when a target has
+  more than one (`exe`, `obj`, `asm`, `llvm-ir`, `class`, `java`, …).
+- **Targets** have short names, and full LLVM target triples are accepted
+  too (`x86_64-unknown-linux-gnu`), so new architectures are new names, not
+  new commands. Planned, by milestone:
+  - M3: `jvm` (bytecode by default; Java source with `--emit java`) and
+    `android`;
+  - M4: native desktop (`linux-x64`, `linux-arm64`, `windows-x64`,
+    `windows-arm64`, `macos-x64`, `macos-arm64`) and `wasm`;
+  - M5: microcontrollers, `pico` (Raspberry Pi Pico) first, then Arduino
+    boards and others;
+  - later: `ios-arm64`, `js`. *(open: names, and whether `js` is its own
+    backend or goes through `wasm`.)*
+- **`build` works on projects.** With no argument it uses the project file in
+  the current directory. The default target follows the project type:
+  `.b4j` → JVM, `.b4a` → Android, `.b4i` → iOS, `.b4r` → microcontroller;
+  `--target` overrides it. `ferro run` will accept a project too.
+- **Packaging** (an `.apk` or `.aab`, an `.ipa`, a macOS `.app`, installers)
+  is part of `build`. The word is kept free for it, which is why the
+  interpreter bundle is `bundle` and not `package`.
+- **A new text project format** (a `ferro.toml`, with dependencies) may come
+  later, as an addition only: a B4X project must always build unchanged from
+  its own project files, never needing the new format. *(open: format and
+  timing.)*
 
 ## Exit codes
 
-| Code | `ferro check` / `run` / `build` | Standalone binary |
+| Code | `ferro check` / `run` / `bundle` | Standalone binary |
 | --- | --- | --- |
 | 0 | success / program ended normally | program ended normally |
 | *n* | `run`: the program called `ExitApplication2(n)` | the program called `ExitApplication2(n)` |
 | 1 | `run`: uncaught runtime error | uncaught runtime error |
-| 2 | usage error, unreadable input, cannot write output | corrupt embedded payload |
+| 2 | usage error, a planned command that is not implemented yet, unreadable input, cannot write output | corrupt embedded payload |
 | 3 | the program has compile errors | — |
 
 The B4J exit code for an uncaught error is *(open)*; 1 is provisional.
@@ -74,6 +138,11 @@ The B4J exit code for an uncaught error is *(open)*; 1 is provisional.
 
 Compile errors go to stderr, one per problem, as
 `path:line:column: error: message`, followed by the source line and a caret.
+
+- Lines and columns start at 1. Columns count characters (Unicode scalar
+  values); the byte order mark that may start a file is not counted.
+- At most 100 errors are printed for a file. Then `... and N more error(s) not
+  shown`, and the last line is always the total, `N error(s)`.
 Warnings use `warning:` and do not fail the command. Messages never use the
 B4X product name. Each says what is missing and at which level or target
 it arrives.
@@ -92,7 +161,8 @@ it arrives.
   - `java.lang.ArrayStoreException`;
   - `java.lang.NullPointerException`;
   - `java.util.ConcurrentModificationException`;
-  - `java.lang.StackOverflowError`, which `Try` does not catch.
+  - `java.lang.StackOverflowError` and `java.lang.OutOfMemoryError`, which
+    `Try` does not catch.
 
   The kind is what `ferro-difftest` compares. Messages are compared only where
   [level0-builtins.md](level0-builtins.md) quotes them exactly.
@@ -125,16 +195,28 @@ it arrives.
 - `Log` writes through a buffered stdout that is flushed at exit, at
   `ExitApplication`, and before a runtime error is printed.
 - Recursion depth is limited. Overflowing it is a runtime error of kind
-  `java.lang.StackOverflowError`, not a crash of `ferro`.
+  `java.lang.StackOverflowError`, not a crash of `ferro`. So is comparing
+  (`=`, `IndexOf`) or printing collections and records nested more than 1000
+  deep, where Java's `equals` and `toString` recurse too.
+- Data may nest to any depth: a linked list of 100,000 records is freed
+  without recursion.
+- Memory is limited. When an allocation fails, or a String or
+  `StringBuilder` would be longer than Java's limit of 2,147,483,647 UTF-16
+  code units, the program stops with `java.lang.OutOfMemoryError: Java heap
+  space`, keeping the output printed so far. Arrays hold at most 2^28
+  elements.
 
 ## Standalone binary format
 
-`ferro build` writes the bytes of the running `ferro` executable, followed by
-a payload and a trailer:
+`ferro bundle` embeds a **package** in a copy of the running `ferro`
+executable. The package is a payload followed by a trailer:
 
 ```text
-[ ferro executable ][ payload ][ payload length: u64 LE ][ magic: "FERROBASIC\0PKG" ][ format version: u16 LE ]
+package = [ payload ][ payload length: u64 LE ][ magic: "FERROBASIC\0PKG" ][ format version: u16 LE ]
 ```
+
+On Linux and Windows the package is appended to the executable. On macOS it
+is embedded with `libsui` instead (see below).
 
 - The **payload** is the checked program as source text. It is the input module,
   or the project header plus main module, as UTF-8 bytes in a small container:
@@ -147,8 +229,8 @@ a payload and a trailer:
   Source rather than MIR keeps the format free of any IR serialisation. The
   program was already fully checked at build time, so re-parsing at start-up
   cannot fail on a well-formed payload.
-- **At start-up** `ferro` reads the end of its own executable
-  (`std::env::current_exe`).
+- **At start-up** `ferro` looks for a package in its own executable: at the
+  end of its file (`std::env::current_exe`), or on macOS through `libsui`.
   - If the trailer is present, it runs the embedded program: every
     command-line argument goes to `AppStart`, and `ferro`'s own CLI is not
     parsed.
@@ -159,14 +241,29 @@ a payload and a trailer:
     falls back to the CLI in place of its program.
 - Linux (ELF) and Windows (PE) ignore appended bytes, so the result runs as is.
   Verified on Linux x86_64; Windows is not tested yet.
-  - **macOS** is *(open)*: appended bytes break the code signature, and arm64
-    refuses unsigned binaries.
-  - Until it is verified, `ferro build` on macOS re-signs ad hoc
-    (`codesign --force --sign -`). If that fails, it reports a precise error
-    rather than writing a binary that will not start.
+- **macOS**: `codesign` rejects a Mach-O file with bytes after its last
+  segment ("main executable failed strict validation"), and Apple Silicon
+  refuses to run unsigned binaries. So the package is embedded with
+  [`libsui`](https://github.com/denoland/sui), the library `deno compile`
+  uses (MIT):
+  - **Apple Silicon**: the package goes in a new Mach-O section
+    (`__SUI,__ferro`) before `__LINKEDIT`, and `libsui` signs the result ad
+    hoc itself.
+  - **Intel**: `libsui` appends the package after its own marker and extends
+    `__LINKEDIT` to cover it. `ferro bundle` then signs ad hoc with
+    `codesign --force --sign -`, and reports an error if that fails.
+    `libsui` stages a copy at `$TMPDIR/sui_tmp_<pid>` with a call that
+    follows symlinks, so `ferro bundle` creates that path first, exclusively;
+    if it already exists, the build stops with an error.
+  - At start-up `libsui` finds the package again: through `getsectdata` on
+    Apple Silicon, by scanning the file for its marker on Intel.
+  - The output must pass `codesign --verify --strict` (a test checks this
+    on macOS). Verified on an Apple Silicon Mac: native arm64, with
+    `cargo test --workspace` passing, and x86_64 through Rosetta. Not yet on
+    an Intel Mac.
 - **Writing the output**: the binary is staged in a new, uniquely named file
   next to the output (never an existing file or a symlink), signed there on
-  macOS, then renamed over the output. If any step fails, an existing output
+  Intel Macs, then renamed over the output. If any step fails, an existing output
   is left untouched and the staged file is removed.
 - **Dependencies**: the output depends on exactly what `ferro` itself depends on.
   On Linux that is the system C library (glibc), unless `ferro` was built for
@@ -190,7 +287,7 @@ The first implementation is done when, on Linux x86_64 and in CI:
    error named in `uncaught_error` when there is one
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
    Tests with neither file, such as `precedence_open`, are only checked.
-5. For every test in point 4, `ferro build` produces a binary whose stdout and
+5. For every test in point 4, `ferro bundle` produces a binary whose stdout and
    exit code are identical to `ferro run`'s. The binary must also keep working
    after the build tree and `ferro` itself are removed.
 6. `cargo fmt`, `cargo clippy -D warnings` and `cargo test` pass. There is no
