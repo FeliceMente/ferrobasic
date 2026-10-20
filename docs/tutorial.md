@@ -37,6 +37,9 @@ platform, then lists the commands. Three of them work at Level 0:
 | `ferro run <file> [-- <args>...]` | checks it, then runs it with the interpreter |
 | `ferro bundle <file> [-o <output>]` | checks it, then bundles it with the interpreter into a standalone executable |
 
+`ferro licenses` prints the licence notices you need when you give a program
+to others (see [section 8](#8-standalone-executables)).
+
 The help also lists planned commands, which are not implemented yet: `compile`
 (native code and other targets), `targets`, `build` (for whole projects),
 `repl`, `test` and `fmt`. In 0.0.1, `ferro bundle` was called `ferro build`.
@@ -375,7 +378,7 @@ $ echo $?
 - Output and exit codes are the same as `ferro run`'s, runtime errors included.
 
 The executable needs neither FerroBASIC nor a JVM. It is `ferro` itself, with
-the checked program appended (about 1.4 MB). You can copy it to another machine
+the checked program appended (about 1.6 MB). You can copy it to another machine
 with the same OS and architecture.
 
 > **Note:** `ferro bundle` does not compile. The executable is the `ferro`
@@ -386,8 +389,18 @@ with the same OS and architecture.
 > that behaves exactly like `ferro run`.
 
 - FerroBASIC is MIT-licensed. Your program stays yours, but the executable
-  contains a copy of `ferro`, so when you give it to others, include
-  FerroBASIC's [licence notice](../LICENSE), for example in your documentation.
+  contains a copy of `ferro`, and with it third-party code under MIT and
+  similar licences. When you give it to others, include the notices that
+  `ferro licenses` prints, for example as a file next to the executable:
+
+  ```console
+  $ ferro licenses > NOTICES.txt
+  $ head -3 NOTICES.txt
+  MIT License
+
+  Copyright (c) 2026 Marco Iannaccone
+  ```
+
 - On Linux it depends only on the system C library.
 - For a fully static Linux binary, build `ferro` for musl first:
 
