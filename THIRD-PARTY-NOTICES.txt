@@ -87,11 +87,29 @@ The Rust standard library
 ==============================================================================
 
 The Rust standard library is licensed under the MIT license or the Apache
-License, Version 2.0, at your option; the MIT license is used here. Some of
-its parts, and the crates it is built from, carry notices of their own: they
-are listed in share/doc/rust/COPYRIGHT-library.html in the Rust toolchain.
+License, Version 2.0, at your option; the MIT license is used here. These are
+the notices of its parts, and of the crates it is built from, that are linked
+on Linux, Windows and macOS, from share/doc/rust/COPYRIGHT-library.html in
+Rust 1.97.0. Its Unicode tables are under the Unicode License v3, whose text
+is in the "Unicode License v3" section below.
+
+  The Rust standard library     The Rust Project Developers
+  backtrace (in-tree)           2014 Alex Crichton
+  std::sync::mpmc (in-tree)     2019 The Crossbeam Project Developers
+  Unicode tables (in-tree)      1991-2024 Unicode, Inc. (Unicode-3.0)
+  cfg-if 1.0.4                  2014 Alex Crichton
+  gimli 0.32.3                  2015 The Rust Project Developers
+  hashbrown 0.17.1              2016 Amanieu d'Antras
+  libc 0.2.185                  The Rust Project Developers
+  rustc-demangle 0.1.27         2014 Alex Crichton
+  foldhash 0.2.0                2024 Orson Peters (Zlib, text below)
 
 Copyright (c) The Rust Project Contributors
+Copyright (c) The Rust Project Developers
+Copyright (c) 2014 Alex Crichton
+Copyright (c) 2015 The Rust Project Developers
+Copyright (c) 2016 Amanieu d'Antras
+Copyright (c) 2019 The Crossbeam Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -116,6 +134,28 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+foldhash:
+
+Copyright (c) 2024 Orson Peters
+
+This software is provided 'as-is', without any express or implied warranty. In
+no event will the authors be held liable for any damages arising from the use of
+this software.
+
+Permission is granted to anyone to use this software for any purpose, including
+commercial applications, and to alter it and redistribute it freely, subject to
+the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not claim
+    that you wrote the original software. If you use this software in a product,
+    an acknowledgment in the product documentation would be appreciated but is
+    not required.
+
+2. Altered source versions must be plainly marked as such, and must not be
+    misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
 
 ==============================================================================
 The musl C library
