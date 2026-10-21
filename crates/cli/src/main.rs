@@ -498,12 +498,18 @@ fn same_file(a: &Path, b: &Path) -> bool {
     regular(a) && regular(b) && same_file::is_same_file(a, b).unwrap_or(false)
 }
 
-/// `prices_map.bas` → `./prices_map` (`.exe` on Windows).
+/// The output when there is no `-o` (`.exe` on Windows): a module's program
+/// goes in the current directory, `prices_map.bas` → `./prices_map`; a
+/// project's goes in the project's directory, `MyApp/MyApp.b4j` →
+/// `MyApp/MyApp`, where `./MyApp` would be the project's directory itself.
 fn default_output(path: &Path) -> PathBuf {
     let stem = path.file_stem().unwrap_or(path.as_os_str());
     let mut name = stem.to_os_string();
     name.push(std::env::consts::EXE_SUFFIX);
-    PathBuf::from(name)
+    match path.parent() {
+        Some(dir) if is_project(path) => dir.join(name),
+        _ => PathBuf::from(name),
+    }
 }
 
 /// On Intel Macs `libsui` leaves the binary unsigned: sign it ad hoc, and

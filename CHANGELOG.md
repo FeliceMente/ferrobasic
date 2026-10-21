@@ -25,6 +25,11 @@ B4J itself (`docs/compatibility-testing.md`).
   error at each header line that stands in the way: a UI `AppType`, another
   library, another module, a file. Before, such a project ran its main
   module as if nothing were missing.
+- `ferro bundle` writes a project's program into the project's folder, named
+  after the project: `ferro bundle MyApp` gives `MyApp/MyApp`, wherever it
+  runs from. Before, it wrote `./MyApp`, which in the IDE's layout is the
+  project folder itself, so bundling from outside the folder failed (#29). A
+  module's program still goes in the current folder.
 - A module file whose header says `Type=Class` (or any type other than
   `StaticCode`) is an error that says so.
 

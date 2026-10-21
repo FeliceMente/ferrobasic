@@ -87,6 +87,10 @@ line, so all of them are reported at once. A project file with no header, or
 no `AppType`, is an error too. The other keys only describe the project in
 the IDE and are ignored at Level 0.
 
+`ferro bundle` writes a project's program into the project's directory,
+named after the project file: `MyApp/MyApp.b4j` → `MyApp/MyApp`
+([cli.md](cli.md#commands)).
+
 ## Module file (`.bas`)
 
 ```text
