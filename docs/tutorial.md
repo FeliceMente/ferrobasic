@@ -370,7 +370,8 @@ $ echo $?
 ```
 
 - By default the output is named after the source file (`greet`, or
-  `greet.exe` on Windows) and goes in the current directory.
+  `greet.exe` on Windows) and goes in the current directory. A project's
+  goes in the project's folder instead (see below).
 - `-o` chooses another path, for example `ferro bundle greet.bas -o bin/greet`.
   The directory must already exist.
 - An existing file at the output path is replaced.
@@ -415,6 +416,40 @@ with the same OS and architecture.
   the result can be code-signed. It is signed ad hoc, which is enough to run
   it on your own Mac.
 - Tested on Linux, Windows and macOS (Apple Silicon and Intel).
+
+### Bundling a project
+
+The IDE keeps each project in a folder named after it. Here the console
+project `Greeter` prints a greeting for each argument:
+
+```console
+$ ls Greeter
+Files  Greeter.b4j  Objects
+$ ferro run Greeter -- Ada
+Hello, Ada!
+```
+
+`ferro bundle` writes a project's program **into the project's folder**,
+named after the project:
+
+```console
+$ ferro bundle Greeter
+$ ls Greeter
+Files  Greeter  Greeter.b4j  Objects
+$ Greeter/Greeter Ada
+Hello, Ada!
+```
+
+- The result is the same wherever you run `ferro` from, and whether you name
+  the folder or the `.b4j` file: inside the folder, `ferro bundle .` writes
+  the same `Greeter/Greeter`.
+- On Windows the program is `Greeter\Greeter.exe`.
+- `-o` puts it elsewhere: `ferro bundle Greeter -o dist/greeter` writes
+  `dist/greeter`.
+- A single module is not a project: `ferro bundle greet.bas` still writes
+  `./greet` in the current folder, as above.
+
+The rules, case by case, are in [spec/cli.md](spec/cli.md#commands).
 
 ## 9. Exit codes
 

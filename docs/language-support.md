@@ -34,7 +34,7 @@ The "not yet" rows come from the
 | Feature | Status | Notes |
 | --- | --- | --- |
 | A single code module (`.bas`) | ✅ | the main module of a B4J non-UI app; [cli.md](spec/cli.md#inputs) |
-| A B4J console project (`.b4j`), or the folder holding it | 🟡 | only a console app with the `jcore` library and no other modules or files; each line that stands in the way is an error ([project-files.md](spec/project-files.md)) |
+| A B4J console project (`.b4j`), or the folder holding it | 🟡 | only a console app with the `jcore` library and no other modules or files; each line that stands in the way is an error ([project-files.md](spec/project-files.md)). `ferro bundle` writes its program into the project's folder ([cli.md](spec/cli.md#commands)). |
 | `Sub Process_Globals`, `Sub AppStart (Args() As String)` | ✅ | [level0.md](spec/level0.md#program-structure); tests `process_globals_for`, `exit_code` |
 | Several modules, calling another module's Subs | ❌ | Level 1. Today a call such as `Module2.F` is reported as an undeclared name. |
 | Class modules (`Class_Globals`, `Initialize`, `Me`) | ❌ | Level 1 |

@@ -82,18 +82,55 @@ fn a_console_project_runs_from_its_file_or_its_directory() {
     assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
 }
 
-#[test]
-fn a_bundled_directory_is_named_after_its_project() {
-    let dir = Scratch::new("bundle");
-    // The folder's name differs from the project's: on a file system that
-    // ignores case (macOS, Windows), `Hello` would be the folder `hello`
-    // itself, which bundle refuses to overwrite.
-    dir.file("app/Hello.b4j", CONSOLE);
-    let out = ferro(&dir.0, &["bundle", "app"]);
-    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
-    let exe = dir.0.join(format!("Hello{}", std::env::consts::EXE_SUFFIX));
+/// Bundles `input` from `cwd` with no `-o`, then runs the program expected at
+/// `expected` (relative to the scratch directory, without `.exe`).
+fn bundle_lands_at(dir: &Scratch, cwd: &str, input: &str, expected: &str) {
+    let out = ferro(&dir.0.join(cwd), &["bundle", input]);
+    assert_eq!(out.status.code(), Some(0), "{input}: {}", text(&out.stderr));
+    let exe = dir
+        .0
+        .join(format!("{expected}{}", std::env::consts::EXE_SUFFIX));
     let out = run_written(Command::new(&exe).arg("x"));
-    assert_eq!(text(&out.stdout), "Hello 1\n");
+    assert_eq!(text(&out.stdout), "Hello 1\n", "{input}");
+    fs::remove_file(&exe).unwrap();
+}
+
+/// A project's program goes in the project's folder, named after the
+/// project, wherever `ferro` runs from: in the IDE's layout the folder has
+/// the project's name, so `./MyApp` would be the folder itself.
+#[test]
+fn a_bundled_project_lands_in_its_folder() {
+    let dir = Scratch::new("bundle");
+    dir.file("MyApp/MyApp.b4j", CONSOLE);
+    bundle_lands_at(&dir, "", "MyApp", "MyApp/MyApp");
+    bundle_lands_at(&dir, "", "MyApp/", "MyApp/MyApp");
+    bundle_lands_at(&dir, "", "MyApp/MyApp.b4j", "MyApp/MyApp");
+    bundle_lands_at(&dir, "MyApp", ".", "MyApp/MyApp");
+    bundle_lands_at(&dir, "MyApp", "MyApp.b4j", "MyApp/MyApp");
+    // The folder's name does not matter: also when it differs from the
+    // project's only in case, which macOS and Windows ignore.
+    dir.file("hello/Hello.b4j", CONSOLE);
+    bundle_lands_at(&dir, "", "hello", "hello/Hello");
+    dir.file("app/Hello.b4j", CONSOLE);
+    bundle_lands_at(&dir, "", "app", "app/Hello");
+}
+
+#[test]
+fn a_bundled_project_goes_where_o_says() {
+    let dir = Scratch::new("bundle-o");
+    dir.file("MyApp/MyApp.b4j", CONSOLE);
+    fs::create_dir(dir.0.join("build")).unwrap();
+    // Windows runs `build/app` as `build/app.exe`: name it so.
+    let app = format!("build/app{}", std::env::consts::EXE_SUFFIX);
+    let out = ferro(&dir.0, &["bundle", "MyApp", "-o", &app]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let out = run_written(&mut Command::new(dir.0.join(&app)));
+    assert_eq!(text(&out.stdout), "Hello 0\n");
+    assert!(
+        !dir.0
+            .join(format!("MyApp/MyApp{}", std::env::consts::EXE_SUFFIX))
+            .exists()
+    );
 }
 
 #[test]
