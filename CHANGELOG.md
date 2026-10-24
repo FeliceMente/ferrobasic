@@ -5,6 +5,53 @@ command line may still change. Expected outputs are still derived by hand
 from the original runtime's source and from JDK 21, not yet recorded from
 B4J itself (`docs/compatibility-testing.md`).
 
+## 0.0.3 (pre-alpha)
+
+### Projects
+
+- A B4J console project (`.b4j`), or the folder that holds it, is an input
+  of `ferro check`, `run` and `bundle`. A project Level 0 cannot run is an
+  error at each header line that stands in the way: a UI `AppType`, another
+  library, another module, a file. Before, such a project ran its main
+  module as if nothing were missing.
+- `ferro bundle` writes a project's program into the project's folder, named
+  after the project: `ferro bundle MyApp` gives `MyApp/MyApp`, wherever it
+  runs from. A module's program still goes in the current folder. An output
+  that is a directory is refused with a message saying to use `-o`.
+- A module file whose header says `Type=Class` (or any type other than
+  `StaticCode`) is an error that says so.
+
+### Licences
+
+- `ferro licenses` prints FerroBASIC's licence and the notices of the
+  third-party code compiled into `ferro`, and so into every program built
+  with `ferro bundle`. Whoever distributes such a program must include
+  them: `ferro licenses > NOTICES.txt`. The notices are also in
+  `THIRD-PARTY-NOTICES.txt`.
+
+### Testing and documentation
+
+- CI on GitHub Actions: formatting, clippy and the tests on Linux, Windows,
+  macOS arm64 and macOS Intel, plus a static Linux build, for release pull
+  requests and on demand. `ferro run` and `ferro bundle` are now tested on
+  Windows and on macOS Intel.
+- New conformance tests for the members of `String`, `StringBuilder`, `List`
+  and `Map`, and for maths, `Bit`, characters, integer arithmetic, seeded
+  `Rnd` and exit codes. A conformance test can now declare the exit code it
+  expects.
+- `docs/language-support.md` lists what FerroBASIC supports today and what it
+  does not yet, area by area: types, statements, built-in objects, keywords,
+  directives.
+
+### Known limitations
+
+- Changes through a `SubList` view whose parent changed raise
+  `ConcurrentModificationException` instead of
+  `UnsupportedOperationException` (#21).
+- `Const`, `Is`, `Wait For` and inline Java are rejected with a generic
+  syntax error instead of a precise diagnostic (#32); `Const` is not
+  supported yet (#33).
+
 ## 0.0.2 (pre-alpha)
 
 ### Command line

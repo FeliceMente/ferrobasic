@@ -33,7 +33,7 @@ fn conformance_programs_produce_their_expected_output() {
                 "{name}: uncaught error {error:?}, expected {want:?}"
             ));
         }
-        let want_code = if want.is_some() { 1 } else { 0 };
+        let want_code = program.exit_code;
         if outcome.exit_code != want_code {
             failures.push(format!(
                 "{name}: exit code {}, expected {want_code}",
