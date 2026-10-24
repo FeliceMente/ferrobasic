@@ -12,3 +12,4 @@ publish = false
 workspace = true
 
 [dependencies]
+ferro-syntax = { path = "../syntax" }

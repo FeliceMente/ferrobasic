@@ -58,7 +58,8 @@ related tests stay `pending-recording`.
 - [ ] Comparing Strings with `<` / `>`, and comparing a String with a number.
 - [ ] Changing a `List` or `Map` while iterating it with `For Each`.
 - [ ] Output and exit code of a B4J non-UI program that stops on an uncaught error.
-- [ ] `AppType` value of a non-UI `.b4j` project.
+- [x] `AppType` value of a non-UI `.b4j` project: `StandardJava`
+      ([public samples](spec/project-files.md#sources)).
 - [ ] Whether `LogDebug` prints in release mode (provisionally not).
 - [ ] Exact text of JDK-generated exception messages seen through
       `LastException.Message` (index and number-parse errors), and which JDK.
@@ -96,6 +97,10 @@ needs a recorded test):
       HotSpot replaces with CPU intrinsics, whose last bit may depend on the
       JVM and CPU; FerroBASIC uses the platform's maths library. Needs recordings from the reference machine. (`ASin`, `ACos`,
       `ATan`, `ATan2` are settled: fdlibm, bit for bit.)
+- [ ] The type of `IIf`'s result, and so how it converts when assigned or
+      printed (`Dim n As Int = IIf(True, 1, 2.5)`, `Log(IIf(True, 3, 4.5))`).
+      That it evaluates only the chosen branch is settled. Fixture:
+      `level0/iif_branches`.
 - [ ] Whether all `Case` values are evaluated before matching, as they would
       be if the compiler passes them to `BA.switchObjectToInt` as arguments;
       FerroBASIC evaluates them in order until one matches. It only matters
@@ -151,7 +156,13 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 ## Project
 
 - [x] Choose the licence: MIT (`LICENSE`).
-- [ ] Ship the licence notices of FerroBASIC's dependencies with released
-      binaries (e.g. generated with `cargo-about`).
+- [x] Ship the licence notices of FerroBASIC's dependencies with released
+      binaries: `THIRD-PARTY-NOTICES.txt`, generated with `cargo-about`
+      (`tools/licenses/`), compiled into `ferro` and printed by
+      `ferro licenses`.
+- [ ] Trim `libsui`'s dependencies: on macOS it brings in about 40 crates
+      (image decoding, compression, hashing) that `ferro` never uses. Check
+      whether its features can be turned off, which would shorten the
+      notices and shrink the macOS binary.
 - [ ] Evaluate Cranelift for the REPL JIT and debug builds.
 - [ ] Evaluate `zig cc` / `cargo-zigbuild` as the cross-linker.

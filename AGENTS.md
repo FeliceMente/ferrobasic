@@ -20,11 +20,13 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 
 ## Read before working
 
+- `docs/language-support.md` — what is supported today and what is not yet.
 - `docs/architecture.md` — components, IR, backends, tooling.
 - `docs/porting.md` — what "builds without changes" requires, layer by layer.
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
 - `docs/spec/level0-builtins.md` — keywords and library members at Level 0.
 - `docs/spec/cli.md` — `ferro check/run/bundle`, planned commands, exit codes, standalone binaries.
+- `docs/spec/project-files.md` — project (`.b4j`) and module (`.bas`) file headers, and their sources.
 - `docs/research/level0-semantics.md` — where each Level 0 rule comes from.
 - `docs/compatibility-testing.md` — how compatibility is measured.
 - `docs/open-questions.md` — unresolved B4X semantics. Check here before guessing.
@@ -50,7 +52,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - Never require changes to B4X sources, project files or layouts. An unsupported
   construct gets a precise diagnostic (what is missing, on which target) and an
   entry in `docs/deviations.md`. Never build something that silently behaves differently.
-- Every language feature lands with at least one conformance test.
+- Every language feature lands with at least one conformance test, and
+  updates its row in `docs/language-support.md`.
 - If B4X semantics are unclear, do NOT invent them: add a test with
   `status = "pending-recording"` in its `.meta.toml` (plus `ferro_rejects = true`
   if FerroBASIC rejects it meanwhile) and an entry in `docs/open-questions.md`.
@@ -62,7 +65,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - No target-specific code in `syntax`, `hir` or `mir`.
 - `crates/runtime` (planned, M4) must stay `no_std`-compatible.
 - No `unsafe` outside crates that explicitly opt in and document why.
-- Keep external dependencies few and justified in the PR description.
+- Keep external dependencies few and justified in the PR description. After
+  adding, removing or updating one, regenerate `THIRD-PARTY-NOTICES.txt` with
+  `tools/licenses/generate.sh` (a test fails until you do).
 - Never use the B4X name in binaries, crate names or user-facing messages;
   "B4X-compatible" in documentation is fine.
 - Never commit third-party B4X libraries, B4X binaries or corpus projects whose
@@ -83,7 +88,10 @@ cargo run -p ferro-difftest -- --target interp   # compare against recordings (o
 ## Before closing a task
 
 1. `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
-   `cargo test --workspace` all pass.
+   `cargo test --workspace` all pass. CI (`.github/workflows/ci.yml`) runs
+   them on Linux, Windows and macOS only for pull requests into `main` and
+   on demand (see `docs/compatibility-testing.md`, "CI"), so run clippy for
+   the other targets locally too when touching platform-specific code.
 2. New behaviour has conformance tests; open questions and deviations are recorded.
 3. Docs in `docs/` reflect any design change; `docs/tutorial.md` shows real
    `ferro` output, so re-run its examples when CLI behaviour changes.

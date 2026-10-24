@@ -41,6 +41,7 @@ crates/
 tests/conformance/  test programs with recorded expected outputs
 tests/corpus/     real-world B4X projects (licence-checked)
 tools/recorder/   records expected outputs from the original toolchain
+tools/licenses/   generates THIRD-PARTY-NOTICES.txt
 docs/             architecture, porting, spec, testing, roadmap
 ```
 
@@ -88,10 +89,11 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 ## Documentation
 
 - [Tutorial: the `ferro` command line](docs/tutorial.md)
+- [Language support: what works today and what does not yet](docs/language-support.md)
 - [Architecture](docs/architecture.md)
 - [Porting existing B4X projects](docs/porting.md)
 - [Language spec, Level 0](docs/spec/level0.md), [grammar](docs/spec/level0.ebnf) and [built-ins](docs/spec/level0-builtins.md)
-- [CLI, interpreter and standalone builds](docs/spec/cli.md)
+- [CLI, interpreter and standalone builds](docs/spec/cli.md) and [project files](docs/spec/project-files.md)
 - [Level 0 semantics from public sources](docs/research/level0-semantics.md)
 - [Compatibility testing](docs/compatibility-testing.md)
 - [Roadmap](docs/roadmap.md) and [changelog](CHANGELOG.md)
@@ -103,8 +105,14 @@ FerroBASIC is released under the [MIT License](LICENSE).
 
 Programs you write, check, run, bundle or compile with FerroBASIC remain
 yours, under whatever licence you choose. A bundled executable contains a copy
-of `ferro`, so when you distribute one, include FerroBASIC's copyright and
-licence notice, for example in your program's documentation.
+of `ferro`, which includes third-party code under MIT and similar licences
+([THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)). So when you distribute
+one, include the notices `ferro licenses` prints, FerroBASIC's licence
+first, for example as a `NOTICES.txt` next to the program:
+
+```sh
+ferro licenses > NOTICES.txt
+```
 
 Unless you state otherwise, any contribution you submit for inclusion in
 FerroBASIC is licensed under the MIT License, without additional terms.

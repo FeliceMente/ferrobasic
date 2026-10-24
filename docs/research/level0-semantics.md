@@ -173,6 +173,71 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   - a `SubList` view (`Collections.unmodifiableList`) always raises
     `UnsupportedOperationException`.
 
+### Built-in members (source, docs)
+
+The members a program calls on a value are thin wrappers over Java, so
+their behaviour is Java's. Checked by running the same calls on OpenJDK 21
+(the `string_members`, `string_builder`, `list_members` and `map_members`
+tests):
+
+- **String** members are `java.lang.String`'s
+  ([core reference, String](https://www.b4x.com/b4j/help/core.html#string),
+  **docs**): `CharAt`, `IndexOf`, `SubString2` and `Length` count UTF-16
+  code units; `CompareTo` returns the difference of the first differing code
+  units, or of the lengths; `Replace` is literal, left to right; `Trim`
+  removes code units up to U+0020 only; an index out of range raises
+  `StringIndexOutOfBoundsException`. Case mapping is the open question on
+  locales; outside Turkish, Azeri and Lithuanian it is the Unicode default
+  (`"Straße".ToUpperCase` is `STRASSE`).
+- **StringBuilder** wraps `java.lang.StringBuilder`
+  ([`StringBuilderWrapper.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/StringBuilderWrapper.java)):
+  `Append`, `Insert` and `Remove` return the wrapper, so calls chain;
+  `Remove(Start, End)` is `delete`, which stops at the length when `End` is
+  past it; an offset out of range raises `StringIndexOutOfBoundsException`.
+- **List** ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java)):
+  `InsertAt`, `RemoveAt`, `Set` and `IndexOf` are `ArrayList`'s `add`,
+  `remove`, `set` and `indexOf` (`equals`, so boxed types matter).
+  `Sort(True)` is `Collections.sort`; `Sort(False)` sorts with the reversed
+  comparison; `SortCaseInsensitive` compares the items' `toString()` with
+  `compareToIgnoreCase`; `SortType` / `SortTypeCaseInsensitive` compare the
+  named field the same ways, and return at once on an empty list. Every sort
+  is `Collections.sort`, which is stable, also when descending.
+- **Map** ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java)): `Remove`
+  returns the removed value or `Null`; `GetDefault` returns the default when
+  the key is missing or its value is `Null`; `ContainsKey` is
+  `containsKey`, so a key with a `Null` value is present.
+
+### Keywords, maths and Bit (source)
+
+The keywords are static methods of [`Common.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Common.java),
+and `Bit` is [`Bit.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Bit.java); each is one Java call.
+Checked on OpenJDK 21 (the `math_builtins`, `bit_functions`,
+`chars_and_ints`, `random_seeded` and `exit_code` tests):
+
+- `Abs`, `Sqrt`, `Ceil`, `Floor`, `Max`, `Min`, `Power` are `Math`'s, so
+  `Max` and `Min` return NaN if either side is NaN, and order `-0` below `0`.
+  `Logarithm(n, b)` is `Math.log(n) / Math.log(b)`. (`Power` and `Logarithm`
+  on inexact values are an open question: CPU intrinsics.)
+- `Round` is `Math.round`: halves go towards positive infinity (`Round(-2.5)`
+  is `-2`), and NaN gives 0. `Round2(x, d)` is `Math.round(x * 10^d) / 10^d`,
+  so `Round2(2.675, 2)` is `2.68` although 2.675 is just below it in binary.
+- `cPI` and `cE` are `Math.PI` and `Math.E`. `CRLF` is a single line feed
+  (`"\n"`), `TAB` is `"\t"` and `QUOTE` is `"`.
+- `Asc` and `Chr` convert between a `char` and its UTF-16 code unit. `Not` is
+  `!`.
+- The `Bit` functions are Java's `int` operators: shift counts are taken
+  modulo 32, and `ToHexString`, `ToBinaryString` and `ToOctalString` print a
+  negative number as its 32-bit two's complement.
+- `Rnd(Min, Max)` is `Min + random.nextInt(Max - Min)` on one
+  `java.util.Random`, created with `RndSeed`'s seed (later calls reseed it) or
+  unseeded on first use. So a seeded sequence is exact, and `Rnd(5, 5)`
+  raises `IllegalArgumentException`.
+- `ExitApplication` and `ExitApplication2(n)` are `System.exit`: the process
+  ends at once with code 0 or `n`, and `Try` cannot catch it.
+- Integer arithmetic follows Java: `Int` and `Long` wrap around, `Int * Int`
+  is an `Int` even when stored in a `Long`, Byte and Short operands become
+  `Int`, and `Mod` by an integer zero raises `ArithmeticException`.
+
 ### Number parsing (source, measured)
 
 - `IsNumber(Text)` is `Double.parseDouble(Text)` without an exception

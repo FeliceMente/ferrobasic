@@ -22,7 +22,7 @@ by its full path. The examples below just write `ferro`.
 
 ```console
 $ ferro version
-ferro 0.0.2 (linux-x64)
+ferro 0.0.3 (linux-x64)
 ```
 
 The part in brackets is the platform `ferro` was built for, for example
@@ -36,6 +36,9 @@ platform, then lists the commands. Three of them work at Level 0:
 | `ferro check <file>` | parses and type-checks the program and prints any errors |
 | `ferro run <file> [-- <args>...]` | checks it, then runs it with the interpreter |
 | `ferro bundle <file> [-o <output>]` | checks it, then bundles it with the interpreter into a standalone executable |
+
+`ferro licenses` prints the licence notices you need when you give a program
+to others (see [section 8](#8-standalone-executables)).
 
 The help also lists planned commands, which are not implemented yet: `compile`
 (native code and other targets), `targets`, `build` (for whole projects),
@@ -64,6 +67,12 @@ Hello, world!
 
 The file can be just the module's members, as here. A B4J module file, with its
 `Key=Value` header lines up to `@EndOfDesignText@`, works too.
+
+So does a B4J console project: give `ferro` its `.b4j` file, or the folder
+that holds it. At Level 0 the project must be a console program
+(`AppType=StandardJava`) whose only library is jCore, with no other modules
+and no files. Anything else is reported as an error at its line of the
+project file, so you see at once what stands in the way.
 
 ## 3. Arguments and exit codes
 
@@ -361,7 +370,8 @@ $ echo $?
 ```
 
 - By default the output is named after the source file (`greet`, or
-  `greet.exe` on Windows) and goes in the current directory.
+  `greet.exe` on Windows) and goes in the current directory. A project's
+  goes in the project's folder instead (see below).
 - `-o` chooses another path, for example `ferro bundle greet.bas -o bin/greet`.
   The directory must already exist.
 - An existing file at the output path is replaced.
@@ -369,7 +379,7 @@ $ echo $?
 - Output and exit codes are the same as `ferro run`'s, runtime errors included.
 
 The executable needs neither FerroBASIC nor a JVM. It is `ferro` itself, with
-the checked program appended (about 1.4 MB). You can copy it to another machine
+the checked program appended (about 1.6 MB). You can copy it to another machine
 with the same OS and architecture.
 
 > **Note:** `ferro bundle` does not compile. The executable is the `ferro`
@@ -380,8 +390,18 @@ with the same OS and architecture.
 > that behaves exactly like `ferro run`.
 
 - FerroBASIC is MIT-licensed. Your program stays yours, but the executable
-  contains a copy of `ferro`, so when you give it to others, include
-  FerroBASIC's [licence notice](../LICENSE), for example in your documentation.
+  contains a copy of `ferro`, and with it third-party code under MIT and
+  similar licences. When you give it to others, include the notices that
+  `ferro licenses` prints, for example as a file next to the executable:
+
+  ```console
+  $ ferro licenses > NOTICES.txt
+  $ head -3 NOTICES.txt
+  MIT License
+
+  Copyright (c) 2026 Marco Iannaccone
+  ```
+
 - On Linux it depends only on the system C library.
 - For a fully static Linux binary, build `ferro` for musl first:
 
@@ -395,8 +415,66 @@ with the same OS and architecture.
 - On macOS the program goes inside the executable rather than after it, so
   the result can be code-signed. It is signed ad hoc, which is enough to run
   it on your own Mac.
-- Tested on Linux and macOS (Apple Silicon, and Intel binaries through
-  Rosetta). Windows is not tested yet.
+- Tested on Linux, Windows and macOS (Apple Silicon and Intel).
+
+### Bundling a project
+
+The IDE keeps each project in a folder named after it, with `Files` and
+`Objects` folders beside the project file. Here the console project
+`Greeter` prints a greeting for each argument. Its project file,
+`Greeter/Greeter.b4j`, is the header the IDE writes, then the main module:
+
+```vb
+AppType=StandardJava
+Build1=Default,b4j.example
+Group=Default Group
+Library1=jcore
+NumberOfFiles=0
+NumberOfLibraries=1
+NumberOfModules=0
+Version=10
+@EndOfDesignText@
+Sub Process_Globals
+End Sub
+
+Sub AppStart (Args() As String)
+	For Each Name As String In Args
+		Log($"Hello, ${Name}!"$)
+	Next
+End Sub
+```
+
+```console
+$ ls Greeter
+Files  Greeter.b4j  Objects
+$ ferro run Greeter -- Ada
+Hello, Ada!
+```
+
+`ferro bundle` writes a project's program **into the project's folder**,
+named after the project:
+
+```console
+$ ferro bundle Greeter
+$ ls Greeter
+Files  Greeter  Greeter.b4j  Objects
+$ Greeter/Greeter Ada
+Hello, Ada!
+```
+
+- The result is the same wherever you run `ferro` from, and whether you name
+  the folder or the `.b4j` file: inside the folder, `ferro bundle .` writes
+  the same `Greeter/Greeter`.
+- On Windows the program is `Greeter\Greeter.exe`.
+- `-o` puts it elsewhere: `ferro bundle Greeter -o dist/greeter` writes
+  `dist/greeter`. The `dist` folder must already exist.
+- The program is a file of about 1.6 MB inside your project's folder. If the
+  project is under version control, add it to `.gitignore` (here
+  `Greeter/Greeter`), or bundle it elsewhere with `-o`.
+- A single module is not a project: `ferro bundle greet.bas` still writes
+  `./greet` in the current folder, as above.
+
+The rules, case by case, are in [spec/cli.md](spec/cli.md#commands).
 
 ## 9. Exit codes
 
@@ -413,14 +491,16 @@ program is damaged.
 
 ## 10. What Level 0 does not have yet
 
-The compiler tells you when you use one of these:
+[language-support.md](language-support.md) lists, area by area, what works
+today and what does not yet. These are the main gaps, and the compiler tells
+you when you use one of them:
 
 - **classes and several modules:** `Class_Globals` (Level 1);
 - **libraries:** `DateTime`, `File`, `Regex`, `Timer`;
 - **resumable subs and events:** `Sleep`, `Wait For` (Level 2);
 - **conditional compilation:** `#If`;
-- **real project files:** `ferro` reads single modules today, and `.b4j`
-  projects come next.
+- **projects with more than a console module:** UI projects, other
+  libraries, several modules and project files.
 
 See [roadmap.md](roadmap.md) for when each arrives, and
 [deviations.md](deviations.md) for known differences from B4J.
