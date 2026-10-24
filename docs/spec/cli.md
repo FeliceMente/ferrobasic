@@ -72,16 +72,42 @@ ferro version | help
 - `run` and `bundle` refuse to continue if `check` reports any error.
 - `bundle` writes the interpreter plus the program (see "Standalone binary
   format"); it does not compile:
-  - the default output is the input's file stem in the current directory, with
-    `.exe` on Windows: `prices_map.bas` → `./prices_map`;
-  - `-o` overrides it;
+  - the default output is named after the module or project file, without
+    its extension, with `.exe` on Windows. For a directory input that is the
+    `.b4j` inside it: `app/` holding `Hello.b4j` gives `app/Hello`. Where the
+    output goes depends on the input (see the table below):
+    - a module (`.bas`): the current directory, `prices_map.bas` →
+      `./prices_map`;
+    - a project (a `.b4j`, or a directory holding one): the project file's
+      directory, `MyApp/MyApp.b4j` → `MyApp/MyApp`. The IDE names a
+      project's directory after the project, so `./MyApp` would be the
+      directory itself, and the program belongs with its project anyway.
+      The result is the same wherever `ferro` runs from. The directory is
+      the one the `.b4j` is named in: a symlinked project file is not
+      followed, so its program goes next to the link;
+  - `-o` overrides it. Its directory must already exist;
   - an existing output file is replaced, but `bundle` refuses (exit code 2,
     nothing written) an output that is the input file itself or the running
     `ferro`, whether directly, through a symlink or as a hard link, or that
     exists and is not a regular file (a directory, a device such as
-    `/dev/null`, a pipe). Any other symlink at the output is replaced, not
-    followed;
+    `/dev/null`, a pipe). A directory gets `it is a directory; choose another
+    output with -o`: this is what happens, on Linux and macOS, to a project
+    named like a directory beside its project file, such as the IDE's `Files`
+    or `Objects` (also `files` or `objects` where names ignore case). Any
+    other symlink at the output is replaced, not followed;
   - the output gets the executable permission bits on Unix.
+
+  With the project `work/MyApp/MyApp.b4j` and the module
+  `work/prices_map.bas` (`MyApp.exe` and `prices_map.exe` on Windows):
+
+  | Run in | Command | Writes |
+  | --- | --- | --- |
+  | `work/` | `ferro bundle MyApp` | `work/MyApp/MyApp` |
+  | `work/` | `ferro bundle MyApp/MyApp.b4j` | `work/MyApp/MyApp` |
+  | `work/MyApp/` | `ferro bundle .` or `ferro bundle MyApp.b4j` | `work/MyApp/MyApp` |
+  | `work/` | `ferro bundle prices_map.bas` | `work/prices_map` |
+  | `work/MyApp/` | `ferro bundle ../prices_map.bas` | `work/MyApp/prices_map` |
+  | `work/` | `ferro bundle MyApp -o build/app` | `work/build/app`; `work/build/` must exist |
 - In 0.0.1 this command was called `build`; `build` now has the meaning below.
 - Arguments are bytes, not necessarily UTF-8. File names may contain any
   bytes. Arguments passed to `AppStart`, by `run` or by a standalone binary,
