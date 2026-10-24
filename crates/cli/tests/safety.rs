@@ -174,7 +174,7 @@ fn bundle_refuses_outputs_that_are_not_regular_files() {
     fs::create_dir(dir.0.join("out")).unwrap();
     fs::write(dir.0.join("out/keep"), "x").unwrap();
     let out = ferro_in(&dir.0, &[os("bundle"), os("prog.bas"), os("-o"), os("out")]);
-    assert_refused(&out, "not a regular file");
+    assert_refused(&out, "it is a directory; choose another output with -o");
     assert!(dir.0.join("out/keep").exists());
     // No staged file is left behind.
     let names: Vec<_> = fs::read_dir(&dir.0)

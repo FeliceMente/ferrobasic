@@ -419,8 +419,30 @@ with the same OS and architecture.
 
 ### Bundling a project
 
-The IDE keeps each project in a folder named after it. Here the console
-project `Greeter` prints a greeting for each argument:
+The IDE keeps each project in a folder named after it, with `Files` and
+`Objects` folders beside the project file. Here the console project
+`Greeter` prints a greeting for each argument. Its project file,
+`Greeter/Greeter.b4j`, is the header the IDE writes, then the main module:
+
+```vb
+AppType=StandardJava
+Build1=Default,b4j.example
+Group=Default Group
+Library1=jcore
+NumberOfFiles=0
+NumberOfLibraries=1
+NumberOfModules=0
+Version=10
+@EndOfDesignText@
+Sub Process_Globals
+End Sub
+
+Sub AppStart (Args() As String)
+	For Each Name As String In Args
+		Log($"Hello, ${Name}!"$)
+	Next
+End Sub
+```
 
 ```console
 $ ls Greeter
@@ -445,7 +467,10 @@ Hello, Ada!
   the same `Greeter/Greeter`.
 - On Windows the program is `Greeter\Greeter.exe`.
 - `-o` puts it elsewhere: `ferro bundle Greeter -o dist/greeter` writes
-  `dist/greeter`.
+  `dist/greeter`. The `dist` folder must already exist.
+- The program is a file of about 1.6 MB inside your project's folder. If the
+  project is under version control, add it to `.gitignore` (here
+  `Greeter/Greeter`), or bundle it elsewhere with `-o`.
 - A single module is not a project: `ferro bundle greet.bas` still writes
   `./greet` in the current folder, as above.
 

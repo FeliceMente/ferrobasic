@@ -471,6 +471,11 @@ fn check_output(input: &Path, exe: &Path, out: &Path) -> Result<(), String> {
     if same(exe) {
         return Err("it is the running ferro executable".into());
     }
+    // A directory is the likeliest case: a project named like a folder that
+    // sits next to its project file, such as the IDE's `Files` or `Objects`.
+    if meta.is_dir() {
+        return Err("it is a directory; choose another output with -o".into());
+    }
     if !meta.is_file() && !meta.file_type().is_symlink() {
         return Err("it exists and is not a regular file".into());
     }

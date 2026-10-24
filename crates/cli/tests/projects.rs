@@ -102,6 +102,9 @@ fn bundle_lands_at(dir: &Scratch, cwd: &str, input: &str, expected: &str) {
 fn a_bundled_project_lands_in_its_folder() {
     let dir = Scratch::new("bundle");
     dir.file("MyApp/MyApp.b4j", CONSOLE);
+    // The IDE's layout: a `Files` and an `Objects` folder beside the project.
+    dir.file("MyApp/Files/notes.txt", "x");
+    dir.file("MyApp/Objects/MyApp.jar", "x");
     bundle_lands_at(&dir, "", "MyApp", "MyApp/MyApp");
     bundle_lands_at(&dir, "", "MyApp/", "MyApp/MyApp");
     bundle_lands_at(&dir, "", "MyApp/MyApp.b4j", "MyApp/MyApp");
@@ -113,6 +116,34 @@ fn a_bundled_project_lands_in_its_folder() {
     bundle_lands_at(&dir, "", "hello", "hello/Hello");
     dir.file("app/Hello.b4j", CONSOLE);
     bundle_lands_at(&dir, "", "app", "app/Hello");
+}
+
+/// A project named like one of the IDE's folders: its default output on
+/// Linux and macOS, `Objects/Objects`, is that folder. Bundling refuses it
+/// and says to use `-o`; on Windows the output is `Objects.exe`.
+#[test]
+fn a_project_named_like_its_folder_needs_o() {
+    let dir = Scratch::new("bundle-objects");
+    dir.file("Objects/Objects.b4j", CONSOLE);
+    dir.file("Objects/Objects/Objects.jar", "x");
+    let out = ferro(&dir.0, &["bundle", "Objects"]);
+    if std::env::consts::EXE_SUFFIX.is_empty() {
+        assert_eq!(out.status.code(), Some(2));
+        assert!(
+            text(&out.stderr).contains(
+                "cannot write Objects/Objects: it is a directory; choose another output with -o"
+            ),
+            "{}",
+            text(&out.stderr)
+        );
+        assert!(dir.0.join("Objects/Objects/Objects.jar").is_file());
+        let out = ferro(&dir.0, &["bundle", "Objects", "-o", "app"]);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+        let out = run_written(&mut Command::new(dir.0.join("app")));
+        assert_eq!(text(&out.stdout), "Hello 0\n");
+    } else {
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    }
 }
 
 #[test]
