@@ -492,3 +492,44 @@ fn nesting_counts_calls_arrays_and_maps() {
         }
     }
 }
+
+/// `Const`, `Is`, `Wait For` and inline Java parse without a syntax error,
+/// so that `hir` can report each one precisely (#32).
+#[test]
+fn later_constructs_are_recognised() {
+    let root = parse_ok(
+        "Sub Process_Globals\n\tPrivate Const Size As Int = 10\n\tPublic CONST A = 1, B = 2 As Int\nEnd Sub\n",
+    );
+    assert_eq!(count(&root, CONST_MODIFIER), 2);
+    assert_eq!(count(&root, DECLARATOR), 3);
+    // Without a name after it, `Const` is the variable.
+    let root = parse_ok(&in_sub("Dim Const As Int\nConst = 1"));
+    assert_eq!(count(&root, CONST_MODIFIER), 0);
+
+    let root = parse_ok(&in_sub(
+        "If o Is Int Then Log(1)\nb = Not(x Is String) Or y = 1",
+    ));
+    assert_eq!(count(&root, IS_EXPR), 2);
+    // `x Is String` binds like a comparison, inside `Or`.
+    let or = root.descendants().find(|n| n.kind() == BIN_EXPR).unwrap();
+    assert_eq!(
+        or.children().map(|n| n.kind()).collect::<Vec<_>>(),
+        [CALL_EXPR, BIN_EXPR]
+    );
+
+    let root = parse_ok(&in_sub(
+        "Wait For gmap_Ready\nWait For (rs) Complete (Success As Boolean)\nIf a Then Wait For b Else Log(1)",
+    ));
+    assert_eq!(count(&root, WAIT_FOR_STMT), 3);
+    assert_eq!(count(&root, ELSE_CLAUSE), 1);
+    // `Wait` alone is a call to a Sub named `Wait`.
+    let root = parse_ok(&in_sub("Wait\nWait(1)"));
+    assert_eq!(count(&root, WAIT_FOR_STMT), 0);
+
+    let text =
+        "Sub AppStart (Args() As String)\nEnd Sub\n#If Java\npublic static void x() {}\n#End If\n";
+    let root = parse_ok(text);
+    assert_eq!(count(&root, INLINE_JAVA_BLOCK), 1);
+    let errors = parse_errors("Sub AppStart (Args() As String)\nEnd Sub\n#If Java\nint x;\n");
+    assert_eq!(errors, ["missing `#End If` for this `#If Java` block"]);
+}

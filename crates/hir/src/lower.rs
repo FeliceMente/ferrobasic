@@ -84,6 +84,7 @@ fn is_expr(kind: SyntaxKind) -> bool {
             | PAREN_EXPR
             | PREFIX_EXPR
             | BIN_EXPR
+            | IS_EXPR
             | CALL_EXPR
             | MEMBER_EXPR
             | SMART_STRING
@@ -108,7 +109,9 @@ fn is_stmt(kind: SyntaxKind) -> bool {
             | CONTINUE_STMT
             | ASSIGN_STMT
             | EXPR_STMT
+            | WAIT_FOR_STMT
             | DIRECTIVE_LINE
+            | INLINE_JAVA_BLOCK
     )
 }
 
@@ -187,8 +190,10 @@ impl Lowerer {
 
     fn module_items(&mut self, root: &SyntaxNode) {
         for node in root.children() {
-            if node.kind() == DIRECTIVE_LINE {
-                self.unsupported_directive(&node);
+            match node.kind() {
+                DIRECTIVE_LINE => self.unsupported_directive(&node),
+                INLINE_JAVA_BLOCK => self.inline_java(&node),
+                _ => {}
             }
         }
         let subs: Vec<SyntaxNode> = root.children().filter(|n| n.kind() == SUB_DECL).collect();
@@ -223,6 +228,17 @@ impl Lowerer {
                 "missing `Sub AppStart (Args() As String)`: it is the program's entry point",
             );
         }
+    }
+
+    /// One error, at the block's `#If Java` line.
+    fn inline_java(&mut self, node: &SyntaxNode) {
+        let start = range(node).start();
+        let text = node.text().to_string();
+        let first = text.trim_start().split(['\r', '\n']).next().unwrap_or("");
+        self.error(
+            TextRange::at(start, (first.len() as u32).into()),
+            "inline Java (`#If Java`) is not supported at Level 0: it needs Java interop (Level 3)",
+        );
     }
 
     fn unsupported_directive(&mut self, node: &SyntaxNode) {
@@ -610,6 +626,12 @@ impl Lowerer {
         let push = |out: &mut Block, kind| out.push(Stmt { kind, range: at });
         match node.kind() {
             DIM_STMT => {
+                if let Some(modifier) = child(node, CONST_MODIFIER) {
+                    self.error(
+                        range(&modifier),
+                        "`Const` declarations are not supported yet",
+                    );
+                }
                 for (decl, _) in self.declarators(node) {
                     let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                     let Some((var, ty)) = self.lookup_var(&name) else {
@@ -844,6 +866,14 @@ impl Lowerer {
                 push(out, StmtKind::Continue);
             }
             DIRECTIVE_LINE => self.unsupported_directive(node),
+            INLINE_JAVA_BLOCK => self.inline_java(node),
+            WAIT_FOR_STMT => {
+                let what = builtins::later_level("Wait").unwrap_or("resumable subs");
+                self.error(
+                    at,
+                    format!("`Wait For` is not supported at Level 0: it needs {what}"),
+                );
+            }
             _ => {}
         }
     }
@@ -1032,6 +1062,10 @@ impl Lowerer {
                 }
             }
             BIN_EXPR => self.binary(node),
+            IS_EXPR => {
+                self.error(at, "type tests (`Is`) are not supported yet");
+                error_expr(at)
+            }
             CALL_EXPR => self.call(node),
             MEMBER_EXPR => self.member(node, None),
             SMART_STRING => self.smart_string(node),
