@@ -531,5 +531,8 @@ fn later_constructs_are_recognised() {
     let root = parse_ok(text);
     assert_eq!(count(&root, INLINE_JAVA_BLOCK), 1);
     let errors = parse_errors("Sub AppStart (Args() As String)\nEnd Sub\n#If Java\nint x;\n");
-    assert_eq!(errors, ["missing `#End If` for this `#If Java` block"]);
+    assert_eq!(
+        errors,
+        ["missing `#End If` for this `#If Java` block: the rest of the file is read as part of it"]
+    );
 }
