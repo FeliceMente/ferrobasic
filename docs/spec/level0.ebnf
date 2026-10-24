@@ -16,9 +16,12 @@ header        = { header_line } , "@EndOfDesignText@" , NL ;
 header_line   = KEY , "=" , REST_OF_LINE , NL ;   (* B4J module/project header *)
 
 program       = { SEP } , { member , { SEP } } ;
-member        = attribute | region | sub_decl ;
+member        = attribute | region | sub_decl | inline_java ;
 attribute     = "#" , IDENT , ":" , REST_OF_LINE ;
 region        = "#Region" , REST_OF_LINE | "#End" , "Region" ;  (* trivia *)
+(* Recognised only to be reported: Java interop is Level 3. One token from *)
+(* the "#If Java" line (any case) to its "#End If" line.                   *)
+inline_java   = "#If" , "Java" , NL , { JAVA_LINE , NL } , "#End" , "If" ;
 
 sub_decl      = [ access ] , "Sub" , IDENT ,
                 [ "(" , [ param , { "," , param } ] , ")" ] ,
@@ -35,9 +38,13 @@ block         = { [ statement ] , SEP } ;
 statement     = dim_stmt | type_decl | if_stmt | select_stmt | for_stmt
               | foreach_stmt | do_stmt | try_stmt
               | "Return" , [ expr ] | "Exit" | "Continue"
-              | assign_or_call ;
+              | wait_for_stmt | assign_or_call ;
 simple_stmt   = dim_stmt | assign_or_call | "Return" , [ expr ]
-              | "Exit" | "Continue" ;
+              | "Exit" | "Continue" | wait_for_stmt ;
+(* Recognised only to be reported: resumable subs are Level 2. "Wait" is  *)
+(* a name, not a keyword: alone it is a call. The rest of the statement   *)
+(* is kept whatever its form, e.g. "Wait For (rs) Complete (Ok As Boolean)". *)
+wait_for_stmt = "Wait" , "For" , REST_OF_STATEMENT ;
 
 (* Two declaration shapes, both documented:                               *)
 (*   Dim x As Int = 5            -- As, then initializer                   *)
@@ -46,7 +53,10 @@ simple_stmt   = dim_stmt | assign_or_call | "Return" , [ expr ]
 (* A declarator without As takes the type of the next "As" to its right    *)
 (* in the same statement. With no As at all (Dim x, Dim x = 5) the type   *)
 (* is open: String by old docs, maybe inferred from the initializer.       *)
-dim_stmt      = ( "Dim" | "Private" | "Public" ) ,
+(* "Const" is recognised only to be reported (not supported yet). It is  *)
+(* a name, not a keyword: it is the modifier only when a name follows,    *)
+(* so "Dim Const As Int" declares a variable named Const.                 *)
+dim_stmt      = ( "Dim" | "Private" | "Public" ) , [ "Const" ] ,
                 declarator , { "," , declarator } ;
 declarator    = IDENT , [ "(" , [ expr_list ] , ")" ] ,
                 ( [ "As" , type_ref ] , [ "=" , expr ]
@@ -82,8 +92,11 @@ or_expr       = and_expr , { "Or" , and_expr } ;
 and_expr      = cmp_expr , { "And" , cmp_expr } ;
 (* Chains such as a < b < c parse left-associatively; whether B4X        *)
 (* accepts them is open, and rejecting valid code is worse than accepting.*)
+(* "x Is T", a type test, binds like a comparison; it is recognised only  *)
+(* to be reported (not supported yet). "Is" is a name, not a keyword.     *)
 cmp_expr      = concat_expr ,
-                { ( "=" | "<>" | "<" | ">" | "<=" | ">=" ) , concat_expr } ;
+                { ( "=" | "<>" | "<" | ">" | "<=" | ">=" ) , concat_expr
+                | "Is" , type_ref } ;
 concat_expr   = add_expr , { "&" , add_expr } ;
 add_expr      = mul_expr , { ( "+" | "-" ) , mul_expr } ;
 mul_expr      = unary , { ( "*" | "/" | "Mod" ) , unary } ;

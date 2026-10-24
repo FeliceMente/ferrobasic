@@ -239,6 +239,45 @@ fn later_level_features_have_precise_messages() {
     assert!(has(&d, "#If"), "{d:?}");
 }
 
+/// Each gets one precise error, and nothing after it (#32).
+#[test]
+fn later_constructs_get_one_precise_error() {
+    let only = |text: &str, message: &str| {
+        let d = errors(text);
+        assert_eq!(d, [message], "{text}");
+    };
+    only(
+        "Sub Process_Globals\n\tPrivate Const Size As Int = 10\nEnd Sub\nSub AppStart (Args() As String)\n\tLog(Size)\nEnd Sub\n",
+        "`Const` declarations are not supported yet",
+    );
+    only(
+        &program("Dim o As Object = 1\nIf o Is Int Then Log(1)"),
+        "type tests (`Is`) are not supported yet",
+    );
+    only(
+        &program("Wait For (rs) Complete (Success As Boolean)"),
+        "`Wait For` is not supported at Level 0: it needs resumable subs (Level 2)",
+    );
+    only(
+        "Sub AppStart (Args() As String)\nEnd Sub\n#If Java\npublic static void x() { }\n#End If\n",
+        "inline Java (`#If Java`) is not supported at Level 0: it needs Java interop (Level 3)",
+    );
+    // A variable named `Const` is still a variable.
+    ok(&program("Dim Const As Int = 1\nLog(Const)"));
+}
+
+/// The error covers `#If Java` alone, not a trailing comment or spaces.
+#[test]
+fn inline_java_error_covers_its_directive() {
+    let text =
+        "Sub AppStart (Args() As String)\nEnd Sub\n  #If JAVA   ' native\nint x;\n#End If 'end\n";
+    let parse = ferro_syntax::parse(text);
+    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+    let (_, diags) = check(&parse.syntax());
+    assert_eq!(diags.len(), 1);
+    assert_eq!(&text[diags[0].range], "#If JAVA");
+}
+
 #[test]
 fn missing_entry_point() {
     let d = errors("Sub Process_Globals\nEnd Sub\n");

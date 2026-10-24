@@ -59,7 +59,7 @@ The "not yet" rows come from the
 | --- | --- | --- |
 | `Dim`, `Private`, `Public`, several names in one statement, initialisers | ✅ | [level0.md](spec/level0.md#declarations-and-scope); test `dim_scope` |
 | `Dim` with no `As` | 🟡 | provisionally `String` *(open)* |
-| `Const` (`Private Const Size As Int = 10`) | ❌ | not assigned to a level yet. Today it is a syntax error ("expected end of statement") rather than a precise diagnostic. |
+| `Const` (`Private Const Size As Int = 10`) | ❌ | not assigned to a level yet ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)); a precise diagnostic |
 | Implicit `Int` counter of `For i = …` | ✅ | test `for_implicit_continue`; not in `Process_Globals` *(open)* |
 | `For Each x In …` with no `As` and `x` undeclared | ❌ | the type is *(open)*: today it is an error asking for `As <type>` |
 
@@ -73,7 +73,7 @@ The "not yet" rows come from the
 | `And`, `Or` (short-circuit), `Not(x)` | ✅ | their relative precedence is *(open)*; test `precedence_open` |
 | Inline cast `x.As(T)` | ✅ | [level0-builtins.md](spec/level0-builtins.md#keywords-and-constants) |
 | `IIf(condition, a, b)` | ✅ | test `iif_branches` |
-| `Is` (`If v Is Button`) | ❌ | not assigned to a level yet. Today it is a syntax error ("expected `Then`") rather than a precise diagnostic. |
+| `Is` (`If v Is Button`) | ❌ | not assigned to a level yet; a precise diagnostic |
 | Number literals: decimal, `0x` hexadecimal, exponent (`1e3`) | ✅ | test `number_parsing` |
 | Line continuation ` _`, `:` between statements | ✅ | a comment after ` _` is *(open)*; tests `continuation_comment`, `colon_separator` |
 
@@ -88,7 +88,7 @@ The "not yet" rows come from the
 | `Exit`, `Continue`, `Return` | ✅ | `Exit` also leaves a `Select` |
 | `Try … Catch … End Try`, `LastException` | ✅ | JDK messages are *(open)*; test `uncaught_error` |
 | Statements nested more than 1000 deep | ⚠️ | a compile error (D1); test `deep_nesting` |
-| `Sleep`, `Wait For`, resumable subs | ❌ | Level 2. `Sleep` gets a precise diagnostic; `Wait For` is today a syntax error ("expected end of statement"). |
+| `Sleep`, `Wait For`, resumable subs | ❌ | Level 2 |
 | Events (`Sub Name_Event`), `Sender` | ❌ | Level 1 |
 
 ## Subs
@@ -155,7 +155,7 @@ The "not yet" rows come from the
 | `#Region` / `#End Region` | ✅ | ignored, as in B4X |
 | Project attributes (`#CommandLineArgs:`, `#MergeLibraries:`…) | ✅ | parsed and kept; Level 0 ignores them, except as listed in [cli.md](spec/cli.md) |
 | Conditional compilation `#If` / `#Else` / `#End If` | ❌ | not assigned to a level yet; a precise diagnostic |
-| Inline Java (`#If Java`) | ❌ | Level 3. Today a block after the last Sub is reported as syntax errors rather than with a precise diagnostic. |
+| Inline Java (`#If Java`) | ❌ | Level 3 |
 
 ## Running programs
 

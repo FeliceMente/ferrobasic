@@ -5,6 +5,13 @@ command line may still change. Expected outputs are still derived by hand
 from the original runtime's source and from JDK 21, not yet recorded from
 B4J itself (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+- `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java
+  (`#If Java` … `#End If`) get one precise error each, saying what is
+  missing, instead of generic syntax errors (#32). None of them is supported
+  yet.
+
 ## 0.0.3 (pre-alpha)
 
 ### Projects

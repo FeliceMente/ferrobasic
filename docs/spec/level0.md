@@ -68,8 +68,10 @@ End Sub
 - `#Region` / `#End Region` lines are trivia. Project attributes (`#Name: value`)
   are parsed and kept. Level 0 ignores them, except as listed in [cli.md](cli.md).
 - Unsupported constructs get a diagnostic naming the construct and the level
-  that adds it. Examples are `Class_Globals`, `Wait For`, `Sleep`, `#If`, and a
-  library other than the core one.
+  that adds it. Examples are `Class_Globals`, `Wait For`, `Sleep`, `#If`,
+  inline Java (`#If Java`), and a library other than the core one. A
+  construct no level adds yet says so: `Const` declarations and type tests
+  (`x Is T`). Each gets one error, without follow-on errors.
 
 ## Types
 
