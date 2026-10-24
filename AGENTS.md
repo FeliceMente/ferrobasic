@@ -50,8 +50,10 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 ## Rules
 
 - Never require changes to B4X sources, project files or layouts. An unsupported
-  construct gets a precise diagnostic (what is missing, on which target) and an
-  entry in `docs/deviations.md`. Never build something that silently behaves differently.
+  construct gets a precise diagnostic (what is missing, on which target) and a
+  ❌ row in `docs/language-support.md`. Behaviour that is supported but knowingly
+  differs from B4X gets an entry in `docs/deviations.md`. Never build something
+  that silently behaves differently.
 - Every language feature lands with at least one conformance test, and
   updates its row in `docs/language-support.md`.
 - If B4X semantics are unclear, do NOT invent them: add a test with
