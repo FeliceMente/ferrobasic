@@ -230,11 +230,13 @@ impl Lowerer {
         }
     }
 
-    /// One error, at the block's `#If Java` line.
+    /// One error, at the block's `#If Java`, without a trailing comment or
+    /// spaces.
     fn inline_java(&mut self, node: &SyntaxNode) {
         let start = range(node).start();
         let text = node.text().to_string();
         let first = text.trim_start().split(['\r', '\n']).next().unwrap_or("");
+        let first = first.split('\'').next().unwrap_or("").trim_end();
         self.error(
             TextRange::at(start, (first.len() as u32).into()),
             "inline Java (`#If Java`) is not supported at Level 0: it needs Java interop (Level 3)",

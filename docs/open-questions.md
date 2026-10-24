@@ -134,6 +134,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_for`.
 - [ ] Whether a comment may follow a line continuation (` _ ' comment`);
       FerroBASIC rejects it. Fixture: `level0/continuation_comment`.
+- [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
+      comment after `#If Java` or `#End If`, and whether an `#If` inside the
+      block nests. FerroBASIC accepts the comments and ends the block at the
+      first `#End If`; it only reports the block (Java interop is Level 3),
+      so the answer matters once that level runs it.
 - [ ] How deep B4J (javac) lets expressions and blocks nest before failing;
       FerroBASIC stops at 1000 levels (`docs/deviations.md`). Fixture:
       `level0/deep_nesting`.

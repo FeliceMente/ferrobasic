@@ -266,6 +266,18 @@ fn later_constructs_get_one_precise_error() {
     ok(&program("Dim Const As Int = 1\nLog(Const)"));
 }
 
+/// The error covers `#If Java` alone, not a trailing comment or spaces.
+#[test]
+fn inline_java_error_covers_its_directive() {
+    let text =
+        "Sub AppStart (Args() As String)\nEnd Sub\n  #If JAVA   ' native\nint x;\n#End If 'end\n";
+    let parse = ferro_syntax::parse(text);
+    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+    let (_, diags) = check(&parse.syntax());
+    assert_eq!(diags.len(), 1);
+    assert_eq!(&text[diags[0].range], "#If JAVA");
+}
+
 #[test]
 fn missing_entry_point() {
     let d = errors("Sub Process_Globals\nEnd Sub\n");

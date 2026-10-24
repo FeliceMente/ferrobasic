@@ -128,7 +128,11 @@ impl Lexer<'_> {
             '#' if self.line_start && !in_placeholder => {
                 if let Some((len, closed)) = inline_java_len(rest) {
                     if !closed {
-                        self.error(self.pos, "missing `#End If` for this `#If Java` block");
+                        self.error(
+                            self.pos,
+                            "missing `#End If` for this `#If Java` block: the rest of the file \
+                             is read as part of it",
+                        );
                     }
                     self.push(INLINE_JAVA, len);
                 } else {
@@ -321,8 +325,10 @@ fn line_len(text: &str) -> usize {
     text.find(['\r', '\n']).unwrap_or(text.len())
 }
 
-/// The words of a directive line after its `#`, in lower case.
+/// The words of a directive line after its `#`, in lower case, up to a
+/// trailing comment: `#End If ' native code` gives `end`, `if`.
 fn directive_words(line: &str) -> Vec<String> {
+    let line = line.split('\'').next().unwrap_or("");
     line.trim_start()
         .strip_prefix('#')
         .unwrap_or("")
@@ -605,6 +611,23 @@ mod tests {
         let (tokens, errors) = lex("#If Java\nint x;\n");
         assert_eq!(tokens.len(), 1);
         assert_eq!(errors.len(), 1, "missing `#End If`");
+        // A trailing comment on either line does not hide it.
+        let text = "#If Java ' native code\nint x;\n#End If 'end\nSub X\n";
+        assert_eq!(
+            significant(text)[0],
+            (INLINE_JAVA, "#If Java ' native code\nint x;\n#End If 'end")
+        );
+        assert!(lex(text).1.is_empty());
+        // The block ends at the first `#End If`: an `#If` inside it does not
+        // nest.
+        assert_eq!(
+            significant("#If Java\n#If B4J\n#End If\n#End If\n")[..3],
+            [
+                (INLINE_JAVA, "#If Java\n#If B4J\n#End If"),
+                (NEWLINE, "\n"),
+                (DIRECTIVE, "#End If"),
+            ]
+        );
     }
 
     #[test]
