@@ -214,6 +214,21 @@ tests):
   `compareToIgnoreCase`; `SortType` / `SortTypeCaseInsensitive` compare the
   named field the same ways, and return at once on an empty list. Every sort
   is `Collections.sort`, which is stable, also when descending.
+- `SortType` / `SortTypeCaseInsensitive` take the field from the first item
+  (`get(0).getClass().getDeclaredField`, so `Null` raises
+  `NullPointerException` and a missing field `NoSuchFieldException`), then
+  sort with a comparator that reads that field from every item with
+  `Field.get` and wraps any exception in a `RuntimeException`
+  ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L203-L227)).
+  **Measured** (JDK 21, test `list_sort_type_errors`): an item of another
+  type, or a non-record, raises `RuntimeException` caused by
+  `IllegalArgumentException`; a `Null` item or a `Null` field value, by
+  `NullPointerException` (case-insensitively the field is
+  `String.valueOf`'d, so `"null"`); field values that are not mutually
+  `Comparable`, by `ClassCastException`. A list of one item is not compared.
+  Which item raises first depends on the order `TimSort` compares in;
+  FerroBASIC checks the items in list order, so in a list with several kinds
+  of problem the wrapped cause can differ, never the `RuntimeException`.
 - **Map** ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java)): `Remove`
   returns the removed value or `Null`; `GetDefault` returns the default when
   the key is missing or its value is `Null`; `ContainsKey` is
