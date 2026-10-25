@@ -35,7 +35,9 @@ came later, with `.provisional` outputs standing in
       updated; pending tests with provisional outputs added.
 - [x] `tools/recorder`: wrap a `.bas` in a B4J console project, build and run it
       with the original toolchain, write `.expected` and `.meta.toml`.
-- [ ] First recordings of the Level 0 corpus (B4J on Windows, OpenJDK 19).
+- [x] First recordings of the Level 0 corpus (B4J 10.70 on Windows 10,
+      OpenJDK 19): 24 tests recorded and matching. The other recordings land
+      with the fixes they call for.
 - [x] CI green on Linux, macOS and Windows (`.github/workflows/ci.yml`;
       runs on release pull requests and on demand).
 
