@@ -46,8 +46,8 @@ fn main() -> ExitCode {
                 let failures = summary.failures();
                 let disagree = summary.entries.iter().filter(|e| e.disagrees).count();
                 println!(
-                    "\n{} tests recorded into {}: {failures} failed, {disagree} disagree with the repository.",
-                    summary.entries.len(),
+                    "\n{} recorded into {}: {failures} failed, {disagree} disagree with the repository.",
+                    ferro_recorder::tests(summary.entries.len()),
                     config.out.display()
                 );
                 println!("See {}", config.out.join("report.md").display());
