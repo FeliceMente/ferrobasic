@@ -262,8 +262,11 @@ impl Exc {
         }
     }
 
-    /// Java `new X(cause)`: its message is the cause's `toString`.
+    /// Java `new X(cause)`: its message is the cause's `toString`. Only
+    /// for exceptions the runtime caught as `Exception`, so never an
+    /// `Error` (which `Catch` would then catch, through its wrapper).
     pub fn caused_by(kind: &'static str, cause: Exc) -> Exc {
+        debug_assert!(!cause.is_error(), "wrapping {}", cause.kind);
         Exc {
             kind,
             message: Some(cause.to_java_string()),
@@ -873,7 +876,8 @@ pub fn java_equals(a: &Value, b: &Value) -> Result<bool, Exc> {
             Work::Pair(a, b, depth) => (a, b, depth),
             Work::Unequal => return Ok(false),
         };
-        if depth > MAX_EQUALS_DEPTH {
+        // The outermost pair is at depth 0: `MAX_EQUALS_DEPTH` levels compare.
+        if depth >= MAX_EQUALS_DEPTH {
             return Err(Exc::bare(STACK_OVERFLOW));
         }
         match (&a, &b) {

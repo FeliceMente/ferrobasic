@@ -49,7 +49,7 @@ The "not yet" rows come from the
 | `Boolean`, `Byte`, `Short`, `Int`, `Long`, `Float`, `Double`, `Char` | ✅ | [level0.md](spec/level0.md#types); tests `chars_and_ints`, `number_parsing` |
 | `String`, `Object`, `Null` | ✅ | |
 | Arrays of any rank: `Dim a(10) As Int`, `Dim m(3, 4) As Double` | ⚠️ | memory use differs (D2); tests `array_row_order`, `deep_equals` |
-| `Type` records, also with array fields | ✅ | test `self_printing_record` |
+| `Type` records, also with array fields | ⚠️ | a record nested in Lists about 49 levels deep, or holding itself, prints differently (D6); test `self_printing_record` |
 | `List`, `Map`, `StringBuilder`, `Exception` | ✅ | see "Built-in objects" below |
 | Library types: `Timer`, `JavaObject`, `B4XView`… | ❌ | Level 1 (`Timer`) and Level 3 (libraries) |
 
@@ -86,7 +86,7 @@ The "not yet" rows come from the
 | `For … To … Step … Next`, `For Each … In … Next` | ✅ | over arrays, `List`, `Map.Keys`, `Map.Values` |
 | `Do While … Loop`, `Do Until … Loop` | ✅ | `Loop While`/`Loop Until` are syntax errors, as in B4X; test `do_loop_while` |
 | `Exit`, `Continue`, `Return` | ✅ | `Exit` also leaves a `Select` |
-| `Try … Catch … End Try`, `LastException` | ✅ | JDK messages are *(open)*; test `uncaught_error` |
+| `Try … Catch … End Try`, `LastException` | ✅ | a `Catch` sees the innermost cause; JDK messages are *(open)*; tests `uncaught_error`, `list_sort_type_errors` |
 | Statements nested more than 1000 deep | ⚠️ | a compile error (D1); test `deep_nesting` |
 | `Sleep`, `Wait For`, resumable subs | ❌ | Level 2 |
 | Events (`Sub Name_Event`), `Sender` | ❌ | Level 1 |
@@ -122,7 +122,7 @@ The "not yet" rows come from the
 | `Map` | ✅ | all 13: `Initialize`, `IsInitialized`, `Put`, `Get`, `GetDefault`, `Remove`, `ContainsKey`, `Clear`, `Size`, `Keys`, `Values`, `GetKeyAt`, `GetValueAt`. Tests `map_members`, `map_order`, `map_get_key_at`. |
 | Arrays | ✅ | `Length` |
 | `Type` records | ✅ | `Initialize`, `IsInitialized`, fields |
-| `Exception` (`LastException`) | ✅ | `Message`, `IsInitialized` |
+| `Exception` (`LastException`) | ✅ | `Message`, `IsInitialized`; the innermost cause of what was caught (test `list_sort_type_errors`) |
 | `Bit` | 🟡 | 11 of the 13 in the reference: `And`, `Or`, `Xor`, `Not`, `ShiftLeft`, `ShiftRight`, `UnsignedShiftRight`, `ToHexString`, `ToBinaryString`, `ToOctalString`, `ParseInt`. Missing: `ArrayCopy`, `InputStreamToBytes`, and the `Long` variants the runtime also has (`AndLong`, `ParseLong`, `ToHexStringLong`…). Test `bit_functions`. |
 | `DateTime` | ❌ | Level 1 |
 | `Regex` | ❌ | Level 1 |
