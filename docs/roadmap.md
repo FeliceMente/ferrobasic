@@ -17,8 +17,8 @@ B4X; M3 is the first milestone where real B4J projects build unchanged.
 
 ## M0 task breakdown
 
-Order changed: the interpreter comes right after the parser, and recording is
-deferred, with `.provisional` outputs standing in
+Order changed: the interpreter comes right after the parser, and recording
+came later, with `.provisional` outputs standing in
 (see [compatibility-testing.md](compatibility-testing.md#provisional-outputs)).
 
 - [ ] Collect 5–10 small B4J console projects and document the project-file
@@ -33,8 +33,9 @@ deferred, with `.provisional` outputs standing in
 - [x] Level 0 semantics researched from public sources
       ([research/level0-semantics.md](research/level0-semantics.md)); specs
       updated; pending tests with provisional outputs added.
-- [ ] `tools/recorder`: wrap a `.bas` in a B4J console project, build and run it
-      with the original toolchain, write `.expected` and `.meta.toml`. *Deferred.*
+- [x] `tools/recorder`: wrap a `.bas` in a B4J console project, build and run it
+      with the original toolchain, write `.expected` and `.meta.toml`.
+- [ ] First recordings of the Level 0 corpus (B4J on Windows, OpenJDK 19).
 - [x] CI green on Linux, macOS and Windows (`.github/workflows/ci.yml`;
       runs on release pull requests and on demand).
 

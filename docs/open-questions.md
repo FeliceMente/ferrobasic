@@ -64,7 +64,10 @@ related tests stay `pending-recording`.
 - [ ] Exact text of JDK-generated exception messages seen through
       `LastException.Message` (index and number-parse errors), and which JDK.
 - [ ] Default JVM locale on the recording machine (affects `ToLowerCase` /
-      `ToUpperCase` for Turkish, Azeri and Lithuanian locales).
+      `ToUpperCase` for Turkish, Azeri and Lithuanian locales, and possibly
+      `NumberFormat`). Recordings force `en-US`; the recorder also runs each
+      test in the machine's own locale and keeps that output when it differs
+      (`<name>.<locale>.expected`).
 - [x] Standalone binaries on macOS: re-signing appended payload bytes does
       not work (`codesign`: "main executable failed strict validation", on
       Apple Silicon and Intel). The package is embedded with `libsui`
