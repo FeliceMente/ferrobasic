@@ -38,7 +38,7 @@ syntax_kinds! {
         COMMENT,
         /// ` _` at the end of a line: the `_`, any spaces after it and the line
         /// break it hides. The whitespace before `_` is a separate token.
-        /// When a comment follows (` _ ' comment`), the `_` and its spaces
+        /// When a comment follows (` _ ' comment`, ` _' comment`), the `_` and its spaces
         /// are one token and the line break after the comment another.
         LINE_CONTINUATION,
 
