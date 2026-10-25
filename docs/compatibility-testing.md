@@ -30,8 +30,19 @@ flowchart LR
 ## Record and replay
 
 - B4X is proprietary and its IDE runs on Windows, so it does not run in CI. A
-  recording machine runs each test once on the reference (`tools/recorder`) and
-  commits `*.expected` with a `*.meta.toml`: B4X version, platform, date.
+  recording machine runs each test once on the reference with
+  `tools/recorder` ([its README](../tools/recorder/README.md)), which writes
+  `*.expected` and the `*.meta.toml`'s `[recording]` table: B4X version,
+  platform, Java, locales, date. The recorder writes into a separate folder,
+  applied to the repository in a pull request.
+- The reference locale is `en-US`, forced for every locale category. Each
+  test also runs in the recording machine's own locale; when that output
+  differs, it is kept as `<name>.<locale>.expected` (for example
+  `it-IT`), which the harnesses ignore for now: it is evidence of
+  locale-dependent behaviour.
+- Deviation tests are run too, but get no `.expected` file (FerroBASIC knowingly
+  differs from it): their output is compared by hand with the reference output
+  in their `.meta.toml`.
 - CI compares FerroBASIC's outputs with the recordings only. A new B4X release
   triggers a re-recording, and changes between versions are reported.
 
@@ -75,7 +86,7 @@ marks `tests/conformance/**` as binary-exact (`-text`).
 
 ### Provisional outputs
 
-While the recorder does not exist, a test may carry a `<name>.provisional`
+Until a test is recorded, it may carry a `<name>.provisional`
 file: its expected stdout, derived by hand from the sources in
 [research/level0-semantics.md](research/level0-semantics.md). Rules:
 
@@ -84,9 +95,9 @@ file: its expected stdout, derived by hand from the sources in
   `.meta.toml`. Behaviour marked *open* gets no provisional output: the test
   stays pending with no expectation.
 - A `.provisional` file never overrides an `.expected` one. When the recorder
-  writes `<name>.expected`, it deletes `<name>.provisional` and the
-  `[provisional]` table; a disagreement between the two is reported, and the
-  research and specs are fixed to match the recording.
+  writes `<name>.expected`, it drops the `[provisional]` table and lists
+  `<name>.provisional` for deletion; a disagreement between the two is
+  reported, and the research and specs are fixed to match the recording.
 - The report counts passes against provisional outputs separately from passes
   against recordings. Only the latter count for a milestone gate from M2 on.
 - Values computed by running Java code from the open-source runtime (for
