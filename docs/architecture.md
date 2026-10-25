@@ -60,6 +60,50 @@ table are in [spec/level0.md](spec/level0.md).
 - **Memory**: GC on the JVM; reference counting (ARC) on native targets, with
   cycles documented; an embedded profile limits dynamic allocation.
 
+## Target profiles
+
+Two choices are kept apart:
+
+- **The product a project is written for** (B4J, B4A, B4i, B4R) decides how
+  it behaves: integer and floating-point widths, how values print, which
+  exceptions exist and what they are called, which libraries there are. It
+  comes from the project file (`.b4j`, `.b4a`, `.b4i`, `.b4r`) and is the
+  project's *target profile*.
+- **The backend** (interpreter, Java, LLVM) decides only how the program is
+  executed, never what it does: every backend reproduces the interpreter,
+  which reproduces the recordings of that product.
+
+So a B4J program compiled to a native executable still behaves like B4J:
+the same `Double` digits, `Rnd` sequence and exception names. The
+Java-exact behaviour the interpreter implements is what the native runtime
+reproduces, not something it replaces.
+
+| Profile | Runtime it imitates | Shares with B4J | Differs |
+| --- | --- | --- | --- |
+| B4J | Java, `jCore` | — | — |
+| B4A | Java (Android), B4A `Core` | Nearly all of the language core: both are Java, and `Core` and `jCore` are largely the same code (Apache 2.0) | Android libraries, and a few `Core` details that recordings will show |
+| B4i | Objective-C runtime, `iCore` | Syntax, types and control flow | Exceptions are not Java classes; messages, `GetType` and some printing differ |
+| B4R | `rCore`, no GC | Syntax and control flow | `Int` is 16 bits and `Double` 32; no `List`/`Map`; static allocation (the embedded profile) |
+
+How the code gets there:
+
+- `syntax`, `hir` and `mir` stay free of product-specific behaviour; the HIR
+  only knows which members and types a profile offers.
+- Today the interpreter implements the B4J profile alone. Keep what is
+  Java-specific gathered where it can be split by profile later: exception
+  kinds and their names (`crates/interp/src/value.rs`), number formatting
+  (`number.rs`), and JDK message texts.
+- The profile abstraction comes with the second profile's recordings, not
+  before: its shape is decided by observed behaviour. Then the interpreter
+  takes the project's profile, exceptions get a FerroBASIC-side identity
+  with names and messages per profile, and conversions and formatting take
+  the profile's widths.
+- The Java-exact helpers (number printing, `NumberFormat`, fdlibm maths,
+  `java.util.Random`) move into `crates/runtime`, so the interpreter and
+  native code share one implementation.
+- Each profile has its own recordings (`product` in `.meta.toml`), and
+  `docs/deviations.md` names the targets of each deviation.
+
 ## IR and backends
 
 The MIR is a typed, desugared IR: no `For Each`, smart strings or implicit
