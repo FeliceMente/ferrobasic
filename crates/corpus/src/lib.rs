@@ -79,9 +79,14 @@ pub fn root() -> PathBuf {
 /// Every program in the corpus, sorted by name. Panics on an empty corpus or
 /// on metadata it cannot read.
 pub fn programs() -> Vec<Program> {
-    let root = root();
+    programs_in(&root())
+}
+
+/// Every program under `root`, the `tests/conformance` folder of a copy of
+/// this repository (its `docs/deviations.md` is read too), as [`programs`].
+pub fn programs_in(root: &Path) -> Vec<Program> {
     let mut files = Vec::new();
-    bas_files(&root, &mut files);
+    bas_files(root, &mut files);
     files.sort();
     assert!(
         !files.is_empty(),
@@ -95,7 +100,7 @@ pub fn programs() -> Vec<Program> {
         .into_iter()
         .map(|path| {
             let name = path
-                .strip_prefix(&root)
+                .strip_prefix(root)
                 .unwrap()
                 .with_extension("")
                 .components()

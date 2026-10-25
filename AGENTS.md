@@ -16,7 +16,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
 - Current milestone: **M0 → M1** — lexer, parser, lossless CST, then the
   Level 0 interpreter, `ferro run` and standalone `ferro bundle` (see
-  `docs/spec/cli.md`). The recorder is deferred. See `docs/roadmap.md`.
+  `docs/spec/cli.md`). The recorder (`tools/recorder`) exists; the first
+  recordings come from a Windows machine with the original toolchain. See
+  `docs/roadmap.md`.
 
 ## Read before working
 
@@ -88,6 +90,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p ferro-cli -- run tests/conformance/level0/<file>.bas
 cargo run -p ferro-cli -- bundle tests/conformance/level0/<file>.bas -o /tmp/prog
+cargo run -p ferro-recorder -- --dry-run          # tests the recorder would record (it runs on Windows)
 cargo run -p ferro-difftest -- --target interp   # compare against recordings (once implemented)
 ```
 
