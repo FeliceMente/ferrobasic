@@ -3,6 +3,8 @@
 //! conformance test `level0/list_stale_sublist` covers the members whose
 //! output is settled; these cover the exception kinds it cannot print.
 
+mod common;
+
 /// Runs a program with `body` in `AppStart` and a record type `Item`;
 /// returns the uncaught error's kind.
 fn error_of(body: &str) -> Option<String> {
@@ -10,15 +12,7 @@ fn error_of(body: &str) -> Option<String> {
         "Sub Process_Globals\n    Type Item (N As Int)\nEnd Sub\n\
          Sub AppStart (Args() As String)\n{body}\nEnd Sub\n"
     );
-    let parse = ferro_syntax::parse(&source);
-    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
-    let (module, diags) = ferro_hir::check(&parse.syntax());
-    assert!(diags.is_empty(), "{diags:?}");
-    let program = ferro_mir::lower(&module);
-    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-    ferro_interp::run(&program, &[], &mut stdout, &mut stderr)
-        .error
-        .map(|e| e.kind)
+    common::run(&source).1.error.map(|e| e.kind)
 }
 
 const LIST: &str = "    Dim Items As List

@@ -720,8 +720,9 @@ impl Machine<'_, '_> {
         Ok(match b {
             ListAdd => {
                 growable()?;
-                try_grow(&mut items()?.borrow_mut(), 1)?;
-                items()?.borrow_mut().push(a(0)?.clone());
+                let items = items()?;
+                try_grow(&mut items.borrow_mut(), 1)?;
+                items.borrow_mut().push(a(0)?.clone());
                 list.modified();
                 Value::Null
             }
@@ -744,16 +745,18 @@ impl Machine<'_, '_> {
                     return Ok(Value::Null);
                 }
                 growable()?;
-                try_grow(&mut items()?.borrow_mut(), src.len())?;
-                items()?.borrow_mut().splice(at..at, src);
+                let items = items()?;
+                try_grow(&mut items.borrow_mut(), src.len())?;
+                items.borrow_mut().splice(at..at, src);
                 list.modified();
                 Value::Null
             }
             ListInsertAt => {
                 growable()?;
                 let at = for_add(n(0)?)?;
-                try_grow(&mut items()?.borrow_mut(), 1)?;
-                items()?.borrow_mut().insert(at, a(1)?.clone());
+                let items = items()?;
+                try_grow(&mut items.borrow_mut(), 1)?;
+                items.borrow_mut().insert(at, a(1)?.clone());
                 list.modified();
                 Value::Null
             }
@@ -780,11 +783,13 @@ impl Machine<'_, '_> {
             }
             ListClear => {
                 match list.kind {
+                    ListKind::ReadOnly => {
+                        return Err(Exc::internal("read-only view refused before its size"));
+                    }
                     // `Arrays.asList(...).clear()` only fails on a removal.
                     ListKind::FixedSize if size > 0 => return Err(unsupported()),
                     ListKind::FixedSize => {}
-                    // A view was refused above.
-                    ListKind::Growable | ListKind::ReadOnly => {
+                    ListKind::Growable => {
                         items()?.borrow_mut().clear();
                         list.modified();
                     }
@@ -831,7 +836,7 @@ impl Machine<'_, '_> {
                 // exception in a `RuntimeException`; errors such as
                 // `StackOverflowError` pass through.
                 let wrapped = |e: Exc| {
-                    if by_field && !e.kind.ends_with("Error") && e.kind != INTERNAL {
+                    if by_field && !e.is_error() {
                         Exc::new(RUNTIME, e.to_java_string())
                     } else {
                         e

@@ -107,6 +107,19 @@ needs a recorded test):
       for cases with side effects.
 - [ ] Exact texts of JDK-generated messages (`ClassCastException`,
       `IndexOutOfBoundsException`, …) seen through `LastException.Message`.
+      `SortType`'s wrapped `IllegalArgumentException` (an item of another
+      type) has no message in FerroBASIC; on JDK 21 `Field.get` says
+      `Can not get java.lang.Object field <class>.N on <class>`, naming B4J's
+      generated classes, whose names are open too (see "How a record
+      prints").
+- [ ] Which fields `SortType` finds on the first item's class: jCore calls
+      `getClass().getDeclaredField(name)`, then `setAccessible(true)`. On a
+      record, FerroBASIC finds the declared fields and `IsInitialized` (a
+      Java class shaped like B4J's generated `Type` class has it), and sorts
+      by it. On any other value it raises `NoSuchFieldException`, but JDK
+      classes declare private fields (`Integer.value`, `String.value`): JDK
+      21 raises `InaccessibleObjectException` from `setAccessible`, and
+      JDK 8 would sort by them. Fixture: `level0/list_sort_type_class_fields`.
 - [x] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class),
       even though they contain the product's package name: kept for
       compatibility, since it is program output, not a FerroBASIC message.

@@ -278,6 +278,12 @@ impl Exc {
         Exc::new(INTERNAL, message)
     }
 
+    /// Whether this is a Java `Error` (or an interpreter bug) rather than an
+    /// `Exception`: a `catch (Exception e)` in the runtime lets it through.
+    pub fn is_error(&self) -> bool {
+        matches!(self.kind, STACK_OVERFLOW | OUT_OF_MEMORY | INTERNAL)
+    }
+
     /// Java `Throwable.toString`: what `LastException.Message` returns.
     pub fn to_java_string(&self) -> String {
         match &self.message {

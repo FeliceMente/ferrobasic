@@ -17,7 +17,7 @@ B4J itself (`docs/compatibility-testing.md`).
   errors while sorting raise `RuntimeException`, wrapping the cause, as in
   B4J. In a list with several different problems the cause can differ
   (deviation D4). `SortType("IsInitialized", …)` sorts by whether each
-  record is initialised, as in B4J.
+  record is initialised (still to be confirmed against B4J).
 - A sort that raises leaves the list as it was, where B4J leaves it partly
   sorted (deviation D5).
 - `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java
