@@ -722,30 +722,6 @@ impl Lowerer {
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
         self.loops = 0;
         self.exits = 0;
-        if !self.in_process_globals {
-            // Whether a parameter may take a module variable's name is open.
-            let count = self.module.sub(id).params as usize;
-            let clashes: Vec<(TextRange, String)> = self.locals[..count]
-                .iter()
-                .filter(|p| {
-                    p.ty != Ty::Error
-                        && self
-                            .globals
-                            .get(&key(&p.name))
-                            .is_some_and(|&g| self.module.global(g).ty != Ty::Error)
-                })
-                .map(|p| (p.range, p.name.clone()))
-                .collect();
-            for (at, name) in clashes {
-                self.error(
-                    at,
-                    format!(
-                        "`{name}` is also a module variable: whether a parameter may take its \
-                         name is not known yet, so use another name"
-                    ),
-                );
-            }
-        }
         let Some(body) = child(node, BLOCK) else {
             return;
         };

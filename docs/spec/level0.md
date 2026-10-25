@@ -132,7 +132,8 @@ End Sub
   the module variable is *(open)*, so it is a compile error too. This holds
   for a `Dim` and for a `For Each v As T` in a Sub; an undeclared `For`
   counter of that name is the module variable. A parameter with a module
-  variable's name is *(open)*, so a compile error too.
+  variable's name is accepted and hides it in its Sub, as the generated
+  Java's parameter hides the field; whether B4J accepts it is *(open)*.
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
   A name without `As` takes the type of the next `As` to its right in the same
   statement.

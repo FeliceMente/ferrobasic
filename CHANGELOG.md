@@ -23,8 +23,8 @@ B4J itself (`docs/compatibility-testing.md`).
 - A local declared with a module variable's name is an error, as B4J
   refuses it with another type; with the same type it is refused until a
   recording shows whether B4J makes it a new local. Before, it was a new
-  local. A parameter with a module variable's name is refused too, until
-  a recording shows.
+  local. A parameter with a module variable's name is still accepted, and
+  hides it in its Sub.
 - A module variable with a Sub's name: a statement `Bump` calls the Sub,
   as B4J does with a loop variable of `Process_Globals`; reading or
   assigning the name is refused until a recording shows which it means.
