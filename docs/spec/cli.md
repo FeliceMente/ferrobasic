@@ -234,8 +234,10 @@ it arrives.
   `ExitApplication`, and before a runtime error is printed.
 - Recursion depth is limited. Overflowing it is a runtime error of kind
   `java.lang.StackOverflowError`, not a crash of `ferro`. So is comparing
-  (`=`, `IndexOf`) or printing collections and records nested more than 1000
-  deep, where Java's `equals` and `toString` recurse too.
+  (`=`, `IndexOf`) collections nested more than 3000 deep, or printing
+  collections and records nested more than 7000 deep, where Java's `equals`
+  and `toString` recurse too (deviation D2: Java's limit depends on its
+  stack).
 - Data may nest to any depth: a linked list of 100,000 records is freed
   without recursion.
 - Memory is limited. When an allocation fails, or a String or

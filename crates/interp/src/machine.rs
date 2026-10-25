@@ -303,13 +303,15 @@ impl<'p, 'w> Machine<'p, 'w> {
     }
 
     /// Unwinds to the nearest handler. `StackOverflowError` is a Java
-    /// `Error`, which B4J's `catch (Exception e)` does not catch.
+    /// `Error`, which B4J's `catch (Exception e)` does not catch. The
+    /// handler sees the innermost cause; an uncaught error stops the program
+    /// as it is.
     fn raise(&mut self, e: Exc, range: TextRange) -> Result<(), Stop> {
         let catchable = e.kind != STACK_OVERFLOW && e.kind != OUT_OF_MEMORY;
         while let Some(frame) = self.frames.last_mut() {
             let function = self.program.function(frame.func);
             if catchable && let Some(h) = function.blocks.get(frame.block).and_then(|b| b.handler) {
-                self.last_exception = Some(Rc::new(e));
+                self.last_exception = Some(Rc::new(e.innermost()));
                 frame.block = h.0 as usize;
                 frame.stmt = 0;
                 return Ok(());

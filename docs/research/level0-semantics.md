@@ -231,7 +231,9 @@ tests):
   Which item raises first depends on the order `TimSort` compares in;
   FerroBASIC checks the items in list order, so in a list with several kinds
   of problem the wrapped cause can differ, never the `RuntimeException`
-  (deviation D4). The comparator catches `Exception`, so an `Error` such as
+  (deviation D4). A `Catch` sees the cause, since `LastException` is the
+  innermost cause (below; **recorded**, `list_sort_type_errors`). The
+  comparator catches `Exception`, so an `Error` such as
   `StackOverflowError` (printing a field nested too deeply) is not wrapped.
   FerroBASIC also accepts the field `IsInitialized`, which the class of a
   `Type` is expected to have (its `toString` prints it first); measured
