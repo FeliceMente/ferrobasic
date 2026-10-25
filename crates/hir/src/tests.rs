@@ -616,6 +616,33 @@ fn loops_in_process_globals() {
         );
     }
 
+    // A loop variable there named like a Sub, `Bit` or a keyword is
+    // refused once, since whether it would hide them is not recorded.
+    for (body, what) in [
+        ("    For Bump = 1 To 2\n    Next", "a Sub"),
+        ("    For Bit = 1 To 2\n    Next", "the `Bit` object"),
+        (
+            "    For Each Abs As Int In Array As Int(1)\n    Next",
+            "a keyword",
+        ),
+    ] {
+        let diags = errors(&format!(
+            "{}Sub Bump\nEnd Sub\n",
+            globals(body, "    Bump\n    Log(Bit.And(3, 1))\n    Log(Abs(-1))")
+        ));
+        assert_eq!(diags.len(), 1, "{body}: {diags:?}");
+        assert!(
+            has(&diags, &format!("has the name of {what}")),
+            "{body}: {diags:?}"
+        );
+    }
+    // An unknown type is reported once, not again as a type conflict.
+    let diags = errors(&globals(
+        "    Dim v As Foo\n    For Each v As Int In Array As Int(1)\n    Next",
+        "",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+
     // `For ... As` there is still refused, even when the name is declared.
     let diags = errors(&globals(
         "    For i As Double = 0 To 1 Step 0.5\n    Next",
@@ -646,6 +673,12 @@ fn loops_in_process_globals() {
             "Sub Class_Globals\n{body}\nEnd Sub\n\nSub Initialize\nEnd Sub\n"
         ))
     };
+    // Nor does `Class_Globals` see a `For Each` variable of `Process_Globals`.
+    let diags = errors(&format!(
+        "{}Sub Class_Globals\n    Dim x As Int = n\nEnd Sub\n",
+        globals(each, "")
+    ));
+    assert!(has(&diags, "`n` is not declared"), "{diags:?}");
     let diags = class("    For i = 1 To 3\n    Next");
     assert!(
         has(&diags, "must be declared first in `Class_Globals`"),

@@ -36,6 +36,8 @@ struct Lowerer {
     /// `Process_Globals`: whether other Subs see them is open, so only
     /// `Process_Globals` does.
     globals_for_each: HashMap<String, GlobalId>,
+    /// Loop variables of `Process_Globals` already refused with an error.
+    refused_loop_names: Vec<String>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -475,31 +477,37 @@ impl Lowerer {
         for dim in sub.descendants().filter(|n| n.kind() == DIM_STMT) {
             for (decl, ty) in self.declarators(&dim) {
                 let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
-                self.declare_global(name, ty, range(&decl));
+                self.declare_global(name, ty, range(&decl), false);
             }
         }
     }
 
-    fn declare_global(&mut self, name: String, ty: Ty, at: TextRange) {
-        match self.globals.get(&key(&name)) {
-            Some(&id) => {
-                if self.module.global(id).ty != ty {
-                    self.error(
-                        at,
-                        format!("`{name}` is already declared with another type"),
-                    );
-                }
+    /// A module variable, unless the name is one already; `loop_only` keeps
+    /// it out of `globals`, for a `For Each` variable only `Process_Globals`
+    /// sees.
+    fn declare_global(&mut self, name: String, ty: Ty, at: TextRange, loop_only: bool) {
+        let k = key(&name);
+        if let Some(&id) = self.globals.get(&k).or(self.globals_for_each.get(&k)) {
+            let existing = &self.module.global(id).ty;
+            if *existing != ty && *existing != Ty::Error && ty != Ty::Error {
+                self.error(
+                    at,
+                    format!("`{name}` is already declared with another type"),
+                );
             }
-            None => {
-                let id = GlobalId(self.module.globals.len() as u32);
-                self.globals.insert(key(&name), id);
-                self.module.globals.push(Var {
-                    name,
-                    ty,
-                    range: at,
-                });
-            }
+            return;
         }
+        let id = GlobalId(self.module.globals.len() as u32);
+        if loop_only {
+            self.globals_for_each.insert(k, id);
+        } else {
+            self.globals.insert(k, id);
+        }
+        self.module.globals.push(Var {
+            name,
+            ty,
+            range: at,
+        });
     }
 
     /// The loop variables of `Process_Globals`, after its `Dim`s: B4X makes
@@ -519,9 +527,9 @@ impl Lowerer {
                 && child(node, TYPE_REF).is_none()
             {
                 let text = name_of(&name);
-                if !self.globals.contains_key(&key(&text)) {
+                if !self.globals.contains_key(&key(&text)) && self.loop_name_free(&text, &name) {
                     counters.push(key(&text));
-                    self.declare_global(text, Ty::Int, range(&name));
+                    self.declare_global(text, Ty::Int, range(&name), false);
                 }
             }
         }
@@ -531,8 +539,8 @@ impl Lowerer {
             };
             let text = name_of(&name);
             let ty = self.resolve_type(&t);
-            let k = key(&text);
-            if counters.contains(&k) {
+            if counters.contains(&key(&text)) {
+                self.refused_loop_names.push(key(&text));
                 self.error(
                     range(&name),
                     format!(
@@ -541,26 +549,41 @@ impl Lowerer {
                          has is not known yet"
                     ),
                 );
-                continue;
+            } else if self.globals.contains_key(&key(&text)) || self.loop_name_free(&text, &name) {
+                self.declare_global(text, ty, range(&name), true);
             }
-            let existing = self.globals.get(&k).or(self.globals_for_each.get(&k));
-            if let Some(&id) = existing {
-                if self.module.global(id).ty != ty && ty != Ty::Error {
-                    self.error(
-                        range(&name),
-                        format!("`{text}` is already declared with another type"),
-                    );
-                }
-                continue;
-            }
-            let id = GlobalId(self.module.globals.len() as u32);
-            self.globals_for_each.insert(k, id);
-            self.module.globals.push(Var {
-                name: text,
-                ty,
-                range: range(&name),
-            });
         }
+    }
+
+    /// Whether a loop variable that `Process_Globals` would declare may take
+    /// this name. Whether a module variable hides a Sub, `Bit` or a keyword
+    /// of the same name is not recorded, so it is refused.
+    fn loop_name_free(&mut self, text: &str, name: &SyntaxNode) -> bool {
+        let what = if self.subs.contains_key(&key(text)) {
+            "a Sub"
+        } else if text.eq_ignore_ascii_case("Bit") {
+            "the `Bit` object"
+        } else if builtins::lookup(Owner::Global, text).is_some() {
+            "a keyword"
+        } else {
+            return true;
+        };
+        self.refused_loop_names.push(key(text));
+        self.error(
+            range(name),
+            format!(
+                "the loop variable `{text}` of `Process_Globals` has the name of {what}: \
+                 whether it would hide it is not known yet, so use another name"
+            ),
+        );
+        false
+    }
+
+    /// A loop variable `declare_loop_globals` already reported.
+    fn refused(&self, name: &str) -> bool {
+        self.in_process_globals
+            && !self.in_class_globals
+            && self.refused_loop_names.contains(&key(name))
     }
 
     fn globals_sub(&self) -> &'static str {
@@ -716,7 +739,7 @@ impl Lowerer {
             return Some((VarRef::Local(id), self.locals[id.0 as usize].ty.clone()));
         }
         let global = self.globals.get(&k).or_else(|| {
-            self.in_process_globals
+            (self.in_process_globals && !self.in_class_globals)
                 .then(|| self.globals_for_each.get(&k))
                 .flatten()
         });
@@ -860,6 +883,9 @@ impl Lowerer {
                 let Some((var, ty)) = found.clone().filter(|_| !typed_in_globals) else {
                     // Every other undeclared counter is an Int (`hoist_locals`,
                     // `declare_loop_globals`): never drop the loop silently.
+                    if self.refused(&text) {
+                        return;
+                    }
                     let message = if found.is_some() {
                         typed_loop_variable(&text, "For", self.globals_sub())
                     } else {
@@ -908,6 +934,9 @@ impl Lowerer {
                 let typed_in_globals = self.in_class_globals && child(node, TYPE_REF).is_some();
                 let found = self.lookup_var(&text);
                 let Some((var, ty)) = found.clone().filter(|_| !typed_in_globals) else {
+                    if self.refused(&text) {
+                        return;
+                    }
                     let message = if found.is_some() {
                         typed_loop_variable(&text, "For Each", self.globals_sub())
                     } else if self.in_process_globals {
