@@ -83,7 +83,7 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 | Member | Behaviour |
 | --- | --- |
 | `Initialize` | new empty list |
-| `Initialize2(Array As List)` | shares the given list. An array argument gives a fixed-size list: `Add`/`RemoveAt` then raise `UnsupportedOperationException`. An array of rank 2 or more is a compile error, as in B4J (test `list_from_2d_array`); one passed through an `Object` variable raises `ClassCastException` (recorded). A one-dimensional one through an `Object` is wrapped *(open)*. |
+| `Initialize2(Array As List)` | shares the given list. An array argument gives a fixed-size list: `Add`/`RemoveAt` then raise `UnsupportedOperationException`. An array of rank 2 or more is a compile error, as in B4J (test `list_from_2d_array`); an array of any rank passed through an `Object` variable raises `ClassCastException`, as in B4J (recorded): only an array declared as one is wrapped. |
 | `IsInitialized As Boolean` | |
 | `Add(Item)`, `AddAll(List)`, `AddAllAt(Index, List)`, `InsertAt(Index, Item)` | on a fixed-size list, adding nothing is allowed (after the index check); on a `SubList` view, `AddAll` always raises `UnsupportedOperationException`; `AddAll` of nothing still invalidates the list's views |
 | `Get(Index) As Object`, `Set(Index, Item)`, `RemoveAt(Index)` | out of range → `IndexOutOfBoundsException` |

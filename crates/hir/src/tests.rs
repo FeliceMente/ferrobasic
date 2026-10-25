@@ -301,10 +301,13 @@ fn arithmetic_next_to_concat_needs_parentheses() {
         "\"x\" & 2 * 3",
         "\"x\" & 3 - 1",
         "\"x\" & -1",
-        // Deeper in the operand (pending probes, refused meanwhile).
+        "\"x\" & 6 / 2",
+        "\"x\" & 7 Mod 2",
+        // Deeper in the operand.
         "\"x\" & -6 / 2",
         "\"x\" & 2 * 6 / 3",
         "2 * 3 Mod 4 & \"x\"",
+        "\"x\" & (1 + 2) / 3",
         "\"a\" & 1 + 2 & \"b\"",
     ] {
         let d = errors(&program(&format!("Dim r As String = {expr}")));
@@ -314,14 +317,13 @@ fn arithmetic_next_to_concat_needs_parentheses() {
             "{expr}: {d:?}"
         );
     }
-    // Parentheses, comparisons, and the operators not yet recorded are fine.
+    // Parentheses, calls and comparisons are fine.
     for expr in [
         "\"x\" & (1 + 2)",
         "\"x\" & (-1)",
         "\"a\" & \"b\" = \"ab\"",
-        "\"x\" & 6 / 2",
-        "\"x\" & 7 Mod 2",
-        "\"x\" & (1 + 2) / 3",
+        "\"x\" & (6 / 2)",
+        "\"x\" & (7 Mod 2)",
         "\"x\" & Abs(1 - 2)",
         "\"a\" & \"b\" & \"c\"",
     ] {

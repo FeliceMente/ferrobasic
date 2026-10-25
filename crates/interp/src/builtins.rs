@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use ferro_mir::{Builtin, RecordId, Ty};
 
-use crate::convert::{array_to_list, checked_store};
+use crate::convert::checked_store;
 use crate::machine::{Machine, Signal, as_array, int_of};
 use crate::number::{JavaRandom, number_format, parse_java_double};
 use crate::strings::{self, compare_ignore_case, compare_to, to_rust, to_utf16};
@@ -630,15 +630,12 @@ impl Machine<'_, '_> {
         };
         let n = |i| arg(args, i).and_then(int_of);
         let a = |i| arg(args, i);
-        // The inner list of a `List` argument (an array is wrapped); an
-        // uninitialised one raises, as `source.getObject()` does.
+        // The inner list of a `List` argument; an uninitialised one raises,
+        // as `source.getObject()` does. An array arrives already wrapped:
+        // the conversion to `List` decides (`convert`).
         let list_arg = |i| -> Result<ListRef, Exc> {
             let inner = match a(i)? {
                 Value::List(w) => w.borrow().clone(),
-                Value::Array(arr) => match array_to_list(arr) {
-                    Value::List(w) => w.borrow().clone(),
-                    _ => None,
-                },
                 Value::Null => None,
                 _ => return Err(Exc::internal("expected a List")),
             };

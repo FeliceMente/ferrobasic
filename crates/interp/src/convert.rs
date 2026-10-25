@@ -281,6 +281,15 @@ pub fn convert(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value,
         },
         Ty::String => to_string_from(&v, from, program),
         Ty::Object => Ok(unwrap(v)),
+        // An array declared as one (only rank 1 converts: `hir`) is wrapped,
+        // as B4J's compiler does with `ArrayToList`.
+        // A null one raises, as `ArrayToList` does (`Arrays.asList(null)`,
+        // or `Array.length` for a primitive array).
+        Ty::List if matches!(from, Ty::Array(..)) => match &v {
+            Value::Array(a) => Ok(array_to_list(a)),
+            Value::Null => Err(Exc::bare(NULL_POINTER)),
+            _ => rewrap(v, to, program),
+        },
         Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception => rewrap(v, to, program),
         Ty::Array(elem, rank) => match &v {
             Value::Null => Ok(v),
@@ -357,10 +366,9 @@ fn rewrap(v: Value, to: &Ty, program: &Program) -> Result<Value, Exc> {
             Value::Null => fresh_wrapper(to),
             w => w,
         }),
-        // Only a one-dimensional array is wrapped; B4J's cast of a 2-D one
-        // (here through an `Object`) raises (recording
-        // `level0/list_from_2d_array_object`).
-        (Ty::List, Value::Array(a)) if a.rank == 1 => Ok(array_to_list(a)),
+        // An array held in an `Object` is not wrapped: B4J casts it, which
+        // raises whatever its rank (recordings
+        // `level0/list_from_1d_array_object`, `list_from_2d_array_object`).
         (Ty::List, _) => Err(class_cast(&v, "java.util.List", program)),
         (Ty::Map, _) => Err(class_cast(&v, "java.util.Map", program)),
         (Ty::StringBuilder, _) => Err(class_cast(&v, "java.lang.StringBuilder", program)),

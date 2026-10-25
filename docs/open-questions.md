@@ -11,17 +11,12 @@ Answers from public sources (runtime source code, official docs, forum) are in
 "answered" there is still unconfirmed until a recording agrees with it; the
 related tests stay `pending-recording`.
 
-- [x] `&` next to `+`, `-`, `*` or a negation is a syntax error unless
-      parenthesized, on either side (`"x" & 1 + 2`, `1 + 2 & "x"`,
-      `"x" & -1`); a comparison binds looser than `&` (`"a" & "b" = "ab"` is
-      `True`). Recorded: `level0/concat_*`; FerroBASIC gives a precise error.
-- [ ] `&` next to `/` or `Mod`: FerroBASIC accepts both. Fixtures:
-      `level0/concat_divide_after`, `concat_mod_after`.
-- [ ] A refused operator deeper in an operand of `&` (`"x" & -6 / 2`,
-      `"x" & 2 * 6 / 3`, `2 * 3 Mod 4 & "x"`): FerroBASIC refuses these as
-      it refuses the operator right next to `&`. Fixtures:
-      `level0/concat_negative_divided`, `concat_times_divided`,
-      `concat_times_mod_before`.
+- [x] An operand of `&` that holds an arithmetic operator (`+`, `-`, `*`,
+      `/`, `Mod`) or a negation outside parentheses is a syntax error, on
+      either side and at any depth (`"x" & 1 + 2`, `1 + 2 & "x"`,
+      `"x" & -1`, `"x" & 6 / 2`, `"x" & -6 / 2`); a comparison binds looser
+      than `&` (`"a" & "b" = "ab"` is `True`). Recorded: `level0/concat_*`;
+      FerroBASIC gives a precise error.
 - [x] `And` binds tighter than `Or`: `True Or False And False` is `True`
       (recording: `level0/precedence_and_or`). Against comparisons it is
       still open.
@@ -53,9 +48,8 @@ related tests stay `pending-recording`.
 - [x] `Null` converted to a `String` (assigned, passed, returned) is the
       text `"null"`: B4J compiles it with `BA.ObjectToString` (generated code
       and recording: `level0/number_parsing`).
-- [ ] How a `String` compares with `Null` (`s = Null` once `s` holds
-      `"null"`, or an unset `String` field). Fixture:
-      `level0/string_null_compare`.
+- [x] A `String` holding `"null"` is not `Null` (`s = Null` is `False`);
+      an unset `String` field is (recording: `level0/string_null_compare`).
 - [ ] Which keywords besides `In` are also accepted as names (`Step`, `To`,
       `Each`, `Until`, `Type`, …): `In` is
       ([generated](research/level0-semantics.md#keywords-used-as-names-generated)).
@@ -134,12 +128,10 @@ needs a recorded test):
 - [x] `Grid(i, j) = v` evaluates `i`, `j`, then `v`, and a bad row index
       fails before `j` is evaluated, as Java's `a[i][j] = v` does
       (recording: `level0/array_row_order`).
-- [x] A 2-dimensional array given to a `List` parameter through an `Object`
-      raises `ClassCastException` (recording:
-      `level0/list_from_2d_array_object`).
-- [ ] A one-dimensional array given to a `List` parameter through an
-      `Object`: FerroBASIC wraps it. Fixture:
-      `level0/list_from_1d_array_object`.
+- [x] An array given to a `List` parameter through an `Object` raises
+      `ClassCastException`, whatever its rank; only an array declared as one
+      is wrapped (recordings: `level0/list_from_1d_array_object`,
+      `list_from_2d_array_object`).
 - [x] The type of `IIf`'s result, and so how it converts when assigned or
       printed: the chosen value keeps its own type, so `Log(IIf(True, 3,
       4.5))` prints `3` (recording: `level0/iif_branches`).
