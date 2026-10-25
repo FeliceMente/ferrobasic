@@ -49,7 +49,7 @@ The "not yet" rows come from the
 | `Boolean`, `Byte`, `Short`, `Int`, `Long`, `Float`, `Double`, `Char` | ✅ | [level0.md](spec/level0.md#types); tests `chars_and_ints`, `number_parsing` |
 | `String`, `Object`, `Null` | ✅ | |
 | Arrays of any rank: `Dim a(10) As Int`, `Dim m(3, 4) As Double` | ⚠️ | memory use differs (D2); tests `array_row_order`, `deep_equals` |
-| `Type` records, also with array fields | ⚠️ | a record nested in Lists about 49 levels deep, or holding itself, prints differently (D6); test `self_printing_record` |
+| `Type` records, also with array fields | ⚠️ | a record nested in Lists about 49 levels deep, or holding itself, prints differently (D6); tests `record_printing`, `self_printing_record` |
 | `List`, `Map`, `StringBuilder`, `Exception` | ✅ | see "Built-in objects" below |
 | Library types: `Timer`, `JavaObject`, `B4XView`… | ❌ | Level 1 (`Timer`) and Level 3 (libraries) |
 
@@ -68,9 +68,9 @@ The "not yet" rows come from the
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `+ - * /`, `Mod`, unary `-` | ✅ | `/` always gives `Double`; [level0.md](spec/level0.md#operators); test `division_and_mod` |
-| `&` string concatenation | ⚠️ | its precedence is *(open)*: B4J refuses `"x" & 1 + 2`, which FerroBASIC accepts for now (D7); tests `concat_*` |
+| `&` string concatenation | ✅ | `+`, `-`, `*` or a negation next to it needs parentheses, as in B4J; next to `/` and `Mod` *(open)*; tests `concat_*` |
 | `= <> < > <= >=` | ✅ | `<` and `>` on Strings, and String-number comparisons, are *(open)* |
-| `And`, `Or` (short-circuit), `Not(x)` | ✅ | their relative precedence is *(open)*; test `precedence_and_or` |
+| `And`, `Or` (short-circuit), `Not(x)` | ✅ | `And` binds tighter than `Or`; test `precedence_and_or` |
 | Inline cast `x.As(T)` | ✅ | [level0-builtins.md](spec/level0-builtins.md#keywords-and-constants) |
 | `IIf(condition, a, b)` | ✅ | test `iif_branches` |
 | `Is` (`If v Is Button`) | ❌ | not assigned to a level yet; a precise diagnostic |

@@ -1124,6 +1124,12 @@ impl<'p, 'o> Printer<'p, 'o> {
                     mut values,
                     next,
                 } => {
+                    // `IsInitialized` is field 1; `next` is field `next + 2`.
+                    // A line break follows every third field, before the
+                    // separator (and before `]` after the last one).
+                    if (next + 1) % 3 == 0 {
+                        self.put("\n")?;
+                    }
                     let Some(field) = fields.get(next).filter(|_| next < values.len()) else {
                         self.put("]")?;
                         self.leave();
@@ -1251,8 +1257,9 @@ impl<'p, 'o> Printer<'p, 'o> {
         Ok(())
     }
 
-    /// The `toString` B4X generates for a `Type`:
-    /// `[IsInitialized=true, Name=abc, Price=1.5]`.
+    /// The `toString` B4X generates for a `Type`, jCore's `BA.TypeToString`:
+    /// `[IsInitialized=true, Name=abc, Price=1.5\n, Tags=null]`, with a line
+    /// break after every third field (recording `level0/record_printing`).
     fn record(&mut self, r: &Rc<RecordObj>) -> Result<(), Exc> {
         let Some(rec) = self.program.records.get(r.id.0 as usize) else {
             return self.put("[]");
