@@ -294,6 +294,34 @@ fn only_one_dimensional_arrays_convert_to_a_list() {
 }
 
 #[test]
+fn arithmetic_next_to_concat_needs_parentheses() {
+    for expr in [
+        "\"x\" & 1 + 2",
+        "1 + 2 & \"x\"",
+        "\"x\" & 2 * 3",
+        "\"x\" & 3 - 1",
+        "\"x\" & -1",
+    ] {
+        let d = errors(&program(&format!("Dim r As String = {expr}")));
+        assert_eq!(d.len(), 1, "{expr}: {d:?}");
+        assert!(
+            d[0].contains("next to `&` needs parentheses"),
+            "{expr}: {d:?}"
+        );
+    }
+    // Parentheses, comparisons, and the operators not yet recorded are fine.
+    for expr in [
+        "\"x\" & (1 + 2)",
+        "\"x\" & (-1)",
+        "\"a\" & \"b\" = \"ab\"",
+        "\"x\" & 6 / 2",
+        "\"x\" & 7 Mod 2",
+    ] {
+        ok(&program(&format!("Dim r As String = {expr}")));
+    }
+}
+
+#[test]
 fn missing_process_globals() {
     let d = errors("Sub AppStart (Args() As String)\nEnd Sub\n");
     assert_eq!(

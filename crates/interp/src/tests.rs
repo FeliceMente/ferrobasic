@@ -1505,9 +1505,9 @@ fn records() {
     });
     assert_eq!(
         stdout_of(&p),
-        "false\nnull\n[IsInitialized=false, Name=null, Price=1.0, Tags=null]\n\
+        "false\nnull\n[IsInitialized=false, Name=null, Price=1.0\n, Tags=null]\n\
          java.lang.NullPointerException\ntrue\n?\n\
-         [IsInitialized=true, Name=?, Price=2.5, Tags=(List) Not initialized]\na\nc\nb\nc\n"
+         [IsInitialized=true, Name=?, Price=2.5\n, Tags=(List) Not initialized]\na\nc\nb\nc\n"
     );
 }
 

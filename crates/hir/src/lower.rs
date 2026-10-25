@@ -1487,6 +1487,31 @@ impl Lowerer {
         converted
     }
 
+    /// The original toolchain refuses `+`, `-`, `*` or a negation right
+    /// next to `&` as a syntax error, wherever it stands (`"x" & 1 + 2`,
+    /// `1 + 2 & "x"`, `"x" & -1`): such an operand needs parentheses. `/`
+    /// and `Mod` are *(open)* and accepted.
+    fn concat_operand(&mut self, operand: &SyntaxNode) {
+        let op = match operand.kind() {
+            PREFIX_EXPR => tokens(operand).find(|t| t.kind() == MINUS),
+            BIN_EXPR => tokens(operand)
+                .next()
+                .filter(|t| matches!(t.kind(), PLUS | MINUS | STAR)),
+            _ => None,
+        };
+        if let Some(op) = op {
+            let text = operand.text().to_string();
+            self.error(
+                range(operand),
+                format!(
+                    "`{}` next to `&` needs parentheses: write `({})`",
+                    op.text(),
+                    text.trim()
+                ),
+            );
+        }
+    }
+
     fn binary(&mut self, node: &SyntaxNode) -> Expr {
         let at = range(node);
         let parts = exprs(node);
@@ -1523,6 +1548,9 @@ impl Lowerer {
         }
         match op.kind() {
             AMP => {
+                for operand in [l, r] {
+                    self.concat_operand(operand);
+                }
                 let left = self.coerce(left, &Ty::String);
                 let right = self.coerce(right, &Ty::String);
                 Expr {

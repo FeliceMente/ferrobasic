@@ -355,7 +355,10 @@ fn rewrap(v: Value, to: &Ty, program: &Program) -> Result<Value, Exc> {
             Value::Null => fresh_wrapper(to),
             w => w,
         }),
-        (Ty::List, Value::Array(a)) => Ok(array_to_list(a)),
+        // Only a one-dimensional array is wrapped; B4J's cast of a 2-D one
+        // (here through an `Object`) raises (recording
+        // `level0/list_from_2d_array_object`).
+        (Ty::List, Value::Array(a)) if a.rank == 1 => Ok(array_to_list(a)),
         (Ty::List, _) => Err(class_cast(&v, "java.util.List", program)),
         (Ty::Map, _) => Err(class_cast(&v, "java.util.Map", program)),
         (Ty::StringBuilder, _) => Err(class_cast(&v, "java.lang.StringBuilder", program)),
@@ -370,8 +373,8 @@ pub fn array_to_list(a: &Rc<ArrayObj>) -> Value {
     let list = if a.elem.is_primitive() && a.rank == 1 {
         ListObj::new(a.items.borrow().clone(), ListKind::FixedSize)
     } else {
-        // `Arrays.asList` of an `Object[]` (an array of rows, for a higher
-        // rank): stores through the list are checked against its type.
+        // `Arrays.asList` of an array of references: stores through the
+        // list are checked against its type.
         ListObj::shared(a.items.clone(), ListKind::FixedSize, Some(a.item_ty()))
     };
     Value::List(Rc::new(RefCell::new(Some(Rc::new(list)))))
