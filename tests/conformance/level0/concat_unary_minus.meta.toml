@@ -6,9 +6,12 @@ features = ["precedence-concat"]
 # B4J 10.70 refused it on 2026-10-25 ("Syntax error" at the operator after
 # or before &): "x" & -1 needs parentheses.
 
-# Filled in by tools/recorder when the expected output is recorded:
-# [recording]
-# product = "B4J"
-# version = ""
-# platform = ""
-# date = ""
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+rejected = true   # the original toolchain refused to build it
+date = "2026-10-25"

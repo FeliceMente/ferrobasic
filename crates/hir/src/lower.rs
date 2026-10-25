@@ -1487,12 +1487,11 @@ impl Lowerer {
         converted
     }
 
-    /// The original toolchain refuses `+`, `-`, `*` or a negation next to
-    /// `&` as a syntax error (`"x" & 1 + 2`, `1 + 2 & "x"`, `"x" & -1`): an
-    /// operand of `&` that holds one, outside parentheses or a call's
-    /// arguments, needs parentheses. Deeper forms (`"x" & -6 / 2`) are
-    /// refused by extension until recorded (`docs/open-questions.md`); `/`
-    /// and `Mod` alone are *(open)* and accepted.
+    /// The original toolchain refuses an arithmetic operator (`+`, `-`, `*`,
+    /// `/`, `Mod`) or a negation next to `&` as a syntax error (`"x" & 1 + 2`,
+    /// `1 + 2 & "x"`, `"x" & -1`, `"x" & 6 / 2`, `"x" & -6 / 2`; recorded):
+    /// an operand of `&` that holds one, outside parentheses or a call's
+    /// arguments, needs parentheses.
     fn concat_operand(&mut self, operand: &SyntaxNode) {
         // The first refused operator in the operand's own expression tree.
         let mut nodes = vec![operand.clone()];
@@ -1507,7 +1506,9 @@ impl Lowerer {
             if op.as_ref().is_some_and(|t| t.kind() == AMP) {
                 continue;
             }
-            if let Some(op) = op.filter(|t| matches!(t.kind(), PLUS | MINUS | STAR)) {
+            if let Some(op) =
+                op.filter(|t| matches!(t.kind(), PLUS | MINUS | STAR | SLASH | MOD_KW))
+            {
                 found = Some(op);
                 break;
             }

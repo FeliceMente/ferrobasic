@@ -1,12 +1,10 @@
 # Conformance test metadata. See docs/compatibility-testing.md.
-status = "pending-recording"   # pending-recording | recorded | deviation | negative
-ferro_rejects = true   # FerroBASIC refuses to compile it, on purpose
+status = "negative"   # pending-recording | recorded | deviation | negative
 level = 0
 features = ["precedence-concat"]
 
-# No .provisional: whether the original toolchain refuses it is open
-# (docs/open-questions.md). FerroBASIC refuses it, as it refuses the same
-# operator right next to & (recorded), until a recording shows otherwise.
+# B4J 10.70 refused it on 2026-10-25 ("Syntax error"): "x" & -6 / 2 needs
+# parentheses around the arithmetic next to &.
 
 # Filled in by tools/recorder when the expected output is recorded:
 # [recording]

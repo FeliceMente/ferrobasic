@@ -68,7 +68,7 @@ The "not yet" rows come from the
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `+ - * /`, `Mod`, unary `-` | ✅ | `/` always gives `Double`; [level0.md](spec/level0.md#operators); test `division_and_mod` |
-| `&` string concatenation | ✅ | `+`, `-`, `*` or a negation next to it needs parentheses, as in B4J; next to `/` and `Mod` *(open)*; tests `concat_*` |
+| `&` string concatenation | ✅ | an arithmetic operator or a negation next to it needs parentheses, as in B4J; tests `concat_*` |
 | `= <> < > <= >=` | ✅ | `<` and `>` on Strings, and String-number comparisons, are *(open)* |
 | `And`, `Or` (short-circuit), `Not(x)` | ✅ | `And` binds tighter than `Or`; test `precedence_and_or` |
 | Inline cast `x.As(T)` | ✅ | [level0-builtins.md](spec/level0-builtins.md#keywords-and-constants) |
