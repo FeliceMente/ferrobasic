@@ -586,20 +586,23 @@ fn loops_in_process_globals() {
         each,
         "    Dim n As Int\n    For n = 1 To 2\n    Next",
     ));
-    // Declared by a `Dim` there, it is certainly a module variable that
-    // other Subs share.
+    // Declared by a `Dim` there, it is a module variable other Subs share,
+    // and the loop must not declare it again with `As` (open).
     ok(&globals(
-        &format!("    Dim n As Int\n{each}"),
+        "    Dim n As Int\n    For Each n In Array As Int(1, 2)\n    Next",
         "    Log(n)\n    For n = 1 To 2\n    Next",
     ));
-    let diags = errors(&globals(
-        "    Dim n As String\n    For Each n As Int In Array As Int(1)\n    Next",
-        "",
-    ));
-    assert!(
-        has(&diags, "`n` is already declared with another type"),
-        "{diags:?}"
-    );
+    for dim in ["Int", "String"] {
+        let diags = errors(&globals(&format!("    Dim n As {dim}\n{each}"), ""));
+        assert_eq!(diags.len(), 1, "{dim}: {diags:?}");
+        assert!(
+            has(
+                &diags,
+                "`n` is already declared, so write the loop without `As`"
+            ),
+            "{dim}: {diags:?}"
+        );
+    }
     // A name both an undeclared counter and a `For Each` variable there is
     // refused, in either order.
     for body in [
@@ -638,10 +641,22 @@ fn loops_in_process_globals() {
     }
     // An unknown type is reported once, not again as a type conflict.
     let diags = errors(&globals(
-        "    Dim v As Foo\n    For Each v As Int In Array As Int(1)\n    Next",
+        "    For Each v As Foo In Array As Int(1)\n    Next\n    For Each v As Int In Array As Int(1)\n    Next",
         "",
     ));
     assert_eq!(diags.len(), 1, "{diags:?}");
+    // A refused name is reported once however often it is used, also with a
+    // `Type`'s name, and the loop's body is still checked.
+    let diags = errors(&globals(
+        "    For Bit = 1 To 2\n    Next\n    For Bit = 1 To 2\n        Log(Missing)\n    Next\n    For Each Bit As Int In Array As Int(1)\n    Next",
+        "",
+    ));
+    assert_eq!(diags.len(), 2, "{diags:?}");
+    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
+    let diags = errors(
+        "Sub Process_Globals\n    Type Point (X As Int)\n    For Point = 1 To 2\n    Next\nEnd Sub\n\nSub AppStart (Args() As String)\nEnd Sub\n",
+    );
+    assert!(has(&diags, "has the name of a `Type`"), "{diags:?}");
 
     // `For ... As` there is still refused, even when the name is declared.
     let diags = errors(&globals(
