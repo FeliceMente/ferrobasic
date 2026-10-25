@@ -182,11 +182,15 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_counter_shared`).
 - [x] `For Each v As T` runs inside `Process_Globals` (recording:
       `level0/process_globals_for_each`).
-- [ ] Whether that `For Each` variable is a module variable, as the `For`
-      counter is. FerroBASIC makes it one, and refuses an undeclared counter
-      of that name in another Sub meanwhile. Fixtures:
+- [ ] Whether other Subs see that `For Each` variable, as they see the
+      `For` counter. FerroBASIC makes it a module variable only
+      `Process_Globals` sees, and refuses its name in other Subs, read or as
+      an undeclared counter, meanwhile. Fixtures:
       `level0/process_globals_for_each_visible`,
       `level0/process_globals_for_each_shared`.
+- [ ] A name that is both an undeclared `For` counter and a `For Each v As
+      T` variable in `Process_Globals`: which type it has. FerroBASIC
+      refuses it.
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).

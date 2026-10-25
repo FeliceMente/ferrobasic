@@ -530,9 +530,8 @@ fn inline_cast_to_array_type() {
 }
 
 /// An undeclared `For` counter in `Process_Globals` is a module variable,
-/// an Int (recorded), and so is a `For Each v As T` variable there (by
-/// analogy; open). Another Sub may not use the latter as an undeclared
-/// counter, the one case where the analogy could matter.
+/// an Int (recorded). A `For Each v As T` variable there is one only
+/// `Process_Globals` sees, since whether other Subs do is open.
 #[test]
 fn loops_in_process_globals() {
     let globals = |body: &str, app: &str| {
@@ -568,8 +567,13 @@ fn loops_in_process_globals() {
     assert_eq!(global(&module, "i"), Some(Ty::Long));
 
     let each = "    For Each n As Int In Array As Int(1, 2)\n        Total = Total + n\n    Next";
-    let module = ok(&globals(each, "    Log(n)"));
+    let module = ok(&globals(&format!("{each}\n    Log(n)"), ""));
     assert_eq!(global(&module, "n"), Some(Ty::Int));
+    // Other Subs do not see it.
+    for app in ["    Log(n)", "    For Each n In Array As Int(7)\n    Next"] {
+        let diags = errors(&globals(each, app));
+        assert!(has(&diags, "`n` is not declared"), "{app}: {diags:?}");
+    }
     let diags = errors(&globals(each, "    For n = 1 To 2\n    Next"));
     assert!(
         has(
@@ -582,6 +586,12 @@ fn loops_in_process_globals() {
         each,
         "    Dim n As Int\n    For n = 1 To 2\n    Next",
     ));
+    // Declared by a `Dim` there, it is certainly a module variable that
+    // other Subs share.
+    ok(&globals(
+        &format!("    Dim n As Int\n{each}"),
+        "    Log(n)\n    For n = 1 To 2\n    Next",
+    ));
     let diags = errors(&globals(
         "    Dim n As String\n    For Each n As Int In Array As Int(1)\n    Next",
         "",
@@ -590,34 +600,65 @@ fn loops_in_process_globals() {
         has(&diags, "`n` is already declared with another type"),
         "{diags:?}"
     );
-
-    // `For ... As` there is still refused, even when the name is declared.
+    // A name both an undeclared counter and a `For Each` variable there is
+    // refused, in either order.
     for body in [
-        "    For i As Double = 0 To 1 Step 0.5\n    Next",
-        "    For i = 1 To 2\n    Next\n    For i As Double = 0 To 1 Step 0.5\n    Next",
+        format!("    For n = 1 To 2\n    Next\n{each}"),
+        format!("{each}\n    For n = 1 To 2\n    Next"),
     ] {
-        let diags = errors(&globals(body, ""));
+        let diags = errors(&globals(&body, ""));
         assert!(
             has(
                 &diags,
-                "the `For` variable `i` must be declared first in `Process_Globals`"
+                "`n` is both an undeclared `For` counter and a `For Each` variable"
             ),
             "{body}: {diags:?}"
         );
     }
-    // In `Class_Globals` (not recorded) a loop must use a declared variable.
-    for body in [
-        "    For i = 1 To 3\n    Next",
-        "    Dim v As Int\n    For Each v As Int In Array As Int(1)\n    Next",
-    ] {
-        let diags = errors(&format!(
+
+    // `For ... As` there is still refused, even when the name is declared.
+    let diags = errors(&globals(
+        "    For i As Double = 0 To 1 Step 0.5\n    Next",
+        "",
+    ));
+    assert!(
+        has(
+            &diags,
+            "the `For` variable `i` must be declared first in `Process_Globals`"
+        ),
+        "{diags:?}"
+    );
+    let diags = errors(&globals(
+        "    For i = 1 To 2\n    Next\n    For i As Double = 0 To 1 Step 0.5\n    Next",
+        "",
+    ));
+    assert!(
+        has(
+            &diags,
+            "`i` is already declared, so write the loop without `As`"
+        ),
+        "{diags:?}"
+    );
+    // In `Class_Globals` (not recorded) a loop must use a declared variable,
+    // without `As`.
+    let class = |body: &str| {
+        errors(&format!(
             "Sub Class_Globals\n{body}\nEnd Sub\n\nSub Initialize\nEnd Sub\n"
-        ));
-        assert!(
-            has(&diags, "must be declared first in `Class_Globals`"),
-            "{body}: {diags:?}"
-        );
-    }
+        ))
+    };
+    let diags = class("    For i = 1 To 3\n    Next");
+    assert!(
+        has(&diags, "must be declared first in `Class_Globals`"),
+        "{diags:?}"
+    );
+    let diags = class("    Dim v As Int\n    For Each v As Int In Array As Int(1)\n    Next");
+    assert!(
+        has(
+            &diags,
+            "not supported in `Class_Globals` yet: `v` is already declared"
+        ),
+        "{diags:?}"
+    );
 }
 
 #[test]

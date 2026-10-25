@@ -55,13 +55,15 @@ End Sub
   before anything else. Statements there run too. An undeclared `For`
   counter there is a module variable, an `Int`: other Subs read it, and
   their own undeclared counters of that name are the same variable
-  (recorded). A `For Each v As T` variable there is a module variable of
-  type `T` too, by analogy: the recording only shows the loop runs, so an
-  undeclared counter of that name in another Sub, the one use where the
-  analogy matters, is a compile error *(open)*. `For i As T` there is
-  *(open)*, so a compile error: declare it with `Dim` and loop without
-  `As`. All of this is only for the main module: in `Class_Globals` a loop
-  must use a declared variable.
+  (recorded). A `For Each v As T` loop there runs (recorded) and declares
+  `v` as a module variable of type `T` that only `Process_Globals` sees:
+  whether other Subs see it is *(open)*, so there `v` is undeclared, and
+  an undeclared counter `v` is a compile error. A name that is both an
+  undeclared counter and a `For Each` variable there is a compile error
+  *(open)*: declare it with `Dim`. `For i As T` there is *(open)*, so a
+  compile error: declare `i` with `Dim` and loop without `As`. All of this
+  is only for the main module: in `Class_Globals` a loop must use a
+  variable declared with `Dim`, without `As`.
 - `Sub AppStart (Args() As String)` is the entry point. It is called after
   `Process_Globals` with the command-line arguments. The program ends when
   `AppStart` returns, with exit code 0.

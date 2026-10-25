@@ -389,7 +389,7 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   Sub is the same variable (**recorded**: `process_globals_for`,
   `process_globals_counter_visible`, `process_globals_counter_shared`).
   `For Each v As T` runs there too (**recorded**: `process_globals_for_each`);
-  whether `v` is a module variable is **open**
+  whether other Subs see `v` is **open**
   (`process_globals_for_each_visible`, `process_globals_for_each_shared`).
   Test is `i <= b` for a
   positive step and `i >= b` for a negative step. **open**: whether `b` and
