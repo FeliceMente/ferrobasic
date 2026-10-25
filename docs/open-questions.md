@@ -13,8 +13,8 @@ related tests stay `pending-recording`.
 
 - [ ] Precedence of `&` relative to comparison and arithmetic operators.
       B4J 10.70 refuses `Dim r As String = "x" & 1 + 2` ("Syntax error",
-      recorded); FerroBASIC accepts it and prints `x3`, until the probes
-      settle the rule. Fixtures, one expression each, since a syntax error
+      recorded); FerroBASIC accepts it and prints `x3` (deviation D7), until
+      the probes settle the rule. Fixtures, one expression each, since a syntax error
       stops the whole build: `level0/concat_plus_after`, `concat_plus_before`,
       `concat_parens`, `concat_times_after`, `concat_minus_after`,
       `concat_unary_minus`, `concat_compare`.
@@ -125,7 +125,8 @@ needs a recorded test):
       `level0/array_row_order`.
 - [ ] `List.Initialize2` (or any `List` parameter) given a 2-dimensional
       array through an `Object` variable: the compiler cannot reject it.
-      FerroBASIC gives a list of the array's rows.
+      FerroBASIC gives a list of the array's rows. Fixture:
+      `level0/list_from_2d_array_object`.
 - [x] The type of `IIf`'s result, and so how it converts when assigned or
       printed: the chosen value keeps its own type, so `Log(IIf(True, 3,
       4.5))` prints `3` (recording: `level0/iif_branches`).

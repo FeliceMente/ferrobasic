@@ -189,7 +189,6 @@ mod tests {
         assert!(can_convert(&Ty::Int, &Ty::String));
         assert!(can_convert(&Ty::String, &Ty::Int));
         assert!(can_convert(&Ty::Object, &Ty::Map));
-        assert!(can_convert(&Ty::Array(Box::new(Ty::Int), 1), &Ty::List));
         assert!(!can_convert(&Ty::Array(Box::new(Ty::Int), 2), &Ty::List));
         assert!(can_convert(&Ty::Null, &Ty::List));
         assert!(can_convert(&Ty::Array(Box::new(Ty::Int), 1), &Ty::List));

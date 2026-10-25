@@ -68,7 +68,7 @@ The "not yet" rows come from the
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `+ - * /`, `Mod`, unary `-` | ✅ | `/` always gives `Double`; [level0.md](spec/level0.md#operators); test `division_and_mod` |
-| `&` string concatenation | ⚠️ | its precedence is *(open)*: B4J refuses `"x" & 1 + 2`, which FerroBASIC accepts for now; tests `concat_*` |
+| `&` string concatenation | ⚠️ | its precedence is *(open)*: B4J refuses `"x" & 1 + 2`, which FerroBASIC accepts for now (D7); tests `concat_*` |
 | `= <> < > <= >=` | ✅ | `<` and `>` on Strings, and String-number comparisons, are *(open)* |
 | `And`, `Or` (short-circuit), `Not(x)` | ✅ | their relative precedence is *(open)*; test `precedence_and_or` |
 | Inline cast `x.As(T)` | ✅ | [level0-builtins.md](spec/level0-builtins.md#keywords-and-constants) |
