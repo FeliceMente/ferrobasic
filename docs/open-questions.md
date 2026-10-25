@@ -192,8 +192,16 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       T` variable in `Process_Globals`: which type it has. FerroBASIC
       refuses it. Fixture: `level0/process_globals_counter_and_for_each`.
 - [ ] Whether a loop variable that `Process_Globals` declares may have the
-      name of a Sub, of `Bit` or of a keyword, and then hides it in other
-      Subs. FerroBASIC refuses the name.
+      name of a Sub, a `Type`, `Bit` or a keyword, and then hides it in
+      other Subs. FerroBASIC refuses the name. Fixture:
+      `level0/process_globals_loop_named_like_sub`.
+- [ ] Whether `For Each v As T` in `Process_Globals` may declare again a
+      `v` that a `Dim` there declares. FerroBASIC refuses it. Fixture:
+      `level0/process_globals_for_each_declared`.
+- [ ] Whether a local of another Sub may hide the undeclared counter of
+      `Process_Globals`, as FerroBASIC lets it hide a module variable
+      declared with `Dim` (the generated Java's local would hide the field).
+      Fixture: `level0/process_globals_counter_hidden`.
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).
