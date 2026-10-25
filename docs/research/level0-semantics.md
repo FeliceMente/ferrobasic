@@ -321,10 +321,11 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
 - `And`, `Or` are boolean and **short-circuit**, left to right (**docs**,
   booklet §4.3.1.1). `Not` is a function, `Not(x)`, not a prefix operator
   (**docs**). Bitwise operations are `Bit.And`, `Bit.Or`, … functions.
-- `&` concatenates; `+` is arithmetic only (**forum**). Precedence of `&`
-  relative to `+` and to comparisons is **open**. B4J 10.70 refuses
-  `"x" & 1 + 2` as a syntax error (**recorded**); the probe tests
-  `concat_*` are to settle the rule. Earlier evidence:
+- `&` concatenates; `+` is arithmetic only (**forum**). `+`, `-`, `*` or a
+  negation next to `&`, on either side, is a syntax error unless
+  parenthesized, and a comparison binds looser than `&` (**recorded**,
+  B4J 10.70: the `concat_*` tests); `/` and `Mod` are **open**. Earlier
+  evidence:
   `"This " & 2 + 2 & " is a test"` being rejected in 2011 while
   `"This " & (2 + 2) & ...` works
   ([forum](https://www.b4x.com/android/forum/threads/bug-concatenating-strings.8701/)),
@@ -382,6 +383,10 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
 
 ### Declarations and scope
 
+- `Dim s As String` starts as `""`, and `s = Null` stores the text
+  `"null"`: the generated code is `String _s = "";` and
+  `_s = BA.ObjectToString(Common.Null);`, and `IsNumber(s)` is then `False`
+  (**generated**, **recorded**: `number_parsing`).
 - The main module must have a `Sub Process_Globals`, even an empty one:
   B4J refuses to build it otherwise, with "Sub process_globals is missing"
   (**recorded**, B4J 10.70: four tests without it did not build).

@@ -11,15 +11,15 @@ Answers from public sources (runtime source code, official docs, forum) are in
 "answered" there is still unconfirmed until a recording agrees with it; the
 related tests stay `pending-recording`.
 
-- [ ] Precedence of `&` relative to comparison and arithmetic operators.
-      B4J 10.70 refuses `Dim r As String = "x" & 1 + 2` ("Syntax error",
-      recorded); FerroBASIC accepts it and prints `x3` (deviation D7), until
-      the probes settle the rule. Fixtures, one expression each, since a syntax error
-      stops the whole build: `level0/concat_plus_after`, `concat_plus_before`,
-      `concat_parens`, `concat_times_after`, `concat_minus_after`,
-      `concat_unary_minus`, `concat_compare`.
-- [ ] Relative precedence of `And` and `Or`, and of both versus comparisons.
-      Fixture: `level0/precedence_and_or`.
+- [x] `&` next to `+`, `-`, `*` or a negation is a syntax error unless
+      parenthesized, on either side (`"x" & 1 + 2`, `1 + 2 & "x"`,
+      `"x" & -1`); a comparison binds looser than `&` (`"a" & "b" = "ab"` is
+      `True`). Recorded: `level0/concat_*`; FerroBASIC gives a precise error.
+- [ ] `&` next to `/` or `Mod`: FerroBASIC accepts both. Fixtures:
+      `level0/concat_divide_after`, `concat_mod_after`.
+- [x] `And` binds tighter than `Or`: `True Or False And False` is `True`
+      (recording: `level0/precedence_and_or`). Against comparisons it is
+      still open.
       Not stated in the official docs.
 - [x] Whether `Case` accepts ranges: no ([docs](research/level0-semantics.md#statements)).
 - [ ] Whether `Select Case` is rejected or accepted as a synonym of `Select`.
@@ -43,7 +43,14 @@ related tests stay `pending-recording`.
       ([source](research/level0-semantics.md#number-to-string-conversion-source)).
 - [x] Numbers in `&` are converted with `BA.NumberToString`
       ([generated](research/level0-semantics.md#number-to-string-conversion-source)).
-- [ ] Whether `Log(number)` and number-to-String assignments also use `BA.NumberToString`.
+- [x] `Log(number)` uses `BA.NumberToString` too (generated code of
+      `level0/number_parsing`); number-to-String assignments are still open.
+- [x] `Null` converted to a `String` (assigned, passed, returned) is the
+      text `"null"`: B4J compiles it with `BA.ObjectToString` (generated code
+      and recording: `level0/number_parsing`).
+- [ ] How a `String` compares with `Null` (`s = Null` once `s` holds
+      `"null"`, or an unset `String` field). Fixture:
+      `level0/string_null_compare`.
 - [ ] Which keywords besides `In` are also accepted as names (`Step`, `To`,
       `Each`, `Until`, `Type`, …): `In` is
       ([generated](research/level0-semantics.md#keywords-used-as-names-generated)).
@@ -108,10 +115,10 @@ needs a recorded test):
 - [ ] When B4J raises `java.lang.OutOfMemoryError` depends on the JVM's heap
       size, which a recording must state. FerroBASIC always says `Java heap
       space`; the JDK words an over-long String differently.
-- [ ] How a record prints (`Log(p)`), and `GetType` of a record. If jCore's
-      `BA.TypeToString` prints it, a line break follows every third field
-      (`IsInitialized` counts); FerroBASIC adds none. Fixture:
-      `level0/record_printing`.
+- [x] How a record prints: jCore's `BA.TypeToString`, `IsInitialized` first
+      and a line break after every third field (recording:
+      `level0/record_printing`).
+- [ ] `GetType` of a record.
 - [ ] How a variable of type `Exception` and an array print.
 - [ ] `Sin`, `Cos`, `Tan`, `Power` and `Logarithm` call `Math` methods that
       HotSpot replaces with CPU intrinsics, whose last bit may depend on the
@@ -119,14 +126,15 @@ needs a recorded test):
       recording machine (Intel, OpenJDK 19) they match: `level0/math_builtins`
       is recorded; other machines may differ. (`ASin`, `ACos`,
       `ATan`, `ATan2` are settled: fdlibm, bit for bit.)
-- [ ] The order in which `Grid(i, j) = v` evaluates `i`, `j` and `v`, and
-      whether a bad row index fails before `j` is evaluated. FerroBASIC
-      follows Java's `a[i][j] = v`: `i`, the row, `j`, then `v`. Fixture:
-      `level0/array_row_order`.
-- [ ] `List.Initialize2` (or any `List` parameter) given a 2-dimensional
-      array through an `Object` variable: the compiler cannot reject it.
-      FerroBASIC gives a list of the array's rows. Fixture:
-      `level0/list_from_2d_array_object`.
+- [x] `Grid(i, j) = v` evaluates `i`, `j`, then `v`, and a bad row index
+      fails before `j` is evaluated, as Java's `a[i][j] = v` does
+      (recording: `level0/array_row_order`).
+- [x] A 2-dimensional array given to a `List` parameter through an `Object`
+      raises `ClassCastException` (recording:
+      `level0/list_from_2d_array_object`).
+- [ ] A one-dimensional array given to a `List` parameter through an
+      `Object`: FerroBASIC wraps it. Fixture:
+      `level0/list_from_1d_array_object`.
 - [x] The type of `IIf`'s result, and so how it converts when assigned or
       printed: the chosen value keeps its own type, so `Log(IIf(True, 3,
       4.5))` prints `3` (recording: `level0/iif_branches`).

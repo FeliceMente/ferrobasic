@@ -730,8 +730,16 @@ impl<'m> Builder<'m> {
             ExprKind::Var(VarRef::Global(g)) => Rvalue::Global(GlobalId(g.0)),
             ExprKind::Convert(inner) => {
                 if inner.ty == Ty::Null {
-                    // A typed `Null`: the constant takes the type it is used as.
-                    return Rvalue::Use(Operand::Const(Constant::Null));
+                    // A typed `Null`: the constant takes the type it is used
+                    // as. As a String it is the text "null": B4J compiles
+                    // `s = Null` to `_s = BA.ObjectToString(Common.Null)`
+                    // (generated code; recording `level0/number_parsing`).
+                    let constant = if e.ty == Ty::String {
+                        Constant::String("null".into())
+                    } else {
+                        Constant::Null
+                    };
+                    return Rvalue::Use(Operand::Const(constant));
                 }
                 let value = self.operand(inner);
                 Rvalue::Convert {
