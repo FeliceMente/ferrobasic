@@ -639,6 +639,18 @@ fn loops_in_process_globals() {
             "{body}: {diags:?}"
         );
     }
+    // A refused loop's variable is not reported again in its body.
+    for (body, app) in [
+        ("    For Bit = 1 To 2\n        Log(Bit)\n    Next", ""),
+        ("    For i As Int = 1 To 2\n        Log(i)\n    Next", ""),
+        (
+            "",
+            "    For Each x In Array As Int(1)\n        Log(x)\n    Next",
+        ),
+    ] {
+        let diags = errors(&globals(body, app));
+        assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
+    }
     // An unknown type is reported once, not again as a type conflict.
     let diags = errors(&globals(
         "    For Each v As Foo In Array As Int(1)\n    Next\n    For Each v As Int In Array As Int(1)\n    Next",
