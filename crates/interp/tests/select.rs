@@ -5,9 +5,7 @@ mod common;
 
 /// Runs `body` in `AppStart`; returns stdout and the uncaught error's kind.
 fn run(body: &str) -> (String, Option<String>) {
-    let (stdout, outcome) = common::run(&format!(
-        "Sub AppStart (Args() As String)\n{body}\nEnd Sub\n"
-    ));
+    let (stdout, outcome) = common::run(&common::app_start(body));
     (stdout, outcome.error.map(|e| e.kind))
 }
 

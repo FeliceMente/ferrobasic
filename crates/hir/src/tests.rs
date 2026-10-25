@@ -259,7 +259,7 @@ fn later_constructs_get_one_precise_error() {
         "`Wait For` is not supported at Level 0: it needs resumable subs (Level 2)",
     );
     only(
-        "Sub AppStart (Args() As String)\nEnd Sub\n#If Java\npublic static void x() { }\n#End If\n",
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n#If Java\npublic static void x() { }\n#End If\n",
         "inline Java (`#If Java`) is not supported at Level 0: it needs Java interop (Level 3)",
     );
     // A variable named `Const` is still a variable.
@@ -269,13 +269,45 @@ fn later_constructs_get_one_precise_error() {
 /// The error covers `#If Java` alone, not a trailing comment or spaces.
 #[test]
 fn inline_java_error_covers_its_directive() {
-    let text =
-        "Sub AppStart (Args() As String)\nEnd Sub\n  #If JAVA   ' native\nint x;\n#End If 'end\n";
+    let text = "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n  #If JAVA   ' native\nint x;\n#End If 'end\n";
     let parse = ferro_syntax::parse(text);
     assert!(parse.errors().is_empty(), "{:?}", parse.errors());
     let (_, diags) = check(&parse.syntax());
     assert_eq!(diags.len(), 1);
     assert_eq!(&text[diags[0].range], "#If JAVA");
+}
+
+#[test]
+fn only_one_dimensional_arrays_convert_to_a_list() {
+    ok(&program(
+        "Dim a(3) As Int\nDim l As List\nl.Initialize2(a)\nl.AddAll(a)",
+    ));
+    let d = errors(&program(
+        "Dim g(2, 3) As Int\nDim l As List\nl.Initialize2(g)",
+    ));
+    assert_eq!(
+        d,
+        [
+            "an array of 2 dimensions cannot be used as a List: only a one-dimensional array converts to one"
+        ]
+    );
+}
+
+#[test]
+fn missing_process_globals() {
+    let d = errors("Sub AppStart (Args() As String)\nEnd Sub\n");
+    assert_eq!(
+        d,
+        ["missing `Sub Process_Globals`: the main module needs one, even an empty one"]
+    );
+    let d = errors("");
+    assert!(
+        has(&d, "missing `Sub Process_Globals`") && has(&d, "missing `Sub AppStart"),
+        "{d:?}"
+    );
+    // A class gets its own error, not this one.
+    let d = errors("Sub Class_Globals\nEnd Sub\nPublic Sub Initialize\nEnd Sub\n");
+    assert!(!has(&d, "missing `Sub Process_Globals`"), "{d:?}");
 }
 
 #[test]
@@ -306,16 +338,19 @@ fn members_and_builtins() {
 #[test]
 fn subs_calls_and_returns() {
     ok(
-        "Sub AppStart (Args() As String)\n  Log(Square(12))\n  Hello\nEnd Sub\n\
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Log(Square(12))\n  Hello\nEnd Sub\n\
         Sub Square (x As Int) As Int\n  Return x * x\nEnd Sub\nSub Hello\n  Log(\"hi\")\nEnd Sub\n",
     );
-    let d = errors("Sub AppStart (Args() As String)\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n");
+    let d = errors(
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n",
+    );
     assert!(has(&d, "no return type"), "{d:?}");
-    let d =
-        errors("Sub AppStart (Args() As String)\n  Dim x As Int = F\nEnd Sub\nSub F\nEnd Sub\n");
+    let d = errors(
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Dim x As Int = F\nEnd Sub\nSub F\nEnd Sub\n",
+    );
     assert!(has(&d, "does not return a value"), "{d:?}");
     let d = errors(
-        "Sub AppStart (Args() As String)\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n",
     );
     assert!(has(&d, "defined twice"), "{d:?}");
 }

@@ -1,3 +1,6 @@
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     Dim Empty As List
     Empty.Initialize

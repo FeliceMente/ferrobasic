@@ -47,9 +47,14 @@ The help also lists planned commands, which are not implemented yet: `compile`
 ## 2. Hello, world
 
 A program is one module. Execution starts at `Sub AppStart`, which receives
-the command-line arguments. Save this as `hello.bas`:
+the command-line arguments. `Sub Process_Globals` declares the module's
+variables; every program needs one, even an empty one. Save this as
+`hello.bas`:
 
 ```vb
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     Log("Hello, world!")
 End Sub
@@ -80,6 +85,9 @@ project file, so you see at once what stands in the way.
 `greet.bas`:
 
 ```vb
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     If Args.Length = 0 Then
         Log("Usage: greet <name>...")
@@ -111,6 +119,9 @@ $ echo $?
 Save this as `table.bas`:
 
 ```vb
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     Dim Rate As Double = 0.22
     For Price = 10 To 50 Step 20
@@ -147,6 +158,9 @@ Things to notice, all as in B4J:
 Save this as `subs.bas`:
 
 ```vb
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     For n = 1 To 5
         Log(n & "! = " & Factorial(n))
@@ -267,6 +281,9 @@ bird: 1
 the file, line and column, then the source line with a caret under the problem:
 
 ```vb
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     Dim Count As Int = 3
     Log(Cuont + 1)
@@ -278,13 +295,13 @@ End Sub
 
 ```console
 $ ferro check typo.bas
-typo.bas:3:9: error: `Cuont` is not declared
+typo.bas:6:9: error: `Cuont` is not declared
       Log(Cuont + 1)
           ^
-typo.bas:5:11: error: String has no member `Lenght` at Level 0
+typo.bas:8:11: error: String has no member `Lenght` at Level 0
       Log(s.Lenght)
             ^
-typo.bas:6:5: error: `Sleep` is not supported at Level 0: it needs resumable subs (Level 2)
+typo.bas:9:5: error: `Sleep` is not supported at Level 0: it needs resumable subs (Level 2)
       Sleep(100)
       ^
 3 error(s)
@@ -301,6 +318,9 @@ An error that is not caught stops the program. Output printed before the error
 is kept:
 
 ```vb
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     Dim Items As List
     Items.Initialize
@@ -314,7 +334,7 @@ End Sub
 ```console
 $ ferro run crash.bas
 first
-Error occurred on line: 6 (Main)
+Error occurred on line: 9 (Main)
 java.lang.IndexOutOfBoundsException: Index 5 out of bounds for length 1
 $ echo $?
 1
@@ -328,6 +348,9 @@ The error is named after the Java exception B4J raises in the same place.
 `LastException.Message` describes the error:
 
 ```vb
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     Log(ParseOr("42", -1))
     Log(ParseOr("forty-two", -1))

@@ -1,37 +1,21 @@
 Sub Process_Globals
     Private Grid(2, 2) As Int
-    Private Rows As List
 End Sub
 
 Sub AppStart (Args() As String)
-    Rows.Initialize2(Grid)
-    ' Java selects the row before it evaluates the value assigned...
-    Dim OldFirst() As Int = Rows.Get(0)
-    Grid(0, 0) = ReplaceFirstRow
-    Log(OldFirst(0) & " " & Grid(0, 0))
-    ' ...and before it evaluates the next index.
-    Dim OldSecond() As Int = Rows.Get(1)
-    OldSecond(1) = 5
-    Log(Grid(1, ReplaceSecondRow))
-    ' A bad row index fails before the next index is evaluated.
+    ' The order in which the indices and the assigned value are evaluated
+    ' (docs/open-questions.md).
+    Grid(Noisy("row", 1), Noisy("column", 0)) = Noisy("value", 7)
+    Log(Grid(1, 0))
+    ' A bad row index: does it fail before the next index is evaluated?
     Try
-        Log(Grid(5, Noisy))
+        Log(Grid(Noisy("bad row", 5), Noisy("column", 0)))
     Catch
-        Log("bad row")
+        Log("caught")
     End Try
 End Sub
 
-Sub ReplaceFirstRow As Int
-    Rows.Set(0, Array As Int(10, 20))
-    Return 7
-End Sub
-
-Sub ReplaceSecondRow As Int
-    Rows.Set(1, Array As Int(30, 40))
-    Return 1
-End Sub
-
-Sub Noisy As Int
-    Log("evaluated")
-    Return 0
+Sub Noisy (What As String, Value As Int) As Int
+    Log(What)
+    Return Value
 End Sub

@@ -154,11 +154,10 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
 - An array passed as a `List` goes through `Common.ArrayToList`
   ([`Common.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Common.java#L715-L729)): a primitive
   array is boxed into a copy, any other array is wrapped by `Arrays.asList`.
-  An array of rank 2 or more is an array of arrays (`int[][]` is an
-  `Object[]`), so it gives a fixed-size list of its rows, shared with the
-  array: changing a row through the list changes the array, and `Set`
-  replaces a row (with an array of the row's type, or `Null`; anything else
-  raises `ArrayStoreException`).
+  An array of rank 2 or more does not get there: the compiler casts it to
+  `List` instead, which javac rejects (**recorded**, B4J 10.70: "int[][]
+  cannot be converted to List"), so passing one where a `List` is expected
+  is a compile error. Through an `Object` variable it is *(open)*.
 - B4X arrays are Java arrays (jCore takes them as `int[]`, `Object[]`, …), so
   `Grid(i, j)` is Java's `grid[i][j]`, evaluated as the JLS says (§15.10.4,
   §15.26.1): `grid[i]` selects and checks the row before `j` is evaluated,
@@ -323,7 +322,9 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   booklet §4.3.1.1). `Not` is a function, `Not(x)`, not a prefix operator
   (**docs**). Bitwise operations are `Bit.And`, `Bit.Or`, … functions.
 - `&` concatenates; `+` is arithmetic only (**forum**). Precedence of `&`
-  relative to `+` and to comparisons is **open**: the only evidence is
+  relative to `+` and to comparisons is **open**. B4J 10.70 refuses
+  `"x" & 1 + 2` as a syntax error (**recorded**); the probe tests
+  `concat_*` are to settle the rule. Earlier evidence:
   `"This " & 2 + 2 & " is a test"` being rejected in 2011 while
   `"This " & (2 + 2) & ...` works
   ([forum](https://www.b4x.com/android/forum/threads/bug-concatenating-strings.8701/)),
@@ -380,6 +381,10 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   branch (**docs**, booklet §4.3.2). Not in the Level 0 grammar yet.
 
 ### Declarations and scope
+
+- The main module must have a `Sub Process_Globals`, even an empty one:
+  B4J refuses to build it otherwise, with "Sub process_globals is missing"
+  (**recorded**, B4J 10.70: four tests without it did not build).
 
 - `Dim` is kept for compatibility; `Private` / `Public` are preferred
   (**docs**). In a Sub, all three declare a local.

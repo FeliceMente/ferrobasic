@@ -11,7 +11,7 @@ use std::os::unix::fs::FileTypeExt;
 
 const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
-const PROGRAM: &str = "Sub AppStart (Args() As String)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n";
+const PROGRAM: &str = "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n";
 
 /// A fresh directory under Cargo's per-target scratch area, removed when
 /// dropped, also when the test fails.
@@ -355,13 +355,13 @@ fn closed_pipes_do_not_change_the_exit_code() {
     let dir = Scratch::new("pipes");
     let bad = dir.file(
         "bad.bas",
-        "Sub AppStart (Args() As String)\n    x = = 1\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    x = = 1\nEnd Sub\n",
     );
     let out = with_closed_pipe(&["check", bad.to_str().unwrap()], false);
     assert_eq!(out.status.code(), Some(3));
     let crash = dir.file(
         "crash.bas",
-        "Sub AppStart (Args() As String)\n    Dim l As List\n    l.Add(1)\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Dim l As List\n    l.Add(1)\nEnd Sub\n",
     );
     let out = with_closed_pipe(&["run", crash.to_str().unwrap()], false);
     assert_eq!(out.status.code(), Some(1));
@@ -370,7 +370,8 @@ fn closed_pipes_do_not_change_the_exit_code() {
 #[test]
 fn many_errors_are_counted_but_not_all_printed() {
     let dir = Scratch::new("errors");
-    let mut text = String::from("Sub AppStart (Args() As String)\n");
+    let mut text =
+        String::from("Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n");
     for _ in 0..150 {
         text.push_str("    Log(undeclared)\n");
     }
@@ -387,7 +388,7 @@ fn many_errors_are_counted_but_not_all_printed() {
 }
 
 fn in_app_start(body: &str) -> String {
-    format!("Sub AppStart (Args() As String)\n{body}\nEnd Sub\n")
+    format!("Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n{body}\nEnd Sub\n")
 }
 
 /// Deeply nested programs are rejected with one error instead of crashing
