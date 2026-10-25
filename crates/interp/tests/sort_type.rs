@@ -37,10 +37,11 @@ fn sort_type_reports_the_first_problem_in_list_order() {
 
 #[test]
 fn sort_type_wraps_exceptions_but_not_errors() {
-    // The comparator catches `Exception`: printing a field nested too deeply
+    // The comparator catches `Exception`: printing a field nested deeper than
+    // the printing limit (7000)
     // raises `StackOverflowError`, which is not wrapped.
     let (error, _) = run("    Dim Deep As List\n    Deep.Initialize\n    \
-         For I = 1 To 2000\n        Dim Outer As List\n        Outer.Initialize\n        \
+         For I = 1 To 8000\n        Dim Outer As List\n        Outer.Initialize\n        \
          Outer.Add(Deep)\n        Deep = Outer\n    Next\n    \
          Dim X, Y As A\n    X.Initialize\n    X.N = Deep\n    Y.Initialize\n    Y.N = Deep\n    \
          Dim L As List\n    L.Initialize\n    L.Add(X)\n    L.Add(Y)\n    \
@@ -83,4 +84,17 @@ fn sort_type_sorts_by_is_initialized() {
          L.SortTypeCaseInsensitive(\"IsInitialized\", False)\n    Log(L.Get(0) = I)");
     assert_eq!(error, None);
     assert_eq!(out, "true\ntrue\n");
+}
+
+#[test]
+fn a_catch_sees_the_innermost_cause() {
+    // jCore's `BA.setLastException` keeps the innermost cause; uncaught,
+    // the program stops with the `RuntimeException` itself (above).
+    let (error, out) = run(
+        "    Dim X As A\n    X.Initialize\n    Dim Y As B\n    Y.Initialize\n    \
+         Dim L As List\n    L.Initialize\n    L.Add(X)\n    L.Add(Y)\n    \
+         Try\n        L.SortType(\"N\", True)\n    Catch\n        Log(LastException.Message)\n    End Try",
+    );
+    assert_eq!(error, None);
+    assert_eq!(out, "java.lang.IllegalArgumentException\n");
 }
