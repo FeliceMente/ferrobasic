@@ -65,6 +65,10 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   depend on it.
 - Implicit conversions become explicit MIR nodes (`Convert(from, to)`).
 - No target-specific code in `syntax`, `hir` or `mir`.
+- Behaviour follows the project's product (B4J, B4A, B4i, B4R), never the
+  backend. The interpreter implements only the B4J profile for now: keep its
+  Java-specific parts gathered (exception kinds in `value.rs`, number
+  formatting in `number.rs`), and see `docs/architecture.md`, "Target profiles".
 - `crates/runtime` (planned, M4) must stay `no_std`-compatible.
 - No `unsafe` outside crates that explicitly opt in and document why.
 - Keep external dependencies few and justified in the PR description. After
