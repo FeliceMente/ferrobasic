@@ -212,7 +212,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       the module variable? FerroBASIC refuses it. Fixture:
       `level0/local_dim_like_module_variable`.
 - [ ] May a parameter have a module variable's name, and does it hide it?
-      FerroBASIC refuses it. Fixture: `level0/parameter_like_module_variable`.
+      FerroBASIC accepts it, hiding the module variable in its Sub, as the
+      generated Java would (prints 3, then 5); if B4J refuses it,
+      FerroBASIC accepts more than B4J, never runs a valid program
+      differently. Fixture: `level0/parameter_like_module_variable`.
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).

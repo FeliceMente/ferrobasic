@@ -788,22 +788,14 @@ fn locals_named_like_module_variables() {
     }
     // Its undeclared counter is the module variable, as before.
     ok(&program("    For Count = 1 To 2\n    Next"));
-    // Not over a module variable whose type is already reported.
-    let diags = errors(
-        "Sub Process_Globals\n    Dim Count As Missing\nEnd Sub\n\nSub AppStart (Args() As String)\nEnd Sub\n\nSub Show (Count As Int)\nEnd Sub\n",
-    );
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    // A parameter with its name is open, so refused.
-    let diags = errors(&format!(
-        "{}Sub Show (Count As String)\nEnd Sub\n",
+    // A parameter may take its name, and hides it in its Sub, as the
+    // generated Java's parameter hides the field (open; chosen to accept).
+    let module = ok(&format!(
+        "{}Sub Show (Count As String)\n    Log(Count.Length)\nEnd Sub\n",
         program("")
     ));
-    assert_eq!(
-        diags,
-        [
-            "`Count` is also a module variable: whether a parameter may take its name is not known yet, so use another name"
-        ]
-    );
+    let show = module.subs.iter().find(|s| s.name == "Show").unwrap();
+    assert_eq!(show.locals[0].ty, Ty::String);
 }
 
 #[test]
