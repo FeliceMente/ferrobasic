@@ -52,9 +52,14 @@ End Sub
 - `Sub Process_Globals` declares module variables. The main module must have
   one, even an empty one: B4J refuses to build it otherwise ("Sub
   process_globals is missing", recorded). It runs once,
-  before anything else. Statements there run too, but a `For` or `For Each`
-  variable must be declared first (`Dim i As Int`): the implicit `Int`
-  counter of other Subs is *(open)* there, so it is a compile error.
+  before anything else. Statements there run too. An undeclared `For`
+  counter there is an `Int` local of `Process_Globals` (B4J runs the loop,
+  recorded). Whether B4X makes it a module variable instead is *(open)*, so
+  using it in another Sub, read or as an undeclared counter, is a compile
+  error. A loop that declares its variable with `As` there (`For i As
+  Int`, `For Each v As T`) is *(open)* too, so a compile error: declare it
+  with `Dim` and loop without `As`. All of this is only for the main
+  module: in `Class_Globals` an undeclared counter is a compile error.
 - `Sub AppStart (Args() As String)` is the entry point. It is called after
   `Process_Globals` with the command-line arguments. The program ends when
   `AppStart` returns, with exit code 0.
@@ -66,8 +71,9 @@ End Sub
   each member access of `s.Trim.Trim...` as a level; smart strings may nest
   100 deep. Deeper code is a compile error, one per Sub, instead of a crash.
   B4J's own limit (javac's) is *(open)*.
-- A line continuation ` _` must end its line: whether a comment may follow it
-  is *(open)*, so ` _ ' comment` is a compile error.
+- A line continuation ` _` may be followed by a comment (` _ ' comment`,
+  recorded). Without a space before the `'` (` _'`) it is *(open)*, so a
+  compile error.
 - `#Region` / `#End Region` lines are trivia. Project attributes (`#Name: value`)
   are parsed and kept. Level 0 ignores them, except as listed in [cli.md](cli.md).
 - Unsupported constructs get a diagnostic naming the construct and the level

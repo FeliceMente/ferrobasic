@@ -7,6 +7,12 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- A comment may follow a line continuation (`1 + _ ' first part`), as in
+  B4J. Before, it was an error.
+- A `For` with an undeclared counter runs in `Process_Globals` too, as in
+  B4J; the counter is a local of `Process_Globals`. Before, it was an
+  error. Whether B4J makes it a module variable is not known yet, so the
+  programs where that would matter are refused.
 - `Null` assigned, passed or returned as a `String` is the text `"null"`,
   as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
   null, so `IsNumber` or `.Length` on it raised `NullPointerException`.
