@@ -151,8 +151,9 @@ needs a recorded test):
       record has `IsInitialized` too, and sorts by it; a field a JDK class
       declares privately (`Integer.value`) raises
       `InaccessibleObjectException` on OpenJDK 19 (recording:
-      `level0/list_sort_type_class_fields`). FerroBASIC raises
-      `NoSuchFieldException` there instead: deviation D7.
+      `level0/list_sort_type_class_fields`, kept in its `.meta.toml`; test
+      `level0/list_sort_type_initialized`). FerroBASIC gives plain values no
+      fields: deviation D7.
 - [x] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class),
       even though they contain the product's package name: kept for
       compatibility, since it is program output, not a FerroBASIC message.
