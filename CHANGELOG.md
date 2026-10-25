@@ -22,6 +22,12 @@ B4J itself (`docs/compatibility-testing.md`).
   B4J. In a list with several different problems the cause can differ
   (deviation D4). `SortType("IsInitialized", …)` sorts by whether each
   record is initialised (still to be confirmed against B4J).
+- `LastException` in a `Catch` is the innermost cause, as in B4J: after a
+  failed `SortType` it is the error that `RuntimeException` wraps, not the
+  `RuntimeException` (found by the recordings).
+- Lists can be compared 3000 levels deep and printed 7000 levels deep
+  before `StackOverflowError`, up from 1000, matching the depths B4J reached
+  on the recording machine (deviation D2).
 - A sort that raises leaves the list as it was, where B4J leaves it partly
   sorted (deviation D5).
 - `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java

@@ -106,7 +106,8 @@ that of the first item's type:
   (`IllegalArgumentException`), a `Null` item or, case-sensitively, a `Null`
   field value (`NullPointerException`), and field values that do not compare
   (`ClassCastException`). Case-insensitively a `Null` field value is `"null"`.
-  Errors such as `StackOverflowError` are not wrapped.
+  Errors such as `StackOverflowError` are not wrapped. A `Catch` sees the
+  cause itself: `LastException` is always the innermost cause.
 
 A sort that raises leaves the list as it was; B4J leaves it partly sorted
 (deviation D5).

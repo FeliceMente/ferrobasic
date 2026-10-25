@@ -116,7 +116,8 @@ fn sub_lists_of_sub_lists_do_not_chain() {
     );
 }
 
-/// Printing recurses in Java too: past 1000 levels it raises
+/// Printing recurses in Java too: past 7000 levels (FerroBASIC's limit,
+/// deviation D2) it raises
 /// `StackOverflowError`, which `Try` does not catch.
 #[test]
 fn printing_deep_structures_overflows_like_java() {
@@ -134,17 +135,17 @@ fn printing_deep_structures_overflows_like_java() {
 {tail}"
         ))
     };
-    let (stdout, outcome) = run(&nested(1000, "    Log(Head)"));
+    let (stdout, outcome) = run(&nested(7000, "    Log(Head)"));
     assert_eq!(outcome.error, None);
     let expected = format!(
         "built\n(ArrayList) {}{}\n",
-        "[".repeat(1000),
-        "]".repeat(1000)
+        "[".repeat(7000),
+        "]".repeat(7000)
     );
     assert_eq!(stdout, expected);
 
     stops(
-        &nested(1001, "    Log(Head)"),
+        &nested(7001, "    Log(Head)"),
         "built\n",
         "java.lang.StackOverflowError",
     );

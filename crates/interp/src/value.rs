@@ -221,6 +221,8 @@ pub struct Exc {
     /// `None` for an exception without a message (`toString` is then the
     /// kind alone).
     pub message: Option<String>,
+    /// The exception this one wraps (Java `getCause`).
+    pub cause: Option<Box<Exc>>,
 }
 
 pub const RUNTIME: &str = "java.lang.RuntimeException";
@@ -248,6 +250,7 @@ impl Exc {
         Exc {
             kind,
             message: Some(message.into()),
+            cause: None,
         }
     }
 
@@ -255,7 +258,26 @@ impl Exc {
         Exc {
             kind,
             message: None,
+            cause: None,
         }
+    }
+
+    /// Java `new X(cause)`: its message is the cause's `toString`.
+    pub fn caused_by(kind: &'static str, cause: Exc) -> Exc {
+        Exc {
+            kind,
+            message: Some(cause.to_java_string()),
+            cause: Some(Box::new(cause)),
+        }
+    }
+
+    /// What a `Catch` sees in `LastException`: jCore's `BA.setLastException`
+    /// keeps the innermost cause.
+    pub fn innermost(mut self) -> Exc {
+        while let Some(cause) = self.cause.take() {
+            self = *cause;
+        }
+        self
     }
 
     /// `Object should first be initialized (List).`
@@ -828,8 +850,10 @@ impl HKey {
 
 /// How deep `equals` may go into nested collections before raising
 /// `StackOverflowError`, as Java's recursive `ArrayList.equals` does on
-/// self-containing lists (`a.Add(a)`, `b.Add(b)`, `a = b`).
-const MAX_EQUALS_DEPTH: usize = 1000;
+/// deep or self-containing lists (`a.Add(a)`, `b.Add(b)`, `a = b`). Java's
+/// limit depends on the JVM's stack; the recording machine compares 2000
+/// levels and overflows by 5000 (`level0/deep_equals`, deviation D2).
+const MAX_EQUALS_DEPTH: usize = 3000;
 
 /// Java `equals` on boxed values. Lists and maps compare by content, as
 /// `ArrayList.equals` and `AbstractMap.equals` do; other objects by identity.
@@ -973,8 +997,9 @@ fn array_descriptor(elem: &Ty) -> String {
 
 /// How many collections and records may be nested in one another while
 /// printing, before `StackOverflowError`: Java's `toString` recurses, like
-/// `equals` (see [`MAX_EQUALS_DEPTH`]).
-const MAX_PRINT_DEPTH: usize = MAX_EQUALS_DEPTH;
+/// `equals` (see [`MAX_EQUALS_DEPTH`]). The recording machine prints 5000
+/// levels and overflows by 10000 (`level0/deep_printing`, deviation D2).
+const MAX_PRINT_DEPTH: usize = 7000;
 
 /// Java `String.valueOf(object)` of a value held in an `Object` (so a
 /// collection prints without its wrapper's prefix and a Double keeps its
