@@ -2,19 +2,9 @@
 //! the Java error B4J raises, never crash the process. These run on a test
 //! thread (2 MB stack), smaller than `ferro`'s own.
 
-use ferro_interp::Outcome;
+mod common;
 
-/// Parses, checks, lowers and runs `source`; returns stdout and the outcome.
-fn run(source: &str) -> (String, Outcome) {
-    let parse = ferro_syntax::parse(source);
-    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
-    let (module, diags) = ferro_hir::check(&parse.syntax());
-    assert!(diags.is_empty(), "{diags:?}");
-    let program = ferro_mir::lower(&module);
-    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-    let outcome = ferro_interp::run(&program, &[], &mut stdout, &mut stderr);
-    (String::from_utf8(stdout).unwrap(), outcome)
-}
+use common::run;
 
 fn app_start(body: &str) -> String {
     format!("Sub AppStart (Args() As String)\n{body}\nEnd Sub\n")

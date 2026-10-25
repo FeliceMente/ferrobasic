@@ -95,7 +95,7 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 
 `SortType(FieldName, Ascending)` and `SortTypeCaseInsensitive(FieldName, Ascending)`
 apply the same two rules to the named field of `Type` records (the field name
-is case-sensitive, and can be `IsInitialized`). As in jCore, the field is
+is case-sensitive, and can be `IsInitialized` *(open)*). As in jCore, the field is
 that of the first item's type:
 
 - an empty list is left as it is;
