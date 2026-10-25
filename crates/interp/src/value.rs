@@ -163,10 +163,13 @@ impl ListObj {
         Ok((i < len).then(|| items[from + i].clone()))
     }
 
-    /// The own storage, for changes; only lists that are not views (callers
-    /// reject `ReadOnly` lists first).
-    pub fn storage(&self) -> &Shared<Vec<Value>> {
-        &self.items
+    /// The own storage, for changes. A view has none: callers refuse
+    /// changes through a view first, so reaching here is a bug.
+    pub fn storage(&self) -> Result<&Shared<Vec<Value>>, Exc> {
+        match self.view {
+            None => Ok(&self.items),
+            Some(_) => Err(Exc::internal("change through a read-only view")),
+        }
     }
 
     /// Records a structural modification (it invalidates sub-list views).

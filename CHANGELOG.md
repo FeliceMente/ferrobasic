@@ -16,7 +16,10 @@ B4J itself (`docs/compatibility-testing.md`).
   other values, is no longer sorted silently or reported as a missing field:
   errors while sorting raise `RuntimeException`, wrapping the cause, as in
   B4J. In a list with several different problems the cause can differ
-  (deviation D4).
+  (deviation D4). `SortType("IsInitialized", …)` sorts by whether each
+  record is initialised, as in B4J.
+- A sort that raises leaves the list as it was, where B4J leaves it partly
+  sorted (deviation D5).
 - `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java
   (`#If Java` … `#End If`) get one precise error each, saying what is
   missing, instead of generic syntax errors (#32). None of them is supported
