@@ -3,10 +3,6 @@ status = "recorded"   # pending-recording | recorded | deviation | negative
 level = 0
 features = ["for-in-process-globals"]
 
-# Whether other Subs see the variable is open (docs/open-questions.md):
-# FerroBASIC makes it a module variable only Process_Globals sees, so it
-# rejects this ("`n` is not declared") until a recording shows.
-
 [recording]
 product = "B4J"
 version = "10.70"

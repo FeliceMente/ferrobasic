@@ -189,14 +189,18 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [x] Declarations of one name in `Process_Globals` must agree on its type:
       a counter (`Int`) then `For Each n As String` is refused (recording:
       `level0/process_globals_counter_and_for_each`).
-- [ ] With the same type (a counter, then `For Each n As Int`), one
-      variable? FerroBASIC refuses it. Fixture:
-      `level0/process_globals_counter_and_for_each_int`.
+- [ ] With the same type, one variable? A counter, then `For Each n As
+      Int`; a `For Each`, then a counter; two `For Each n As Int`.
+      FerroBASIC refuses all three. Fixtures:
+      `level0/process_globals_counter_and_for_each_int`,
+      `level0/process_globals_for_each_then_counter`,
+      `level0/process_globals_for_each_twice`.
 - [x] A loop variable of `Process_Globals` may have a Sub's name, and a
       statement calling the Sub still works (recording:
       `level0/process_globals_loop_named_like_sub`).
-- [ ] Whether reading or assigning that name elsewhere means the variable
-      or the Sub. FerroBASIC refuses it. Fixture:
+- [ ] Whether reading, assigning or looping over that name, elsewhere or
+      in `Process_Globals` itself, means the variable or the Sub.
+      FerroBASIC refuses it. Fixture:
       `level0/process_globals_loop_named_like_sub_read`. A loop variable
       there named like a `Type`, `Bit` or a keyword is open too, and
       refused.

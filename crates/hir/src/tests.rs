@@ -562,7 +562,6 @@ fn loops_in_process_globals() {
     for (body, ty) in [
         (format!("    Dim n As Int\n{each}"), Ty::Int),
         (format!("{each}\n    Dim n As Int"), Ty::Int),
-        (format!("{each}\n    For n = 1 To 2\n    Next"), Ty::Int),
         (
             "    Dim n As Double\n    For n = 1 To 2\n    Next".to_string(),
             Ty::Double,
@@ -590,7 +589,15 @@ fn loops_in_process_globals() {
         ),
         (
             "    For Each n As String In Array As String(\"a\")\n    Next\n    For n = 1 To 2\n    Next",
-            "a `For` counter must be a number, not String",
+            "`n` is already a `For Each` variable in `Process_Globals`: whether this `For` counter is that variable is not known yet, so declare it with `Dim`",
+        ),
+        (
+            "    For Each n As Int In Array As Int(1)\n    Next\n    For n = 1 To 2\n        Log(n)\n    Next",
+            "`n` is already a `For Each` variable in `Process_Globals`: whether this `For` counter is that variable is not known yet, so declare it with `Dim`",
+        ),
+        (
+            "    For Each n As Int In Array As Int(1)\n    Next\n    For Each n As Int In Array As Int(2)\n    Next",
+            "`n` is already the variable of another `For Each` in `Process_Globals`: whether this one may declare it again is not known yet, so declare it with `Dim`",
         ),
     ] {
         let diags = errors(&globals(body, ""));
@@ -609,18 +616,35 @@ fn loops_in_process_globals() {
         "    For Bump = 1 To 2\n    Next",
         "    Bump\n    Bump()",
     ));
-    for app in [
-        "    Log(Bump)",
-        "    Bump = 3",
-        "    For Bump = 5 To 6\n    Next",
-        "    For Each Bump In Array As Int(1)\n    Next",
+    // Every other use is reported once, also in `Process_Globals`, where
+    // only the loop declaring it may name it.
+    for (body, app) in [
+        ("    For Bump = 1 To 2\n    Next", "    Log(Bump)"),
+        ("    For Bump = 1 To 2\n    Next", "    Log(Bump(1))"),
+        ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
+        (
+            "    For Bump = 1 To 2\n    Next",
+            "    For Bump = 5 To 6\n    Next",
+        ),
+        (
+            "    For Bump = 1 To 2\n    Next",
+            "    For Each Bump In Array As Int(1)\n    Next",
+        ),
+        ("    For Bump = 1 To 2\n        Log(Bump)\n    Next", ""),
     ] {
-        let diags = errors(&sub("    For Bump = 1 To 2\n    Next", app));
+        let diags = errors(&sub(body, app));
+        assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
         assert!(
             has(&diags, "`Bump` is both a Sub and a loop variable"),
             "{app}: {diags:?}"
         );
     }
+    // A refused loop's bounds are still checked.
+    let diags = errors(&sub(
+        "    For Bump = 1 To 2\n    Next",
+        "    For Bump = Missing To 3\n    Next",
+    ));
+    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
     // A `Type`, `Bit` or a keyword is refused once, and the loop's body is
     // still checked, without reporting the variable again.
     for (body, what) in [
@@ -645,10 +669,15 @@ fn loops_in_process_globals() {
         );
     }
     let diags = errors(&globals(
-        "    For Bit = 1 To 2\n        Log(Missing)\n    Next",
+        "    For Bit = Unknown To 2\n        Log(Missing)\n    Next\n    For Each Bit As Int In Other\n    Next",
         "",
     ));
-    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
+    for name in ["Unknown", "Missing", "Other"] {
+        assert!(
+            has(&diags, &format!("`{name}` is not declared")),
+            "{diags:?}"
+        );
+    }
 
     // `For ... As` there is still refused.
     let diags = errors(&globals(
@@ -731,6 +760,11 @@ fn locals_named_like_module_variables() {
     }
     // Its undeclared counter is the module variable, as before.
     ok(&program("    For Count = 1 To 2\n    Next"));
+    // Not over a module variable whose type is already reported.
+    let diags = errors(
+        "Sub Process_Globals\n    Dim Count As Missing\nEnd Sub\n\nSub AppStart (Args() As String)\nEnd Sub\n\nSub Show (Count As Int)\nEnd Sub\n",
+    );
+    assert_eq!(diags.len(), 1, "{diags:?}");
     // A parameter with its name is open, so refused.
     let diags = errors(&format!(
         "{}Sub Show (Count As String)\nEnd Sub\n",
