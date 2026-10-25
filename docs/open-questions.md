@@ -199,9 +199,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       statement calling the Sub still works (recording:
       `level0/process_globals_loop_named_like_sub`).
 - [ ] Whether reading, assigning or looping over that name, elsewhere or
-      in `Process_Globals` itself, means the variable or the Sub.
-      FerroBASIC refuses it. Fixture:
-      `level0/process_globals_loop_named_like_sub_read`. A loop variable
+      in `Process_Globals` itself, means the variable or the Sub, for a
+      module variable a loop or a `Dim` declares. FerroBASIC refuses it,
+      and a statement calls the Sub. Fixtures:
+      `level0/process_globals_loop_named_like_sub_read`,
+      `level0/module_variable_named_like_sub`. A loop variable
       there named like a `Type`, `Bit` or a keyword is open too, and
       refused.
 - [x] A local with a module variable's name and another type is refused
