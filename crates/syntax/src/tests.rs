@@ -380,11 +380,31 @@ fn smart_strings_nested_too_deeply() {
     )));
 }
 
+/// ` _ ' comment` continues the line, and keeps the comment as a token.
 #[test]
-fn a_comment_after_a_line_continuation_is_reported() {
-    let errors = parse_errors(&in_sub("x = 1 + _ ' comment\n    2"));
+fn a_comment_may_follow_a_line_continuation() {
+    for text in [
+        "x = 1 + _ ' comment\n    2",
+        "x = 1 + _\t' comment\r\n    2",
+    ] {
+        let root = parse_ok(&in_sub(text));
+        assert_eq!(count(&root, BIN_EXPR), 1, "{text:?}");
+        let comments = root
+            .descendants_with_tokens()
+            .filter(|t| t.kind() == COMMENT)
+            .count();
+        assert_eq!(comments, 1, "{text:?}");
+    }
+    // The line break after the comment is the only one hidden.
+    let root = parse_ok(&in_sub("x = 1 + _ ' comment\n    2\ny = 3"));
+    assert_eq!(count(&root, BIN_EXPR), 1);
+}
+
+#[test]
+fn a_comment_right_after_a_line_continuation_is_reported() {
+    let errors = parse_errors(&in_sub("x = 1 + _' comment\n    2"));
     assert!(
-        errors[0].contains("a line continuation `_` must end its line"),
+        errors[0].contains("needs a space before its `'`"),
         "{errors:?}"
     );
 }
