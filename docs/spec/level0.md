@@ -164,7 +164,7 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 | 1 | `Or` | short-circuit (recorded: `And` binds tighter) |
 | 2 | `And` | short-circuit |
 | 3 | `=` `<>` `<` `>` `<=` `>=` | left-associative; whether B4X accepts a chain like `a < b < c` is *(open)*, so the parser accepts it |
-| 4 | `&` | binds tighter than comparisons; `+`, `-`, `*` or a negation next to it needs parentheses (a syntax error otherwise, as in B4J); next to `/` and `Mod` *(open)* |
+| 4 | `&` | binds tighter than comparisons; an operand holding an arithmetic operator (`+ - * / Mod`) or a negation needs parentheses (a syntax error otherwise, as in B4J) |
 | 5 | `+` `-` | |
 | 6 | `*` `/` `Mod` | |
 | 7 | unary `-` | |
@@ -180,7 +180,8 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - Integer division by zero (`Mod`) raises `ArithmeticException`. Double
   division by zero gives `Infinity` or `NaN`.
 - `&` converts both sides to String and concatenates. `"x" & 1 + 2`,
-  `1 + 2 & "x"` and `"x" & -1` are errors: write `"x" & (1 + 2)`.
+  `1 + 2 & "x"`, `"x" & 6 / 2` and `"x" & -1` are errors: write
+  `"x" & (1 + 2)`.
 - Comparisons:
   - two numbers compare numerically, as Double;
   - two Strings compare by value, case-sensitive; `<` and `>` on Strings are

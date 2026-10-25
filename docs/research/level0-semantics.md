@@ -321,11 +321,11 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
 - `And`, `Or` are boolean and **short-circuit**, left to right (**docs**,
   booklet §4.3.1.1). `Not` is a function, `Not(x)`, not a prefix operator
   (**docs**). Bitwise operations are `Bit.And`, `Bit.Or`, … functions.
-- `&` concatenates; `+` is arithmetic only (**forum**). `+`, `-`, `*` or a
-  negation next to `&`, on either side, is a syntax error unless
-  parenthesized, and a comparison binds looser than `&` (**recorded**,
-  B4J 10.70: the `concat_*` tests); `/` and `Mod` are **open**. Earlier
-  evidence:
+- `&` concatenates; `+` is arithmetic only (**forum**). An operand of `&`
+  that holds an arithmetic operator (`+ - * / Mod`) or a negation outside
+  parentheses, on either side and at any depth, is a syntax error, and a
+  comparison binds looser than `&` (**recorded**, B4J 10.70: the
+  `concat_*` tests). Earlier evidence:
   `"This " & 2 + 2 & " is a test"` being rejected in 2011 while
   `"This " & (2 + 2) & ...` works
   ([forum](https://www.b4x.com/android/forum/threads/bug-concatenating-strings.8701/)),

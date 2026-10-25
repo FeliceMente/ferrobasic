@@ -12,10 +12,12 @@ B4J itself (`docs/compatibility-testing.md`).
   null, so `IsNumber` or `.Length` on it raised `NullPointerException`.
 - A record prints with a line break after every third field
   (`IsInitialized` counts), as B4J's `BA.TypeToString` does.
-- `+`, `-`, `*` or a negation right next to `&` (`"x" & 1 + 2`) is an
-  error that asks for parentheses, as B4J refuses it.
-- A 2-dimensional array given to a `List` through an `Object` raises
-  `ClassCastException`, as in B4J, instead of giving a list of its rows.
+- An arithmetic operator (`+ - * / Mod`) or a negation in an operand of
+  `&` (`"x" & 1 + 2`, `"x" & 6 / 2`) is an error that asks for
+  parentheses, as B4J refuses it.
+- An array given to a `List` through an `Object` raises
+  `ClassCastException`, as in B4J, whatever its rank: only an array declared
+  as one is wrapped. Before, it gave a list of the items, or of the rows.
 - More conformance tests recorded from B4J 10.70.
 - A main module without `Sub Process_Globals` is an error, as in B4J, even
   when the program declares no module variables (found by the recordings).
