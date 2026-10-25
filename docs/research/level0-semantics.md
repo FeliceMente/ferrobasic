@@ -382,6 +382,10 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
 
 ### Declarations and scope
 
+- The main module must have a `Sub Process_Globals`, even an empty one:
+  B4J refuses to build it otherwise, with "Sub process_globals is missing"
+  (**recorded**, B4J 10.70: four tests without it did not build).
+
 - `Dim` is kept for compatibility; `Private` / `Public` are preferred
   (**docs**). In a Sub, all three declare a local.
 - **Shared type**: `Private i, j, k As Int` declares all three as `Int`

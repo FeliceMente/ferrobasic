@@ -305,6 +305,9 @@ fn missing_process_globals() {
         has(&d, "missing `Sub Process_Globals`") && has(&d, "missing `Sub AppStart"),
         "{d:?}"
     );
+    // A class gets its own error, not this one.
+    let d = errors("Sub Class_Globals\nEnd Sub\nPublic Sub Initialize\nEnd Sub\n");
+    assert!(!has(&d, "missing `Sub Process_Globals`"), "{d:?}");
 }
 
 #[test]

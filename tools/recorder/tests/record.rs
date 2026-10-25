@@ -217,6 +217,12 @@ fn records_every_kind_of_test() {
                 "status = \"deviation\"\ndeviation = \"D9\"\nlevel = 0\n",
                 None,
             ),
+            (
+                "refused_deviation",
+                "' NO BUILD\n",
+                "status = \"deviation\"\ndeviation = \"D9\"\nlevel = 0\n",
+                None,
+            ),
         ],
     );
     let before = snapshot(&root.join("tests"));
@@ -240,6 +246,11 @@ fn records_every_kind_of_test() {
     assert_eq!(verdict("rejected"), (Verdict::Rejected, false));
     assert_eq!(verdict("accepted"), (Verdict::NegativeAccepted, true));
     assert_eq!(verdict("deviation"), (Verdict::DeviationOutput, false));
+    // A deviation the original refuses to build is not a failure.
+    assert_eq!(
+        verdict("refused_deviation"),
+        (Verdict::DeviationOutput, false)
+    );
     assert_eq!(summary.failures(), 1);
 
     let out = root.join("out");
@@ -282,7 +293,8 @@ fn records_every_kind_of_test() {
          tests/conformance/level0/throws.provisional\n"
     );
     let report = read(out.join("report.md"));
-    assert!(report.contains("8 tests: 1 failed, 4 disagree"));
+    assert!(report.contains("9 tests: 1 failed, 4 disagree"));
+    assert!(report.contains("The original toolchain refused to build it."));
     assert!(report.contains("- 3\n+ three\n"));
     assert!(report.contains("In the machine's locale (it-IT) the output differs"));
     assert!(report.contains("**The metadata said the program ends with exit code 0; it ends with an uncaught `java.lang.ArithmeticException`.**"));

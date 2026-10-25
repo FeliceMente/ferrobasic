@@ -223,8 +223,9 @@ impl Lowerer {
         }
         let at = TextRange::empty(root.text_range().start());
         // The original toolchain refuses a main module without it, even
-        // when the program has no module variables.
-        if self.module.process_globals.is_none() {
+        // when the program has no module variables. A class has
+        // `Class_Globals` instead, and gets its own Level 1 error.
+        if self.module.process_globals.is_none() && self.class_globals.is_none() {
             self.error(
                 at,
                 "missing `Sub Process_Globals`: the main module needs one, even an empty one",

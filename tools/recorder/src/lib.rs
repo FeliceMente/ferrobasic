@@ -274,6 +274,16 @@ fn record_one(
             write_meta(config, program, false, None, &rec)?;
         }
         None
+    } else if !built && program.status == Status::Deviation {
+        // Where FerroBASIC accepts what the original refuses, the refusal
+        // is the deviation's reference behaviour.
+        entry.verdict = Verdict::DeviationOutput;
+        note_block(
+            &mut entry.notes,
+            "The original toolchain refused to build it. Builder output:",
+            &build_log,
+        );
+        None
     } else if !built {
         entry.verdict = Verdict::BuildFailed;
         note_block(&mut entry.notes, "Builder output:", &build_log);

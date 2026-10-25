@@ -23,30 +23,18 @@ use crate::*;
 ///
 /// If the module has no `AppStart`: such a module always has diagnostics.
 pub fn lower(module: &ferro_hir::Module) -> Program {
-    let subs = module.subs.len() as u32;
     let mut functions: Vec<Function> = module
         .subs
         .iter()
         .map(|sub| lower_sub(module, sub))
         .collect();
 
-    let init = match module.process_globals {
-        Some(id) => FuncId(id.0),
-        None => {
-            functions.push(Function {
-                name: "Process_Globals".into(),
-                params: 0,
-                locals: Vec::new(),
-                ret: Ty::Void,
-                blocks: vec![BasicBlock {
-                    stmts: Vec::new(),
-                    terminator: Terminator::Return(None),
-                    handler: None,
-                }],
-            });
-            FuncId(subs)
-        }
-    };
+    let init = FuncId(
+        module
+            .process_globals
+            .expect("a module without `Process_Globals` has diagnostics")
+            .0,
+    );
     let entry = FuncId(
         module
             .app_start
