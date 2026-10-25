@@ -149,11 +149,7 @@ pub fn record(config: &Config, runner: &dyn Runner) -> Result<Summary, String> {
         for p in &programs {
             println!("{}", p.name);
         }
-        let n = programs.len();
-        println!(
-            "{n} test{} would be recorded",
-            if n == 1 { "" } else { "s" }
-        );
+        println!("{} would be recorded", tests(programs.len()));
         return Ok(summary);
     }
     fs::create_dir_all(&config.out).map_err(|e| format!("{}: {e}", config.out.display()))?;
@@ -599,9 +595,31 @@ fn describe(ending: &Ending) -> String {
     }
 }
 
+/// How many lines of a program's or the builder's output the report shows:
+/// a stack overflow's trace has thousands.
+const MAX_LINES: usize = 40;
+
 fn note_block(notes: &mut String, title: &str, text: &str) {
     let _ = writeln!(notes, "{title}\n");
-    code_block(notes, if text.is_empty() { "(nothing)\n" } else { text });
+    let lines = text.lines().count();
+    if text.is_empty() {
+        code_block(notes, "(nothing)\n");
+    } else if lines <= MAX_LINES {
+        code_block(notes, text);
+    } else {
+        let mut cut: String = text
+            .lines()
+            .take(MAX_LINES)
+            .flat_map(|l| [l, "\n"])
+            .collect();
+        let _ = writeln!(cut, "… {} more lines", lines - MAX_LINES);
+        code_block(notes, &cut);
+    }
+}
+
+/// `1 test`, `2 tests`.
+pub fn tests(n: usize) -> String {
+    format!("{n} test{}", if n == 1 { "" } else { "s" })
 }
 
 fn diff_block(notes: &mut String, old: &str, new: &str) {
@@ -645,8 +663,8 @@ fn write_report(
     let disagreements = summary.entries.iter().filter(|e| e.disagrees).count();
     let _ = writeln!(
         r,
-        "{} tests: {} failed, {} disagree with what the repository expected.\n",
-        summary.entries.len(),
+        "{}: {} failed, {} disagree with what the repository expected.\n",
+        tests(summary.entries.len()),
         failures,
         disagreements
     );

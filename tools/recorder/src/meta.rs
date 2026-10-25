@@ -37,16 +37,15 @@ pub fn rewrite(meta: &str, recorded: bool, ending: Option<&Ending>, rec: &Record
     while let Some(line) = lines.next() {
         let trimmed = line.trim();
         if trimmed == "[provisional]" || trimmed == "[recording]" {
-            if out
-                .last()
-                .is_some_and(|l| l.starts_with("# Hand-derived output"))
-            {
+            // The comment right above the table is about the table.
+            while out.last().is_some_and(|l| l.trim_start().starts_with('#')) {
                 out.pop();
             }
-            // The table ends at a blank line, a comment or the next table.
+            // The table, its comments included, ends at a blank line or the
+            // next table.
             while lines.peek().is_some_and(|l| {
                 let l = l.trim();
-                !(l.is_empty() || l.starts_with('#') || l.starts_with('['))
+                !(l.is_empty() || l.starts_with('['))
             }) {
                 lines.next();
             }
@@ -158,6 +157,7 @@ features = [\"exit-application2\"]
 # Hand-derived output, used until a recording exists. See docs/compatibility-testing.md.
 [provisional]
 basis = \"source\"   # source | generated | docs | forum
+# A comment inside the table.
 refs = [
     \"docs/research/level0-semantics.md#keywords-maths-and-bit-source\",
 ]
@@ -231,6 +231,16 @@ date = \"2026-10-25\"
         );
         let normal = rewrite(&first, true, Some(&Ending::Normal), &recording());
         assert!(!normal.contains("exit_code") && !normal.contains("uncaught_error"));
+    }
+
+    #[test]
+    fn drops_the_comment_above_a_removed_table() {
+        let meta = "# About the test.\nstatus = \"negative\"\n\n# Basis for the expected rejection.\n# Second line.\n[provisional]\nbasis = \"docs\"\n";
+        let text = rewrite(meta, false, None, &recording());
+        assert!(
+            text.starts_with("# About the test.\nstatus = \"negative\"\n\n[recording]\n"),
+            "{text}"
+        );
     }
 
     #[test]

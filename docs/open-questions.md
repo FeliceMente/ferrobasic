@@ -57,17 +57,21 @@ related tests stay `pending-recording`.
 - [ ] Return value of a typed Sub that ends without `Return`.
 - [ ] Comparing Strings with `<` / `>`, and comparing a String with a number.
 - [ ] Changing a `List` or `Map` while iterating it with `For Each`.
-- [ ] Output and exit code of a B4J non-UI program that stops on an uncaught error.
+- [x] Output and exit code of a B4J non-UI program that stops on an uncaught
+      error: what it logged so far, then exit code 1, with the error on stderr
+      (recording: `level0/uncaught_error`).
 - [x] `AppType` value of a non-UI `.b4j` project: `StandardJava`
       ([public samples](spec/project-files.md#sources)).
 - [ ] Whether `LogDebug` prints in release mode (provisionally not).
 - [ ] Exact text of JDK-generated exception messages seen through
       `LastException.Message` (index and number-parse errors), and which JDK.
 - [ ] Default JVM locale on the recording machine (affects `ToLowerCase` /
-      `ToUpperCase` for Turkish, Azeri and Lithuanian locales, and possibly
-      `NumberFormat`). Recordings force `en-US`; the recorder also runs each
-      test in the machine's own locale and keeps that output when it differs
-      (`<name>.<locale>.expected`).
+      `ToUpperCase` for Turkish, Azeri and Lithuanian locales). Recordings
+      force `en-US`; the recorder also runs each test in the machine's own
+      locale and keeps that output when it differs (`<name>.<locale>.expected`).
+      The first recordings gave the same output in `it-IT` for every test,
+      `NumberFormat` and number printing included. No test covers Turkish
+      case mapping yet.
 - [x] Standalone binaries on macOS: re-signing appended payload bytes does
       not work (`codesign`: "main executable failed strict validation", on
       Apple Silicon and Intel). The package is embedded with `libsui`
@@ -98,12 +102,13 @@ needs a recorded test):
 - [ ] How a variable of type `Exception` and an array print.
 - [ ] `Sin`, `Cos`, `Tan`, `Power` and `Logarithm` call `Math` methods that
       HotSpot replaces with CPU intrinsics, whose last bit may depend on the
-      JVM and CPU; FerroBASIC uses the platform's maths library. Needs recordings from the reference machine. (`ASin`, `ACos`,
+      JVM and CPU; FerroBASIC uses the platform's maths library. On the
+      recording machine (Intel, OpenJDK 19) they match: `level0/math_builtins`
+      is recorded; other machines may differ. (`ASin`, `ACos`,
       `ATan`, `ATan2` are settled: fdlibm, bit for bit.)
-- [ ] The type of `IIf`'s result, and so how it converts when assigned or
-      printed (`Dim n As Int = IIf(True, 1, 2.5)`, `Log(IIf(True, 3, 4.5))`).
-      That it evaluates only the chosen branch is settled. Fixture:
-      `level0/iif_branches`.
+- [x] The type of `IIf`'s result, and so how it converts when assigned or
+      printed: the chosen value keeps its own type, so `Log(IIf(True, 3,
+      4.5))` prints `3` (recording: `level0/iif_branches`).
 - [ ] Whether all `Case` values are evaluated before matching, as they would
       be if the compiler passes them to `BA.switchObjectToInt` as arguments;
       FerroBASIC evaluates them in order until one matches. It only matters
@@ -155,7 +160,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       block nests. FerroBASIC accepts the comments and ends the block at the
       first `#End If`; it only reports the block (Java interop is Level 3),
       so the answer matters once that level runs it.
-- [ ] How deep B4J (javac) lets expressions and blocks nest before failing;
+- [ ] How deep B4J (javac) lets expressions and blocks nest before failing
+      (B4J 10.70 builds 1100 levels: recorded);
       FerroBASIC stops at 1000 levels (`docs/deviations.md`). Fixture:
       `level0/deep_nesting`.
 
