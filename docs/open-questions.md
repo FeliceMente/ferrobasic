@@ -180,28 +180,31 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (recordings: `level0/process_globals_for`,
       `level0/process_globals_counter_visible`,
       `level0/process_globals_counter_shared`).
-- [x] `For Each v As T` runs inside `Process_Globals` (recording:
-      `level0/process_globals_for_each`).
-- [ ] Whether other Subs see that `For Each` variable, as they see the
-      `For` counter. FerroBASIC makes it a module variable only
-      `Process_Globals` sees, and refuses its name in other Subs, read or as
-      an undeclared counter, meanwhile. Fixtures:
-      `level0/process_globals_for_each_visible`,
-      `level0/process_globals_for_each_shared`.
-- [ ] A name that is both an undeclared `For` counter and a `For Each v As
-      T` variable in `Process_Globals`: which type it has. FerroBASIC
-      refuses it. Fixture: `level0/process_globals_counter_and_for_each`.
-- [ ] Whether a loop variable that `Process_Globals` declares may have the
-      name of a Sub, a `Type`, `Bit` or a keyword, and then hides it in
-      other Subs. FerroBASIC refuses the name. Fixture:
-      `level0/process_globals_loop_named_like_sub`.
-- [ ] Whether `For Each v As T` in `Process_Globals` may declare again a
-      `v` that a `Dim` there declares. FerroBASIC refuses it. Fixture:
-      `level0/process_globals_for_each_declared`.
-- [ ] Whether a local of another Sub may hide the undeclared counter of
-      `Process_Globals`, as FerroBASIC lets it hide a module variable
-      declared with `Dim` (the generated Java's local would hide the field).
-      Fixture: `level0/process_globals_counter_hidden`.
+- [x] `For Each v As T` inside `Process_Globals` declares a module
+      variable too, which other Subs see and share; with a `Dim` of the same
+      type first, it is that variable (recordings:
+      `level0/process_globals_for_each`, `level0/process_globals_for_each_visible`,
+      `level0/process_globals_for_each_shared`,
+      `level0/process_globals_for_each_declared`).
+- [x] Declarations of one name in `Process_Globals` must agree on its type:
+      a counter (`Int`) then `For Each n As String` is refused (recording:
+      `level0/process_globals_counter_and_for_each`).
+- [ ] With the same type (a counter, then `For Each n As Int`), one
+      variable? FerroBASIC takes it for one, as with a `Dim` (prints 6).
+      Fixture: `level0/process_globals_counter_and_for_each_int`.
+- [x] A loop variable of `Process_Globals` may have a Sub's name, and a
+      statement calling the Sub still works (recording:
+      `level0/process_globals_loop_named_like_sub`).
+- [ ] Whether reading or assigning that name elsewhere means the variable
+      or the Sub. FerroBASIC refuses it. Fixture:
+      `level0/process_globals_loop_named_like_sub_read`. A loop variable
+      there named like a `Type`, `Bit` or a keyword is open too, and
+      refused.
+- [x] A local with a module variable's name and another type is refused
+      (recording: `level0/process_globals_counter_hidden`).
+- [ ] With the same type, does the local `Dim` declare a new local or mean
+      the module variable? FerroBASIC refuses it. Fixture:
+      `level0/local_dim_like_module_variable`.
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).
