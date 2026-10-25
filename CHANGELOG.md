@@ -25,6 +25,10 @@ B4J itself (`docs/compatibility-testing.md`).
   recording shows whether B4J makes it a new local. Before, it was a new
   local. A parameter with a module variable's name is refused too, until
   a recording shows.
+- A module variable with a Sub's name: a statement `Bump` calls the Sub,
+  as B4J does with a loop variable of `Process_Globals`; reading or
+  assigning the name is refused until a recording shows which it means.
+  Before, a `Dim`'d one silently meant the variable.
 - `Null` assigned, passed or returned as a `String` is the text `"null"`,
   as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
   null, so `IsNumber` or `.Length` on it raised `NullPointerException`.

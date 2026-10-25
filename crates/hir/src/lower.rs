@@ -32,9 +32,6 @@ struct Lowerer {
     records: HashMap<String, RecordId>,
     subs: HashMap<String, SubId>,
     globals: HashMap<String, GlobalId>,
-    /// Module variables that a loop of `Process_Globals` declares with a
-    /// Sub's name: a statement calls the Sub (recorded), other uses are open.
-    sub_named_globals: HashSet<String>,
     /// Loop variables of `Process_Globals` already refused with an error.
     refused_loop_names: HashSet<String>,
     /// Module variables that a loop of `Process_Globals` declares, and which
@@ -168,12 +165,12 @@ fn typed_loop_variable(name: &str, statement: &str, globals: &str) -> String {
     )
 }
 
-/// A use of a module variable that a loop of `Process_Globals` declares
-/// with a Sub's name, other than as a statement.
+/// A use of a module variable with a Sub's name, other than as a
+/// statement.
 fn sub_named_global(name: &str) -> String {
     format!(
-        "`{name}` is both a Sub and a loop variable of `Process_Globals`: whether `{name}` \
-         means the Sub or the variable here is not known yet, so rename the loop variable"
+        "`{name}` is both a Sub and a module variable: whether `{name}` means the Sub or \
+         the variable here is not known yet, so rename the variable"
     )
 }
 
@@ -237,17 +234,15 @@ impl Lowerer {
         for sub in &subs {
             self.declare_sub(sub);
         }
-        for id in [self.module.process_globals, self.class_globals]
-            .into_iter()
-            .flatten()
-        {
-            let node = subs[id.0 as usize].clone();
-            self.declare_globals(&node);
-        }
-        // Only the main module's: `Class_Globals` was not recorded.
+        // The main module's loops declare module variables too;
+        // `Class_Globals` was not recorded.
         if let Some(id) = self.module.process_globals {
             let node = subs[id.0 as usize].clone();
-            self.declare_loop_globals(&node);
+            self.declare_process_globals(&node);
+        }
+        if let Some(id) = self.class_globals {
+            let node = subs[id.0 as usize].clone();
+            self.declare_globals(&node);
         }
         for (id, field, node) in std::mem::take(&mut self.pending_bounds) {
             let bounds = exprs(&node)
@@ -490,7 +485,7 @@ impl Lowerer {
         });
     }
 
-    /// Module variables: the declarators of `Process_Globals`.
+    /// Module variables: the declarators of `Class_Globals`.
     fn declare_globals(&mut self, sub: &SyntaxNode) {
         for dim in sub.descendants().filter(|n| n.kind() == DIM_STMT) {
             for (decl, ty) in self.declarators(&dim) {
@@ -523,86 +518,119 @@ impl Lowerer {
         }
     }
 
-    /// The loop variables of `Process_Globals`, after its `Dim`s, in source
-    /// order: an undeclared `For` counter is a module variable, an Int, and
-    /// a `For Each v As T` variable one of type `T`, which every Sub sees
-    /// and whose undeclared counters share (recorded). Every declaration of
-    /// a name there must agree on its type: B4J refuses a `For Each` that
-    /// does not ("Current declaration does not match previous one").
-    fn declare_loop_globals(&mut self, sub: &SyntaxNode) {
-        let loops = sub
+    /// The module variables of `Process_Globals`, in source order: its
+    /// `Dim`s, and its loops. An undeclared `For` counter is a module
+    /// variable, an Int, and a `For Each v As T` variable one of type `T`,
+    /// which every Sub sees and whose undeclared counters share (recorded).
+    /// Every declaration of a name there must agree on its type: B4J refuses
+    /// a later one that does not ("Current declaration does not match
+    /// previous one").
+    fn declare_process_globals(&mut self, sub: &SyntaxNode) {
+        let nodes = sub
             .descendants()
-            .filter(|n| matches!(n.kind(), FOR_STMT | FOR_EACH_STMT));
-        for node in loops {
-            let Some(name) = child(&node, NAME) else {
-                continue;
-            };
-            let text = name_of(&name);
-            let k = key(&text);
-            let ty = match (node.kind(), child(&node, TYPE_REF)) {
-                (FOR_STMT, None) => Ty::Int,
-                (FOR_EACH_STMT, Some(t)) => self.resolve_type(&t),
-                // `For i As T` there is open (refused when lowered), and a
-                // `For Each` without `As` uses a declared variable.
-                _ => continue,
-            };
-            if self.refused_loop_names.contains(&k) {
-                continue;
-            }
-            if let Some(&id) = self.globals.get(&k) {
-                let existing = self.module.global(id).ty.clone();
-                let origin = self.loop_origins.get(&k).copied();
-                let message = match (node.kind(), origin) {
-                    // A counter over a `Dim`'s variable, or another counter's,
-                    // is that variable.
-                    (FOR_STMT, None | Some(LoopOrigin::Counter)) => continue,
-                    (FOR_STMT, Some(LoopOrigin::ForEach)) => format!(
-                        "`{text}` is already a `For Each` variable in `Process_Globals`: \
-                         whether this `For` counter is that variable is not known yet, so \
-                         declare it with `Dim`"
-                    ),
-                    // Another type is refused (recorded).
-                    _ if existing != ty && existing != Ty::Error && ty != Ty::Error => {
-                        let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
-                        format!(
-                            "`{text}` is already declared as {existing} in `Process_Globals`: \
-                             this loop cannot declare it again as {ty}"
-                        )
-                    }
-                    // The same type as a `Dim` is that variable (recorded).
-                    (_, None) => continue,
-                    (_, Some(LoopOrigin::Counter)) => format!(
-                        "`{text}` is already an undeclared `For` counter in `Process_Globals`: \
-                         whether this `For Each` may declare it again is not known yet, so \
-                         declare it with `Dim`"
-                    ),
-                    (_, Some(LoopOrigin::ForEach)) => format!(
-                        "`{text}` is already the variable of another `For Each` in \
-                         `Process_Globals`: whether this one may declare it again is not \
-                         known yet, so declare it with `Dim`"
-                    ),
-                };
-                self.refused_loop_names.insert(k);
-                self.error(range(&name), message);
-                continue;
-            }
-            if self.loop_name_free(&text, &name) {
-                let origin = if node.kind() == FOR_STMT {
-                    LoopOrigin::Counter
-                } else {
-                    LoopOrigin::ForEach
-                };
-                self.loop_origins.insert(k.clone(), origin);
-                if self.subs.contains_key(&k) {
-                    self.sub_named_globals.insert(k);
+            .filter(|n| matches!(n.kind(), DIM_STMT | FOR_STMT | FOR_EACH_STMT));
+        for node in nodes {
+            if node.kind() == DIM_STMT {
+                for (decl, ty) in self.declarators(&node) {
+                    let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
+                    self.declare_dim_global(name, ty, range(&decl));
                 }
-                self.declare_global(text, ty, range(&name));
+            } else {
+                self.declare_loop_global(&node);
             }
         }
     }
 
+    /// A `Dim` of `Process_Globals`. After a loop that declared the name, the
+    /// same type is that variable, as after a `Dim`; another type is refused.
+    fn declare_dim_global(&mut self, name: String, ty: Ty, at: TextRange) {
+        let k = key(&name);
+        if let Some(&id) = self.globals.get(&k)
+            && self.loop_origins.contains_key(&k)
+        {
+            let existing = self.module.global(id).ty.clone();
+            if existing != ty && existing != Ty::Error && ty != Ty::Error {
+                let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
+                self.error(
+                    at,
+                    format!(
+                        "`{name}` is already declared as {existing} by a loop of \
+                         `Process_Globals`: this `Dim` cannot declare it again as {ty}"
+                    ),
+                );
+            }
+            return;
+        }
+        self.declare_global(name, ty, at);
+    }
+
+    fn declare_loop_global(&mut self, node: &SyntaxNode) {
+        let Some(name) = child(node, NAME) else {
+            return;
+        };
+        let text = name_of(&name);
+        let k = key(&text);
+        let ty = match (node.kind(), child(node, TYPE_REF)) {
+            (FOR_STMT, None) => Ty::Int,
+            (FOR_EACH_STMT, Some(t)) => self.resolve_type(&t),
+            // `For i As T` there is open (refused when lowered), and a
+            // `For Each` without `As` uses a declared variable.
+            _ => return,
+        };
+        if self.refused_loop_names.contains(&k) {
+            return;
+        }
+        if let Some(&id) = self.globals.get(&k) {
+            let existing = self.module.global(id).ty.clone();
+            let origin = self.loop_origins.get(&k).copied();
+            let message = match (node.kind(), origin) {
+                // A counter over a `Dim`'s variable, or another counter's, is
+                // that variable.
+                (FOR_STMT, None | Some(LoopOrigin::Counter)) => return,
+                // Another type is refused (recorded).
+                _ if existing != ty && existing != Ty::Error && ty != Ty::Error => {
+                    let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
+                    format!(
+                        "`{text}` is already declared as {existing} in `Process_Globals`: \
+                         this loop cannot declare it again as {ty}"
+                    )
+                }
+                (FOR_STMT, Some(LoopOrigin::ForEach)) => format!(
+                    "`{text}` is already a `For Each` variable in `Process_Globals`: \
+                     whether this `For` counter is that variable is not known yet, so \
+                     declare it with `Dim`"
+                ),
+                // The same type as a `Dim` is that variable (recorded).
+                (_, None) => return,
+                (_, Some(LoopOrigin::Counter)) => format!(
+                    "`{text}` is already an undeclared `For` counter in `Process_Globals`: \
+                     whether this `For Each` may declare it again is not known yet, so \
+                     declare it with `Dim`"
+                ),
+                (_, Some(LoopOrigin::ForEach)) => format!(
+                    "`{text}` is already the variable of another `For Each` in \
+                     `Process_Globals`: whether this one may declare it again is not \
+                     known yet, so declare it with `Dim`"
+                ),
+            };
+            self.refused_loop_names.insert(k);
+            self.error(range(&name), message);
+            return;
+        }
+        if self.loop_name_free(&text, &name) {
+            let origin = if node.kind() == FOR_STMT {
+                LoopOrigin::Counter
+            } else {
+                LoopOrigin::ForEach
+            };
+            self.loop_origins.insert(k, origin);
+            self.declare_global(text, ty, range(&name));
+        }
+    }
+
     /// Whether a loop variable that `Process_Globals` declares may take this
-    /// name. A Sub's may (recorded); whether the module variable hides a
+    /// name. A Sub's may (recorded: `is_sub_named_global`); whether the
+    /// module variable hides a
     /// `Type`, `Bit` or a keyword of the same name is not recorded, so it is
     /// refused, once.
     fn loop_name_free(&mut self, text: &str, name: &SyntaxNode) -> bool {
@@ -964,13 +992,13 @@ impl Lowerer {
                     return;
                 };
                 let text = name_of(&name);
-                if self.refused(&text) {
-                    self.refused_loop(node, &text, &name);
-                    return;
-                }
                 // `As` in `Process_Globals` is open: refuse it even when the
                 // name is declared, so its type is never ignored.
                 let typed_in_globals = self.in_process_globals && child(node, TYPE_REF).is_some();
+                if self.refused(&text) && !typed_in_globals {
+                    self.refused_loop(node, &text, &name);
+                    return;
+                }
                 let found = self.loop_variable(&text, &name);
                 let Some((var, ty)) = found.clone().filter(|_| !typed_in_globals) else {
                     // Every other undeclared counter is an Int (`hoist_locals`,
@@ -1146,12 +1174,15 @@ impl Lowerer {
         self.loop_body(node);
     }
 
-    /// The variable of a `For` / `For Each`. In `Process_Globals` the loop
-    /// declares it, so a Sub's name is allowed there (recorded); elsewhere
-    /// it is a use like any other.
+    /// The variable of a `For` / `For Each`. The loop of `Process_Globals`
+    /// that declares it may give it a Sub's name (recorded); any other loop
+    /// over it is a use like any other.
     fn loop_variable(&mut self, text: &str, name: &SyntaxNode) -> Option<(VarRef, Ty)> {
-        if self.in_process_globals {
-            self.lookup_var(text)
+        let found = self.lookup_var(text);
+        let declares = matches!(found, Some((VarRef::Global(id), _))
+            if self.in_process_globals && self.module.global(id).range == range(name));
+        if declares {
+            found
         } else {
             self.lookup_use(text, range(name))
         }
@@ -1475,16 +1506,17 @@ impl Lowerer {
         }
     }
 
-    /// A module variable that a loop of `Process_Globals` declares with a
-    /// Sub's name, found where `name` is looked up.
+    /// A module variable with a Sub's name, found where `name` is looked up.
+    /// A statement calls the Sub (recorded for a loop's variable); whether
+    /// another use means the variable or the Sub is open.
     fn is_sub_named_global(&self, name: &str, found: &Option<(VarRef, Ty)>) -> bool {
-        matches!(found, Some((VarRef::Global(_), _))) && self.sub_named_globals.contains(&key(name))
+        matches!(found, Some((VarRef::Global(_), _))) && self.subs.contains_key(&key(name))
     }
 
     /// `name` used as a variable, read or written. If it is a module variable
     /// with a Sub's name, whether it means the variable or the Sub is open
     /// (a statement calls the Sub: `statement_sub_call`), so it is reported,
-    /// once here for every use, and given the error type.
+    /// here for every use, and given the error type.
     fn lookup_use(&mut self, name: &str, at: TextRange) -> Option<(VarRef, Ty)> {
         let found = self.lookup_var(name);
         if !self.is_sub_named_global(name, &found) {
@@ -1510,10 +1542,10 @@ impl Lowerer {
             _ => return None,
         };
         let name = name_of(&callee);
+        let id = *self.subs.get(&key(&name))?;
         if !self.is_sub_named_global(&name, &self.lookup_var(&name)) {
             return None;
         }
-        let id = *self.subs.get(&key(&name))?;
         Some(self.sub_call(id, &args, range(e)))
     }
 

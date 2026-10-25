@@ -567,8 +567,8 @@ fn loops_in_process_globals() {
             Ty::Double,
         ),
         (
-            "    For n = 1 To 3\n    Next\n    Dim n As Long".to_string(),
-            Ty::Long,
+            "    For n = 1 To 3\n    Next\n    Dim n As Int".to_string(),
+            Ty::Int,
         ),
     ] {
         let module = ok(&globals(&body, "    Log(n)"));
@@ -588,10 +588,6 @@ fn loops_in_process_globals() {
             "`n` is already an undeclared `For` counter in `Process_Globals`: whether this `For Each` may declare it again is not known yet, so declare it with `Dim`",
         ),
         (
-            "    For Each n As String In Array As String(\"a\")\n    Next\n    For n = 1 To 2\n    Next",
-            "`n` is already a `For Each` variable in `Process_Globals`: whether this `For` counter is that variable is not known yet, so declare it with `Dim`",
-        ),
-        (
             "    For Each n As Int In Array As Int(1)\n    Next\n    For n = 1 To 2\n        Log(n)\n    Next",
             "`n` is already a `For Each` variable in `Process_Globals`: whether this `For` counter is that variable is not known yet, so declare it with `Dim`",
         ),
@@ -599,9 +595,36 @@ fn loops_in_process_globals() {
             "    For Each n As Int In Array As Int(1)\n    Next\n    For Each n As Int In Array As Int(2)\n    Next",
             "`n` is already the variable of another `For Each` in `Process_Globals`: whether this one may declare it again is not known yet, so declare it with `Dim`",
         ),
+        // In source order: a later `Dim` must agree with the loop before it.
+        (
+            "    For n = 1 To 3\n    Next\n    Dim n As Long",
+            "`n` is already declared as Int by a loop of `Process_Globals`: this `Dim` cannot declare it again as Long",
+        ),
+        (
+            "    For Each n As String In Array As String(\"a\")\n    Next\n    Dim n As Int",
+            "`n` is already declared as String by a loop of `Process_Globals`: this `Dim` cannot declare it again as Int",
+        ),
+        // A counter over another type's `For Each` variable: the mismatch,
+        // not the open question.
+        (
+            "    For Each n As String In Array As String(\"a\")\n    Next\n    For n = 1 To 2\n    Next",
+            "`n` is already declared as String in `Process_Globals`: this loop cannot declare it again as Int",
+        ),
+        // A loop's own `As` error, after its name was refused.
+        (
+            "    For n = 1 To 2\n    Next\n    For Each n As Int In Array As Int(1)\n    Next\n    For n As Int = 1 To 3\n    Next",
+            "",
+        ),
     ] {
         let diags = errors(&globals(body, ""));
-        assert_eq!(diags, [message], "{body}");
+        if message.is_empty() {
+            assert!(
+                has(&diags, "write the loop without `As`"),
+                "{body}: {diags:?}"
+            );
+        } else {
+            assert_eq!(diags, [message], "{body}");
+        }
     }
 
     // A Sub's name may be a loop variable there (recorded); a statement
@@ -631,11 +654,16 @@ fn loops_in_process_globals() {
             "    For Each Bump In Array As Int(1)\n    Next",
         ),
         ("    For Bump = 1 To 2\n        Log(Bump)\n    Next", ""),
+        (
+            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n    Next",
+            "",
+        ),
+        ("    Dim Bump As Int = 4", "    Log(Bump)\n    Bump"),
     ] {
         let diags = errors(&sub(body, app));
         assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
         assert!(
-            has(&diags, "`Bump` is both a Sub and a loop variable"),
+            has(&diags, "`Bump` is both a Sub and a module variable"),
             "{app}: {diags:?}"
         );
     }
