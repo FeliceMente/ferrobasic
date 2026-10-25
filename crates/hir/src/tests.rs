@@ -301,6 +301,11 @@ fn arithmetic_next_to_concat_needs_parentheses() {
         "\"x\" & 2 * 3",
         "\"x\" & 3 - 1",
         "\"x\" & -1",
+        // Deeper in the operand (pending probes, refused meanwhile).
+        "\"x\" & -6 / 2",
+        "\"x\" & 2 * 6 / 3",
+        "2 * 3 Mod 4 & \"x\"",
+        "\"a\" & 1 + 2 & \"b\"",
     ] {
         let d = errors(&program(&format!("Dim r As String = {expr}")));
         assert_eq!(d.len(), 1, "{expr}: {d:?}");
@@ -316,9 +321,17 @@ fn arithmetic_next_to_concat_needs_parentheses() {
         "\"a\" & \"b\" = \"ab\"",
         "\"x\" & 6 / 2",
         "\"x\" & 7 Mod 2",
+        "\"x\" & (1 + 2) / 3",
+        "\"x\" & Abs(1 - 2)",
+        "\"a\" & \"b\" & \"c\"",
     ] {
         ok(&program(&format!("Dim r As String = {expr}")));
     }
+    // An operand over two lines gets no one-line fix to copy.
+    let d = errors(&program("Dim r As String = \"x\" & 1 + _\n    2"));
+    assert_eq!(d, ["`+` next to `&` needs parentheses around its operand"]);
+    let d = errors(&program("Dim r As String = \"x\" & 1 + 2"));
+    assert_eq!(d, ["`+` next to `&` needs parentheses: write `(1 + 2)`"]);
 }
 
 #[test]
