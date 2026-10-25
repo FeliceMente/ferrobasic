@@ -84,9 +84,10 @@ try_stmt      = "Try" , SEP , block , "Catch" , SEP , block ,
 
 (* Expressions, from lowest to highest precedence.                        *)
 (* Documented: * / Mod above + -; comparisons below arithmetic; And/Or     *)
-(* short-circuit. NOT settled: where "&" sits, and And versus Or. The      *)
-(* levels below are a provisional choice (VB order) that the parser must   *)
-(* keep in one table so a recording can move them; see open-questions.md. *)
+(* short-circuit. Recorded: And above Or, comparisons below "&". An       *)
+(* operand of "&" holding + - * or a negation outside parentheses is a    *)
+(* syntax error in B4J; the grammar accepts it and the type checker        *)
+(* reports it. "&" next to "/" and Mod is open; see open-questions.md.    *)
 expr          = or_expr ;
 or_expr       = and_expr , { "Or" , and_expr } ;
 and_expr      = cmp_expr , { "And" , cmp_expr } ;

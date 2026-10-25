@@ -138,7 +138,7 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 | String → Boolean | only `"true"` / `"false"` (case-sensitive), else a runtime error |
 | String → Char | first character, or `Chr(0)` for an empty string |
 | Object → T | unbox. A number box converts to any numeric type; a String converts as above; otherwise a runtime `ClassCastException`. |
-| Null → String | `"null"` when converted for output |
+| Null → String | the text `"null"`, also when assigned, passed or returned as a String: B4J compiles `s = Null` to `_s = BA.ObjectToString(Common.Null)` (generated code, recorded). A String that is null (an unset record field) stays null. |
 | any other value → String | `BA.ObjectToString` (Java `String.valueOf`): B4X compiles `Log(LastException)` and `"e: " & LastException` this way (generated code) |
 
 ### Number to string
@@ -161,10 +161,10 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 
 | Level | Operators | Notes |
 | --- | --- | --- |
-| 1 | `Or` | short-circuit; *(open)* relative to `And` |
+| 1 | `Or` | short-circuit (recorded: `And` binds tighter) |
 | 2 | `And` | short-circuit |
 | 3 | `=` `<>` `<` `>` `<=` `>=` | left-associative; whether B4X accepts a chain like `a < b < c` is *(open)*, so the parser accepts it |
-| 4 | `&` | *(open)* position |
+| 4 | `&` | binds tighter than comparisons; `+`, `-`, `*` or a negation next to it needs parentheses (a syntax error otherwise, as in B4J); next to `/` and `Mod` *(open)* |
 | 5 | `+` `-` | |
 | 6 | `*` `/` `Mod` | |
 | 7 | unary `-` | |
@@ -179,7 +179,8 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - `Mod` is the Java remainder: its sign follows the dividend (`-1 Mod 24` is `-1`).
 - Integer division by zero (`Mod`) raises `ArithmeticException`. Double
   division by zero gives `Infinity` or `NaN`.
-- `&` converts both sides to String and concatenates.
+- `&` converts both sides to String and concatenates. `"x" & 1 + 2`,
+  `1 + 2 & "x"` and `"x" & -1` are errors: write `"x" & (1 + 2)`.
 - Comparisons:
   - two numbers compare numerically, as Double;
   - two Strings compare by value, case-sensitive; `<` and `>` on Strings are

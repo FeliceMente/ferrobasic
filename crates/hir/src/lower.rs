@@ -1487,6 +1487,52 @@ impl Lowerer {
         converted
     }
 
+    /// The original toolchain refuses `+`, `-`, `*` or a negation next to
+    /// `&` as a syntax error (`"x" & 1 + 2`, `1 + 2 & "x"`, `"x" & -1`): an
+    /// operand of `&` that holds one, outside parentheses or a call's
+    /// arguments, needs parentheses. Deeper forms (`"x" & -6 / 2`) are
+    /// refused by extension until recorded (`docs/open-questions.md`); `/`
+    /// and `Mod` alone are *(open)* and accepted.
+    fn concat_operand(&mut self, operand: &SyntaxNode) {
+        // The first refused operator in the operand's own expression tree.
+        let mut nodes = vec![operand.clone()];
+        let mut found = None;
+        while let Some(node) = nodes.pop() {
+            match node.kind() {
+                PREFIX_EXPR | BIN_EXPR => {}
+                _ => continue,
+            }
+            let op = tokens(&node).next();
+            // A nested `&` is checked on its own.
+            if op.as_ref().is_some_and(|t| t.kind() == AMP) {
+                continue;
+            }
+            if let Some(op) = op.filter(|t| matches!(t.kind(), PLUS | MINUS | STAR)) {
+                found = Some(op);
+                break;
+            }
+            nodes.extend(exprs(&node));
+        }
+        let Some(op) = found else {
+            return;
+        };
+        // The fix, when the operand fits on one line.
+        let text = operand.text().to_string();
+        let text = text.trim();
+        let message = if text.contains(['\n', '\r']) {
+            format!(
+                "`{}` next to `&` needs parentheses around its operand",
+                op.text()
+            )
+        } else {
+            format!(
+                "`{}` next to `&` needs parentheses: write `({text})`",
+                op.text()
+            )
+        };
+        self.error(range(operand), message);
+    }
+
     fn binary(&mut self, node: &SyntaxNode) -> Expr {
         let at = range(node);
         let parts = exprs(node);
@@ -1523,6 +1569,9 @@ impl Lowerer {
         }
         match op.kind() {
             AMP => {
+                for operand in [l, r] {
+                    self.concat_operand(operand);
+                }
                 let left = self.coerce(left, &Ty::String);
                 let right = self.coerce(right, &Ty::String);
                 Expr {

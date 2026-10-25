@@ -7,6 +7,16 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- `Null` assigned, passed or returned as a `String` is the text `"null"`,
+  as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
+  null, so `IsNumber` or `.Length` on it raised `NullPointerException`.
+- A record prints with a line break after every third field
+  (`IsInitialized` counts), as B4J's `BA.TypeToString` does.
+- `+`, `-`, `*` or a negation right next to `&` (`"x" & 1 + 2`) is an
+  error that asks for parentheses, as B4J refuses it.
+- A 2-dimensional array given to a `List` through an `Object` raises
+  `ClassCastException`, as in B4J, instead of giving a list of its rows.
+- More conformance tests recorded from B4J 10.70.
 - A main module without `Sub Process_Globals` is an error, as in B4J, even
   when the program declares no module variables (found by the recordings).
 - An array of 2 dimensions or more where a `List` is expected (for example

@@ -1,0 +1,16 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "pending-recording"   # pending-recording | recorded | deviation | negative
+ferro_rejects = true   # FerroBASIC refuses to compile it, on purpose
+level = 0
+features = ["precedence-concat"]
+
+# No .provisional: whether the original toolchain refuses it is open
+# (docs/open-questions.md). FerroBASIC refuses it, as it refuses the same
+# operator right next to & (recorded), until a recording shows otherwise.
+
+# Filled in by tools/recorder when the expected output is recorded:
+# [recording]
+# product = "B4J"
+# version = ""
+# platform = ""
+# date = ""

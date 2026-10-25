@@ -1,0 +1,10 @@
+[IsInitialized=true, A=1]
+[IsInitialized=true, A=2, B=two
+]
+[IsInitialized=true, A=5, B=five
+, C=1.5, D=true, E=(List) Not initialized
+]
+[IsInitialized=false, A=0, B=null
+, C=0.0, D=false, E=null
+]
+A record in a text: [IsInitialized=true, A=1]
