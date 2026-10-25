@@ -837,7 +837,7 @@ impl Machine<'_, '_> {
                 // `StackOverflowError` pass through.
                 let wrapped = |e: Exc| {
                     if by_field && !e.is_error() {
-                        Exc::new(RUNTIME, e.to_java_string())
+                        Exc::caused_by(RUNTIME, e)
                     } else {
                         e
                     }
