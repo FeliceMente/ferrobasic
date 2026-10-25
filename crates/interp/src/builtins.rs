@@ -647,12 +647,26 @@ impl Machine<'_, '_> {
             .borrow()
             .clone()
             .ok_or_else(|| Exc::not_initialized("List"))?;
-        // `Collections.unmodifiableList.addAll` refuses before it looks at
-        // the view, so even a view whose parent changed (only the argument
-        // is checked first).
-        if list.kind == ListKind::ReadOnly && matches!(b, ListAddAll | ListAddAllAt) {
-            list_arg(if b == ListAddAll { 0 } else { 1 })?;
-            return Err(Exc::bare(UNSUPPORTED));
+        // `Collections.unmodifiableList` refuses every change before it looks
+        // at the view, so even a view whose parent changed: only `AddAll`'s
+        // argument is checked first. `Collections.sort` calls the view's
+        // `sort`, which refuses too. `SortType` is different: jCore reads the
+        // size first (below).
+        if list.kind == ListKind::ReadOnly {
+            match b {
+                ListAddAll | ListAddAllAt => {
+                    list_arg(if b == ListAddAll { 0 } else { 1 })?;
+                    return Err(Exc::bare(UNSUPPORTED));
+                }
+                ListAdd
+                | ListInsertAt
+                | ListRemoveAt
+                | ListSet
+                | ListClear
+                | ListSort
+                | ListSortCaseInsensitive => return Err(Exc::bare(UNSUPPORTED)),
+                _ => {}
+            }
         }
         // Any access through a sub-list whose parent changed raises here.
         let size = list.len()?;
@@ -799,12 +813,15 @@ impl Machine<'_, '_> {
             }
             ListSort | ListSortCaseInsensitive | ListSortType | ListSortTypeCaseInsensitive => {
                 let by_field = matches!(b, ListSortType | ListSortTypeCaseInsensitive);
-                // `SortType` returns early on an empty list; `Sort` calls
-                // `Collections.sort`, which an unmodifiable list refuses.
+                // `SortType` returns early on an empty list, then looks up the
+                // field on the first item before `Collections.sort`, which a
+                // read-only view refuses. (`Sort` on one was refused above.)
                 if by_field && size == 0 {
                     return Ok(Value::Null);
                 }
                 if list.kind == ListKind::ReadOnly {
+                    let first = list.get(0)?.ok_or_else(|| Exc::internal("list index"))?;
+                    self.field_keys(&[first], str_arg(a(0)?)?)?;
                     return Err(unsupported());
                 }
                 let values = list.to_vec()?;
