@@ -1,0 +1,11 @@
+Add: UnsupportedOperation
+InsertAt: UnsupportedOperation
+RemoveAt: UnsupportedOperation
+Set: UnsupportedOperation
+Clear: UnsupportedOperation
+Sort: UnsupportedOperation
+SortCaseInsensitive: UnsupportedOperation
+SortType: ConcurrentModification
+Size: ConcurrentModification
+SortType N: UnsupportedOperation
+SortType Missing: NoSuchField
