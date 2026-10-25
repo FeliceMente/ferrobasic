@@ -13,3 +13,10 @@ features = ["list-sort-type"]
 # FerroBASIC knowingly prints NoSuchField on the third line: it gives
 # records only their own fields and IsInitialized, not the private fields
 # a JDK class declares (Integer's "value").
+
+# Filled in by tools/recorder when the expected output is recorded:
+# [recording]
+# product = "B4J"
+# version = ""
+# platform = ""
+# date = ""

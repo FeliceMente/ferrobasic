@@ -281,9 +281,10 @@ impl Machine<'_, '_> {
     }
 
     /// The field `SortType` sorts by: jCore takes it from the first item's
-    /// class (`getDeclaredField`), so `Null` raises and any other value
-    /// without that field has no such field. `None` is the class's own
-    /// `IsInitialized` field.
+    /// class (`getDeclaredField`), so `Null` raises and a record without
+    /// that field has no such field. `None` is the class's own
+    /// `IsInitialized` field. Any other value has no fields here, where
+    /// jCore finds those its JDK class declares (deviation D7).
     fn sort_field(&self, first: &Value, name: &[u16]) -> Result<(RecordId, Option<usize>), Exc> {
         let name = to_rust(name);
         let r = match first {
