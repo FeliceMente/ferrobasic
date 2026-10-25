@@ -18,8 +18,8 @@ B4J itself (`docs/compatibility-testing.md`).
 - A `For` with an undeclared counter runs in `Process_Globals` too, as in
   B4J, and the counter is a module variable: other Subs read it, and their
   undeclared counters of the same name share it. `For Each v As T` runs
-  there too; its variable is a module variable as well (not yet confirmed
-  by a recording). Before, both were errors.
+  there too; whether other Subs see its variable is not known yet, so they
+  may not use it. Before, both were errors.
 - `Null` assigned, passed or returned as a `String` is the text `"null"`,
   as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
   null, so `IsNumber` or `.Length` on it raised `NullPointerException`.
