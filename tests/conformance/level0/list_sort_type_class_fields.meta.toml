@@ -1,17 +1,15 @@
 # Conformance test metadata. See docs/compatibility-testing.md.
-status = "pending-recording"   # pending-recording | recorded | deviation | negative
+status = "deviation"   # pending-recording | recorded | deviation | negative
+deviation = "D7"   # docs/deviations.md
 level = 0
 features = ["list-sort-type"]
 
-# No .provisional: which fields the first item's class declares is an open
-# question (docs/open-questions.md). FerroBASIC prints sorted, true,
-# NoSuchField, NoSuchField. A Java class shaped like a Type, on JDK 21,
-# gives sorted and true; on JDK 21 Integer's "value" gives
-# InaccessibleObject (from setAccessible), and on JDK 8 it would sort.
-
-# Filled in by tools/recorder when the expected output is recorded:
-# [recording]
-# product = "B4J"
-# version = ""
-# platform = ""
-# date = ""
+# No .expected: the reference output (recorded from B4J 10.70, OpenJDK 19,
+# Windows 10, on 2026-10-25) is:
+#   sorted
+#   true
+#   InaccessibleObject
+#   NoSuchField
+# FerroBASIC knowingly prints NoSuchField on the third line: it gives
+# records only their own fields and IsInitialized, not the private fields
+# a JDK class declares (Integer's "value").
