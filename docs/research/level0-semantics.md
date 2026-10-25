@@ -172,6 +172,18 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
     `UnsupportedOperationException` only if there is something to add;
   - a `SubList` view (`Collections.unmodifiableList`) always raises
     `UnsupportedOperationException`.
+- The other changes through a `SubList` view (**measured**, JDK 21, test
+  `list_stale_sublist`) are refused the same way, before the view is read:
+  `Add`, `InsertAt`, `RemoveAt`, `Set`, `Clear`, and `Sort` and
+  `SortCaseInsensitive` (`Collections.sort` calls the view's `sort`), even
+  when the parent has changed since. `SortType` and
+  `SortTypeCaseInsensitive` differ, following jCore's `sortList`
+  ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L203-L227)):
+  it reads the size first (so a stale view raises
+  `ConcurrentModificationException`), returns on an empty list, and looks
+  up the field on the first item (`NullPointerException` for `Null`,
+  `NoSuchFieldException` for a missing field) before the view refuses to
+  sort.
 
 ### Built-in members (source, docs)
 

@@ -7,6 +7,11 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- Changes through a `SubList` view whose parent has changed (`Add`,
+  `InsertAt`, `RemoveAt`, `Set`, `Clear`, `Sort`, `SortCaseInsensitive`)
+  raise `UnsupportedOperationException`, as in B4J, instead of
+  `ConcurrentModificationException`. `SortType` on a view checks the first
+  item's field before refusing (#21).
 - `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java
   (`#If Java` … `#End If`) get one precise error each, saying what is
   missing, instead of generic syntax errors (#32). None of them is supported
