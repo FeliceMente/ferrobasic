@@ -384,9 +384,13 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   Infinite loops are written `Do While True`.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
   is implicitly declared as `Int` (**docs**, coreref), in `Process_Globals`
-  too: B4J runs such a loop there (**recorded**: `process_globals_for`).
-  Whether that counter is then a module variable is **open**
-  (`process_globals_counter_visible`, `process_globals_counter_shared`).
+  too, where it is a module variable: AppStart reads it (4 after
+  `For i = 1 To 3`), and an undeclared counter of the same name in another
+  Sub is the same variable (**recorded**: `process_globals_for`,
+  `process_globals_counter_visible`, `process_globals_counter_shared`).
+  `For Each v As T` runs there too (**recorded**: `process_globals_for_each`);
+  whether `v` is a module variable is **open**
+  (`process_globals_for_each_visible`, `process_globals_for_each_shared`).
   Test is `i <= b` for a
   positive step and `i >= b` for a negative step. **open**: whether `b` and
   `s` are evaluated once (expected, as in VB), and the value of `i` after the loop.
@@ -402,8 +406,8 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `_s = BA.ObjectToString(Common.Null);`, and `IsNumber(s)` is then `False`
   (**generated**, **recorded**: `number_parsing`).
 - A comment may follow a line continuation: `1 + _ ' first part` then `2`
-  on the next line is 3 (**recorded**: `continuation_comment`). Without a
-  space before the `'` it is **open** (`continuation_comment_tight`).
+  on the next line is 3, and so is `1 + _' first part` (**recorded**:
+  `continuation_comment`, `continuation_comment_tight`).
 - The main module must have a `Sub Process_Globals`, even an empty one:
   B4J refuses to build it otherwise, with "Sub process_globals is missing"
   (**recorded**, B4J 10.70: four tests without it did not build).

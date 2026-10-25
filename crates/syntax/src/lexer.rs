@@ -154,25 +154,14 @@ impl Lexer<'_> {
                 self.push(LINE_CONTINUATION, len);
             }
             '_' if self.continuation_before_comment() => {
-                // ` _ ' comment`: the original toolchain accepts it
-                // (recorded). Without a space before the `'` it is open
-                // (`docs/open-questions.md`): say so instead of reading `_`
-                // as a name.
+                // ` _ ' comment` and ` _' comment` (recorded): the comment
+                // keeps its own token.
                 let spaces = self.rest()[1..]
                     .bytes()
                     .take_while(|b| matches!(b, b' ' | b'\t'))
                     .count();
-                if spaces == 0 {
-                    self.error(
-                        self.pos,
-                        "a comment right after a line continuation `_` is not supported yet: \
-                         put a space before the `'`",
-                    );
-                    self.push(ERROR_TOKEN, 1);
-                } else {
-                    self.push(LINE_CONTINUATION, 1 + spaces);
-                    self.continued_comment = true;
-                }
+                self.push(LINE_CONTINUATION, 1 + spaces);
+                self.continued_comment = true;
             }
             c if c.is_alphabetic() || c == '_' => {
                 let len = self.take_while(|c| c.is_alphanumeric() || c == '_');

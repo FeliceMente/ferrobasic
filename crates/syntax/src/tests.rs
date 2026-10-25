@@ -380,12 +380,14 @@ fn smart_strings_nested_too_deeply() {
     )));
 }
 
-/// ` _ ' comment` continues the line, and keeps the comment as a token.
+/// ` _ ' comment` continues the line, with or without the space before
+/// `'`, and keeps the comment as a token.
 #[test]
 fn a_comment_may_follow_a_line_continuation() {
     for text in [
         "x = 1 + _ ' comment\n    2",
         "x = 1 + _\t' comment\r\n    2",
+        "x = 1 + _' comment\n    2",
     ] {
         let root = parse_ok(&in_sub(text));
         assert_eq!(count(&root, BIN_EXPR), 1, "{text:?}");
@@ -398,15 +400,6 @@ fn a_comment_may_follow_a_line_continuation() {
     // The line break after the comment is the only one hidden.
     let root = parse_ok(&in_sub("x = 1 + _ ' comment\n    2\ny = 3"));
     assert_eq!(count(&root, BIN_EXPR), 1);
-}
-
-#[test]
-fn a_comment_right_after_a_line_continuation_is_reported() {
-    let errors = parse_errors(&in_sub("x = 1 + _' comment\n    2"));
-    assert!(
-        errors[0].contains("a comment right after a line continuation `_` is not supported yet"),
-        "{errors:?}"
-    );
 }
 
 /// An operator, member access or call may wrap a subtree that is already
