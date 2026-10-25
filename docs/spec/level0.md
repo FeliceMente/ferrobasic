@@ -59,7 +59,10 @@ End Sub
   type `T` the same way (recorded). Every declaration of a name there, a
   `Dim`, a counter or a `For Each`, declares the same module variable, and
   must agree on its type: B4J refuses one that does not ("Current
-  declaration does not match previous one", recorded). A loop variable
+  declaration does not match previous one", recorded). A counter over a
+  name already declared is that variable. A `For Each` that declares, with
+  the same type, a name an undeclared counter declared is *(open)*, so a
+  compile error. A loop variable
   there may have a Sub's name: a statement `Bump` still calls the Sub
   (recorded), but any other use of the name, read or assigned, is *(open)*,
   so a compile error. A loop variable named like a `Type`, `Bit` or a
@@ -123,7 +126,8 @@ End Sub
   recorded); with the same type, whether it declares a new local or means
   the module variable is *(open)*, so it is a compile error too. This holds
   for a `Dim` and for a `For Each v As T` in a Sub; an undeclared `For`
-  counter of that name is the module variable.
+  counter of that name is the module variable. A parameter with a module
+  variable's name is *(open)*, so a compile error too.
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
   A name without `As` takes the type of the next `As` to its right in the same
   statement.

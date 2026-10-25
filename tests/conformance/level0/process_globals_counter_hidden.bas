@@ -1,6 +1,6 @@
 Sub Process_Globals
-    ' The undeclared counter of Process_Globals is a module variable: may a
-    ' local of another Sub hide it?
+    ' The undeclared counter of Process_Globals is a module variable, an Int:
+    ' B4J refuses a local of another type with its name.
     For i = 1 To 3
     Next
 End Sub
