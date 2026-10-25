@@ -1,3 +1,6 @@
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     ' Bit.ParseInt accepts any Unicode decimal digit, and fullwidth letters.
     Log(Bit.ParseInt("٣٤", 10))
