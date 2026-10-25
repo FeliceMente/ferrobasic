@@ -898,8 +898,7 @@ impl Lowerer {
                         };
                         self.error(range(&name), message);
                     }
-                    // Still check the body, for its own errors.
-                    self.loop_body(node);
+                    self.refused_loop_body(node, &text, &name);
                     return;
                 };
                 if !ty.is_numeric() && ty != Ty::Error {
@@ -958,11 +957,10 @@ impl Lowerer {
                         };
                         self.error(range(&name), message);
                     }
-                    // Still check the collection and the body, for their errors.
                     if let Some(coll) = exprs(node).into_iter().next() {
                         self.expr(&coll);
                     }
-                    self.loop_body(node);
+                    self.refused_loop_body(node, &text, &name);
                     return;
                 };
                 let Some(coll) = exprs(node).into_iter().next() else {
@@ -1055,6 +1053,16 @@ impl Lowerer {
             }
             _ => {}
         }
+    }
+
+    /// The body of a loop already reported, checked for its own errors. An
+    /// undeclared variable is declared with the error type first, so its uses
+    /// are not reported again.
+    fn refused_loop_body(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) {
+        if self.lookup_var(text).is_none() {
+            self.declare_local(text, Ty::Error, range(name));
+        }
+        self.loop_body(node);
     }
 
     fn loop_body(&mut self, node: &SyntaxNode) -> Block {
