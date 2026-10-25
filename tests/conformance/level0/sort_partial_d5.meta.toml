@@ -1,0 +1,18 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "deviation"   # pending-recording | recorded | deviation | negative
+deviation = "D5"   # docs/deviations.md
+level = 0
+features = ["list-sort"]
+
+# No .provisional: the reference output (JDK 21, Collections.sort) is
+#   true
+#   (ArrayList) [1, 2, 3, x]
+# and FerroBASIC knowingly prints true, (ArrayList) [1, 3, 2, x]: it leaves
+# the list as it was when a sort raises, Java's TimSort partly sorted.
+
+# Filled in by tools/recorder when the expected output is recorded:
+# [recording]
+# product = "B4J"
+# version = ""
+# platform = ""
+# date = ""

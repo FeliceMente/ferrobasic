@@ -89,13 +89,27 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 | `Get(Index) As Object`, `Set(Index, Item)`, `RemoveAt(Index)` | out of range → `IndexOutOfBoundsException` |
 | `Clear`, `Size As Int` | |
 | `IndexOf(Item) As Int` | `equals` comparison, so boxed types matter |
-| `SubList(BeginIndex, EndIndex) As List` | a read-only view backed by the list (`Collections.unmodifiableList(subList(...))`, class `java.util.Collections$UnmodifiableRandomAccessList`): `Set` on the parent shows through; after a structural change of the parent (`Add`, `RemoveAt`, `InsertAt`, `Clear`, `AddAll`, `Sort`…) any access through the view raises `java.util.ConcurrentModificationException`; `Clear`, `Sort` and other changes through the view raise `java.lang.UnsupportedOperationException` |
+| `SubList(BeginIndex, EndIndex) As List` | a read-only view backed by the list (`Collections.unmodifiableList(subList(...))`, class `java.util.Collections$UnmodifiableRandomAccessList`): `Set` on the parent shows through; after a structural change of the parent (`Add`, `RemoveAt`, `InsertAt`, `Clear`, `AddAll`, `Sort`…) reading through the view (`Get`, `Size`, `IndexOf`, `SubList`, printing it, `SortType`) raises `java.util.ConcurrentModificationException`; changes through the view (`Add`, `AddAll`, `InsertAt`, `RemoveAt`, `Set`, `Clear`, `Sort`, `SortCaseInsensitive`) raise `java.lang.UnsupportedOperationException`, whether or not the parent changed. `SortType` on a non-empty view first looks up the field on its first item ([research](../research/level0-semantics.md#list-source)) |
 | `Sort(Ascending As Boolean)` | Java `Comparable` order, stable. Items must all have the same boxed type: all `String`s, or all numbers of one type. Mixing types, e.g. `Int` and `Double`, raises `ClassCastException`. |
 | `SortCaseInsensitive(Ascending As Boolean)` | compares the items' `toString()` with `compareToIgnoreCase`, stable. Numbers are therefore sorted as text: `2, 10` → `10, 2`, and a boxed Double `1` compares as `"1.0"`. |
 
 `SortType(FieldName, Ascending)` and `SortTypeCaseInsensitive(FieldName, Ascending)`
 apply the same two rules to the named field of `Type` records (the field name
-is case-sensitive).
+is case-sensitive, and can be `IsInitialized` *(open)*). As in jCore, the field is
+that of the first item's type:
+
+- an empty list is left as it is;
+- a `Null` first item raises `java.lang.NullPointerException`, and a first item
+  without that field `java.lang.NoSuchFieldException`;
+- while sorting a list of two items or more, every error is wrapped in a
+  `java.lang.RuntimeException`: an item of another type or not a record
+  (`IllegalArgumentException`), a `Null` item or, case-sensitively, a `Null`
+  field value (`NullPointerException`), and field values that do not compare
+  (`ClassCastException`). Case-insensitively a `Null` field value is `"null"`.
+  Errors such as `StackOverflowError` are not wrapped.
+
+A sort that raises leaves the list as it was; B4J leaves it partly sorted
+(deviation D5).
 
 ## Map
 
