@@ -7,6 +7,10 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- The first conformance tests are recorded from B4J itself (10.70, OpenJDK
+  19, Windows 10), with the new recorder, `tools/recorder`: 24 tests record
+  the same output FerroBASIC gives, and replace their hand-derived outputs.
+  The recordings also found differences, fixed separately.
 - Changes through a `SubList` view whose parent has changed (`Add`,
   `InsertAt`, `RemoveAt`, `Set`, `Clear`, `Sort`, `SortCaseInsensitive`)
   raise `UnsupportedOperationException`, as in B4J, instead of

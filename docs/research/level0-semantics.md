@@ -2,9 +2,11 @@
 
 Research notes answering the Level 0 entries of
 [open-questions.md](../open-questions.md#language) from public sources only.
-**None of this is confirmed by a recording.** Conformance tests stay
-`pending-recording` until `tools/recorder` runs them on the original toolchain;
-a recording always overrides what is written here.
+The first recordings (B4J 10.70, OpenJDK 19, Windows 10) confirm the
+behaviour behind the tests marked `status = "recorded"` in
+`tests/conformance`; everything else here is still unconfirmed. Conformance
+tests stay `pending-recording` until `tools/recorder` runs them on the
+original toolchain; a recording always overrides what is written here.
 
 October 2026.
 

@@ -251,12 +251,19 @@ fn stdout_of(p: &Program) -> String {
     r.stdout
 }
 
-fn provisional(name: &str) -> String {
-    let path = format!(
-        "{}/../../tests/conformance/level0/{name}.provisional",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    std::fs::read_to_string(path).unwrap()
+/// A conformance test's expected output: its recording, else its
+/// hand-derived provisional output (a recording always wins).
+fn expected(name: &str) -> String {
+    ["expected", "provisional"]
+        .iter()
+        .find_map(|ext| {
+            let path = format!(
+                "{}/../../tests/conformance/level0/{name}.{ext}",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            std::fs::read_to_string(path).ok()
+        })
+        .unwrap_or_else(|| panic!("{name} has no expected output"))
 }
 
 #[test]
@@ -318,7 +325,7 @@ fn number_to_string_program() {
         f.log_as(B0, int(-42), Ty::Int);
         f.log_as(B0, boolean(true), Ty::Boolean);
     });
-    assert_eq!(stdout_of(&p), provisional("number_to_string"));
+    assert_eq!(stdout_of(&p), expected("number_to_string"));
 }
 
 /// `tests/conformance/level0/smart_string_format.bas`.
@@ -394,7 +401,7 @@ fn smart_string_format_program() {
         );
         f.log(B0, n);
     });
-    assert_eq!(stdout_of(&p), provisional("smart_string_format"));
+    assert_eq!(stdout_of(&p), expected("smart_string_format"));
 }
 
 #[test]
@@ -705,7 +712,7 @@ fn map_insertion_order_and_reput() {
         );
         f.log_as(after, d, Ty::Object);
     });
-    assert_eq!(stdout_of(&p), provisional("map_order"));
+    assert_eq!(stdout_of(&p), expected("map_order"));
 }
 
 #[test]
@@ -1079,7 +1086,7 @@ fn uncaught_error_outcome() {
         f.log(B0, s("not reached"));
     });
     let r = exec(&p);
-    assert_eq!(r.stdout, provisional("uncaught_error"));
+    assert_eq!(r.stdout, expected("uncaught_error"));
     assert_eq!(r.stderr, "", "run must not print the error");
     assert_eq!(r.outcome.exit_code, 1);
     let e = r.outcome.error.unwrap();
@@ -1306,7 +1313,7 @@ fn prices_map_program() {
         f.log(rest, line);
     });
     assert_eq!(stdout_of(&p), "Big breakfast\nTotal: 2.7\n");
-    assert_eq!(stdout_of(&p), provisional("prices_map"));
+    assert_eq!(stdout_of(&p), expected("prices_map"));
 }
 
 #[test]
