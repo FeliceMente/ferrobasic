@@ -1,6 +1,5 @@
 # Conformance test metadata. See docs/compatibility-testing.md.
-status = "pending-recording"   # pending-recording | recorded | deviation | negative
-ferro_rejects = true   # rejected until a recording shows what B4X does
+status = "recorded"   # pending-recording | recorded | deviation | negative
 level = 0
 features = ["for-in-process-globals"]
 
@@ -8,9 +7,14 @@ features = ["for-in-process-globals"]
 # FerroBASIC makes it a module variable only Process_Globals sees, so it
 # rejects this ("`n` is not declared") until a recording shows.
 
-# Filled in by tools/recorder when the expected output is recorded:
-# [recording]
-# product = "B4J"
-# version = ""
-# platform = ""
-# date = ""
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+machine_locale_output = "same"
+date = "2026-10-25"
+
+# The comment in the .bas predates this recording, which settles it.
