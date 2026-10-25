@@ -174,21 +174,37 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.
-- [x] A `For` with an undeclared counter inside `Process_Globals` runs
-      (recording: `level0/process_globals_for`). FerroBASIC makes the
-      counter a local of `Process_Globals`.
-- [ ] Whether that counter is a module variable: can `AppStart` read it,
-      and do undeclared counters of the same name in other Subs share it?
-      FerroBASIC refuses both uses meanwhile (`docs/spec/level0.md`,
-      "Program structure"). Fixtures: `level0/process_globals_counter_visible`,
-      `level0/process_globals_counter_shared`.
-- [ ] Whether `For Each v As T` may declare its variable inside
-      `Process_Globals`; FerroBASIC rejects it. Fixture:
-      `level0/process_globals_for_each`.
-- [x] A comment may follow a line continuation (` _ ' comment`)
-      (recording: `level0/continuation_comment`).
-- [ ] Whether ` _'` (no space before the comment) continues the line;
-      FerroBASIC rejects it. Fixture: `level0/continuation_comment_tight`.
+- [x] A `For` with an undeclared counter inside `Process_Globals` runs,
+      and the counter is a module variable: `AppStart` reads it, and the
+      undeclared counters of the same name in other Subs share it
+      (recordings: `level0/process_globals_for`,
+      `level0/process_globals_counter_visible`,
+      `level0/process_globals_counter_shared`).
+- [x] `For Each v As T` runs inside `Process_Globals` (recording:
+      `level0/process_globals_for_each`).
+- [ ] Whether other Subs see that `For Each` variable, as they see the
+      `For` counter. FerroBASIC makes it a module variable only
+      `Process_Globals` sees, and refuses its name in other Subs, read or as
+      an undeclared counter, meanwhile. Fixtures:
+      `level0/process_globals_for_each_visible`,
+      `level0/process_globals_for_each_shared`.
+- [ ] A name that is both an undeclared `For` counter and a `For Each v As
+      T` variable in `Process_Globals`: which type it has. FerroBASIC
+      refuses it. Fixture: `level0/process_globals_counter_and_for_each`.
+- [ ] Whether a loop variable that `Process_Globals` declares may have the
+      name of a Sub, a `Type`, `Bit` or a keyword, and then hides it in
+      other Subs. FerroBASIC refuses the name. Fixture:
+      `level0/process_globals_loop_named_like_sub`.
+- [ ] Whether `For Each v As T` in `Process_Globals` may declare again a
+      `v` that a `Dim` there declares. FerroBASIC refuses it. Fixture:
+      `level0/process_globals_for_each_declared`.
+- [ ] Whether a local of another Sub may hide the undeclared counter of
+      `Process_Globals`, as FerroBASIC lets it hide a module variable
+      declared with `Dim` (the generated Java's local would hide the field).
+      Fixture: `level0/process_globals_counter_hidden`.
+- [x] A comment may follow a line continuation, with or without a space
+      before the `'` (recordings: `level0/continuation_comment`,
+      `level0/continuation_comment_tight`).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the

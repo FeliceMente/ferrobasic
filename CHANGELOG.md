@@ -13,12 +13,13 @@ B4J itself (`docs/compatibility-testing.md`).
   `InaccessibleObjectException` for a private one (`"value"`, recorded):
   deviation D7. Sorting records by `IsInitialized` is confirmed by the same
   recording (test `list_sort_type_initialized`).
-- A comment may follow a line continuation (`1 + _ ' first part`), as in
-  B4J. Before, it was an error.
+- A comment may follow a line continuation (`1 + _ ' first part`, and
+  `1 + _' first part`), as in B4J. Before, it was an error.
 - A `For` with an undeclared counter runs in `Process_Globals` too, as in
-  B4J; the counter is a local of `Process_Globals`. Before, it was an
-  error. Whether B4J makes it a module variable is not known yet, so the
-  programs where that would matter are refused.
+  B4J, and the counter is a module variable: other Subs read it, and their
+  undeclared counters of the same name share it. `For Each v As T` runs
+  there too; whether other Subs see its variable is not known yet, so they
+  may not use it. Before, both were errors.
 - `Null` assigned, passed or returned as a `String` is the text `"null"`,
   as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
   null, so `IsNumber` or `.Length` on it raised `NullPointerException`.

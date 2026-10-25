@@ -3,7 +3,7 @@
 //! Runs on a tree without syntax errors. Rules follow `docs/spec/level0.md`;
 //! points marked open there are implemented as their provisional rule.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ferro_syntax::{NodeOrToken, SyntaxKind, SyntaxKind::*, SyntaxNode, SyntaxToken, TextRange};
 
@@ -32,9 +32,12 @@ struct Lowerer {
     records: HashMap<String, RecordId>,
     subs: HashMap<String, SubId>,
     globals: HashMap<String, GlobalId>,
-    /// Undeclared `For` counters of `Process_Globals`, which are its locals:
-    /// each name once, at its first occurrence.
-    globals_counters: Vec<(String, TextRange)>,
+    /// Module variables declared only by a `For Each v As T` in
+    /// `Process_Globals`: whether other Subs see them is open, so only
+    /// `Process_Globals` does.
+    globals_for_each: HashMap<String, GlobalId>,
+    /// Loop variables of `Process_Globals` already refused with an error.
+    refused_loop_names: HashSet<String>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -144,13 +147,22 @@ fn range(node: &SyntaxNode) -> TextRange {
     }
 }
 
-/// The loop variable of a `For ... As` / `For Each` in `Process_Globals`
-/// or `Class_Globals`, or of any `For` in `Class_Globals`: declaring it in
-/// the loop there is open, so it must be declared with `Dim`.
+/// The loop variable of a `For ... As` in `Process_Globals`, or of any
+/// loop in `Class_Globals`: declaring it in the loop there is open, so it
+/// must be declared with `Dim`.
 fn undeclared_loop_variable(name: &str, statement: &str, globals: &str) -> String {
     format!(
         "the `{statement}` variable `{name}` must be declared first in `{globals}`, \
          e.g. `Dim {name} As Int`: declaring it in the loop is not supported there yet"
+    )
+}
+
+/// A loop that declares, with `As`, a variable already declared in
+/// `Process_Globals` or `Class_Globals`, where `As` in the loop is open.
+fn typed_loop_variable(name: &str, statement: &str, globals: &str) -> String {
+    format!(
+        "declaring the `{statement}` variable `{name}` in the loop is not supported in \
+         `{globals}` yet: `{name}` is already declared, so write the loop without `As`"
     )
 }
 
@@ -217,7 +229,7 @@ impl Lowerer {
         // Only the main module's: `Class_Globals` was not recorded.
         if let Some(id) = self.module.process_globals {
             let node = subs[id.0 as usize].clone();
-            self.find_globals_counters(&node);
+            self.declare_loop_globals(&node);
         }
         for (id, field, node) in std::mem::take(&mut self.pending_bounds) {
             let bounds = exprs(&node)
@@ -465,46 +477,120 @@ impl Lowerer {
         for dim in sub.descendants().filter(|n| n.kind() == DIM_STMT) {
             for (decl, ty) in self.declarators(&dim) {
                 let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
-                match self.globals.get(&key(&name)) {
-                    Some(&id) => {
-                        if self.module.global(id).ty != ty {
-                            self.error(
-                                range(&decl),
-                                format!("`{name}` is already declared with another type"),
-                            );
-                        }
-                    }
-                    None => {
-                        let id = GlobalId(self.module.globals.len() as u32);
-                        self.globals.insert(key(&name), id);
-                        self.module.globals.push(Var {
-                            name,
-                            ty,
-                            range: range(&decl),
-                        });
-                    }
-                }
+                self.declare_global(name, ty, range(&decl), false);
             }
         }
     }
 
-    /// Whether B4X makes an undeclared counter in `Process_Globals` a module
-    /// variable is open (`docs/open-questions.md`): FerroBASIC makes it a
-    /// local of `Process_Globals`, and refuses the programs where the two
-    /// differ, the ones that use the name as an undeclared counter in another
-    /// Sub. A use of it as a variable is already refused as undeclared.
-    fn find_globals_counters(&mut self, sub: &SyntaxNode) {
-        for node in sub.descendants().filter(|n| n.kind() == FOR_STMT) {
-            if let Some(name) = child(&node, NAME)
-                && child(&node, TYPE_REF).is_none()
-                && !self.globals.contains_key(&key(&name_of(&name)))
+    /// A module variable, unless the name is one already; `loop_only` keeps
+    /// it out of `globals`, for a `For Each` variable only `Process_Globals`
+    /// sees.
+    fn declare_global(&mut self, name: String, ty: Ty, at: TextRange, loop_only: bool) {
+        let k = key(&name);
+        if let Some(&id) = self.globals.get(&k).or(self.globals_for_each.get(&k)) {
+            let existing = &self.module.global(id).ty;
+            if *existing != ty && *existing != Ty::Error && ty != Ty::Error {
+                self.error(
+                    at,
+                    format!("`{name}` is already declared with another type"),
+                );
+            }
+            return;
+        }
+        let id = GlobalId(self.module.globals.len() as u32);
+        if loop_only {
+            self.globals_for_each.insert(k, id);
+        } else {
+            self.globals.insert(k, id);
+        }
+        self.module.globals.push(Var {
+            name,
+            ty,
+            range: at,
+        });
+    }
+
+    /// The loop variables of `Process_Globals`, after its `Dim`s: B4X makes
+    /// an undeclared `For` counter there a module variable, an Int, which
+    /// AppStart reads and the undeclared counters of other Subs share
+    /// (recorded). A `For Each v As T` variable there is a module variable
+    /// of type `T` too, but whether other Subs see it is open
+    /// (`docs/open-questions.md`), so only `Process_Globals` does.
+    fn declare_loop_globals(&mut self, sub: &SyntaxNode) {
+        let loops: Vec<SyntaxNode> = sub
+            .descendants()
+            .filter(|n| matches!(n.kind(), FOR_STMT | FOR_EACH_STMT))
+            .collect();
+        let mut counters = HashSet::new();
+        for node in loops.iter().filter(|n| n.kind() == FOR_STMT) {
+            if let Some(name) = child(node, NAME)
+                && child(node, TYPE_REF).is_none()
             {
                 let text = name_of(&name);
-                if !self.is_globals_counter(&text) {
-                    self.globals_counters.push((text, range(&name)));
+                if !self.globals.contains_key(&key(&text)) && self.loop_name_free(&text, &name) {
+                    counters.insert(key(&text));
+                    self.declare_global(text, Ty::Int, range(&name), false);
                 }
             }
         }
+        for node in loops.iter().filter(|n| n.kind() == FOR_EACH_STMT) {
+            let (Some(name), Some(t)) = (child(node, NAME), child(node, TYPE_REF)) else {
+                continue;
+            };
+            let text = name_of(&name);
+            let ty = self.resolve_type(&t);
+            if counters.contains(&key(&text)) {
+                if !self.refused_loop_names.insert(key(&text)) {
+                    continue;
+                }
+                self.error(
+                    range(&name),
+                    format!(
+                        "`{text}` is both an undeclared `For` counter and a `For Each` variable \
+                         in `Process_Globals`: declare it with `Dim`, since which type it then \
+                         has is not known yet"
+                    ),
+                );
+            } else if !self.globals.contains_key(&key(&text)) && self.loop_name_free(&text, &name) {
+                self.declare_global(text, ty, range(&name), true);
+            }
+        }
+    }
+
+    /// Whether a loop variable that `Process_Globals` would declare may take
+    /// this name. Whether a module variable hides a Sub, a `Type`, `Bit` or
+    /// a keyword of the same name is not recorded, so it is refused, once.
+    fn loop_name_free(&mut self, text: &str, name: &SyntaxNode) -> bool {
+        if self.refused_loop_names.contains(&key(text)) {
+            return false;
+        }
+        let what = if self.subs.contains_key(&key(text)) {
+            "a Sub"
+        } else if self.records.contains_key(&key(text)) {
+            "a `Type`"
+        } else if text.eq_ignore_ascii_case("Bit") {
+            "the `Bit` object"
+        } else if builtins::lookup(Owner::Global, text).is_some() {
+            "a keyword"
+        } else {
+            return true;
+        };
+        self.refused_loop_names.insert(key(text));
+        self.error(
+            range(name),
+            format!(
+                "the loop variable `{text}` of `Process_Globals` has the name of {what}: \
+                 whether it would hide it is not known yet, so use another name"
+            ),
+        );
+        false
+    }
+
+    /// A loop variable `declare_loop_globals` already reported.
+    fn refused(&self, name: &str) -> bool {
+        self.in_process_globals
+            && !self.in_class_globals
+            && self.refused_loop_names.contains(&key(name))
     }
 
     fn globals_sub(&self) -> &'static str {
@@ -513,12 +599,6 @@ impl Lowerer {
         } else {
             "Process_Globals"
         }
-    }
-
-    fn is_globals_counter(&self, name: &str) -> bool {
-        self.globals_counters
-            .iter()
-            .any(|(n, _)| key(n) == key(name))
     }
 
     /// The declarators of a `Dim` with their types: a declarator without
@@ -577,11 +657,7 @@ impl Lowerer {
         let Some(body) = child(node, BLOCK) else {
             return;
         };
-        if self.module.process_globals == Some(id) {
-            for (name, at) in self.globals_counters.clone() {
-                self.declare_local(&name, Ty::Int, at);
-            }
-        } else if !self.in_process_globals {
+        if !self.in_process_globals {
             self.hoist_locals(&body);
         }
         let block = self.block(&body);
@@ -643,17 +719,21 @@ impl Lowerer {
         for node in body.descendants().filter(|n| n.kind() == FOR_STMT) {
             if let Some(name) = child(&node, NAME) {
                 let text = name_of(&name);
-                if self.lookup_var(&text).is_none() {
-                    if self.is_globals_counter(&text) {
-                        self.error(
-                            range(&name),
-                            format!(
-                                "the `For` counter `{text}` is also an undeclared counter in \
-                                 `Process_Globals`: declare it here with `Dim {text} As Int`, \
-                                 since whether the two are one variable is not known yet"
-                            ),
-                        );
-                    }
+                if self.local_names.contains_key(&key(&text)) {
+                    continue;
+                }
+                if self.globals_for_each.contains_key(&key(&text)) {
+                    // Shared if other Subs see that variable, which is open.
+                    self.error(
+                        range(&name),
+                        format!(
+                            "the `For` counter `{text}` is also the `For Each` variable of \
+                             `Process_Globals`: declare it here with `Dim {text} As Int`, \
+                             since whether the two are one variable is not known yet"
+                        ),
+                    );
+                    self.declare_local(&text, Ty::Int, range(&name));
+                } else if self.lookup_var(&text).is_none() {
                     self.declare_local(&text, Ty::Int, range(&name));
                 }
             }
@@ -665,9 +745,12 @@ impl Lowerer {
         if let Some(&id) = self.local_names.get(&k) {
             return Some((VarRef::Local(id), self.locals[id.0 as usize].ty.clone()));
         }
-        self.globals
-            .get(&k)
-            .map(|&id| (VarRef::Global(id), self.module.global(id).ty.clone()))
+        let global = self.globals.get(&k).or_else(|| {
+            (self.in_process_globals && !self.in_class_globals)
+                .then(|| self.globals_for_each.get(&k))
+                .flatten()
+        });
+        global.map(|&id| (VarRef::Global(id), self.module.global(id).ty.clone()))
     }
 
     fn block(&mut self, node: &SyntaxNode) -> Block {
@@ -803,14 +886,19 @@ impl Lowerer {
                 // `As` in `Process_Globals` is open: refuse it even when the
                 // name is declared, so its type is never ignored.
                 let typed_in_globals = self.in_process_globals && child(node, TYPE_REF).is_some();
-                let found = self.lookup_var(&text).filter(|_| !typed_in_globals);
-                let Some((var, ty)) = found else {
+                let found = self.lookup_var(&text);
+                let Some((var, ty)) = found.clone().filter(|_| !typed_in_globals) else {
                     // Every other undeclared counter is an Int (`hoist_locals`,
-                    // `find_globals_counters`): never drop the loop silently.
-                    self.error(
-                        range(&name),
-                        undeclared_loop_variable(&text, "For", self.globals_sub()),
-                    );
+                    // `declare_loop_globals`): never drop the loop silently.
+                    if !self.refused(&text) {
+                        let message = if found.is_some() {
+                            typed_loop_variable(&text, "For", self.globals_sub())
+                        } else {
+                            undeclared_loop_variable(&text, "For", self.globals_sub())
+                        };
+                        self.error(range(&name), message);
+                    }
+                    self.refused_loop_body(node, &text, &name);
                     return;
                 };
                 if !ty.is_numeric() && ty != Ty::Error {
@@ -848,17 +936,31 @@ impl Lowerer {
                     return;
                 };
                 let text = name_of(&name);
-                let typed_in_globals = self.in_process_globals && child(node, TYPE_REF).is_some();
-                let found = self.lookup_var(&text).filter(|_| !typed_in_globals);
-                let Some((var, ty)) = found else {
-                    let message = if self.in_process_globals {
-                        undeclared_loop_variable(&text, "For Each", self.globals_sub())
-                    } else {
-                        format!(
-                            "`{text}` is not declared: write `For Each {text} As <type> In ...`"
-                        )
-                    };
-                    self.error(range(&name), message);
+                // `Process_Globals` declares it (`declare_loop_globals`)
+                // unless a `Dim` does, where `As` in the loop is open, as in
+                // `Class_Globals`.
+                let typed_in_globals = child(node, TYPE_REF).is_some()
+                    && (self.in_class_globals
+                        || (self.in_process_globals
+                            && !self.globals_for_each.contains_key(&key(&text))));
+                let found = self.lookup_var(&text);
+                let Some((var, ty)) = found.clone().filter(|_| !typed_in_globals) else {
+                    if !self.refused(&text) {
+                        let message = if found.is_some() {
+                            typed_loop_variable(&text, "For Each", self.globals_sub())
+                        } else if self.in_process_globals {
+                            undeclared_loop_variable(&text, "For Each", self.globals_sub())
+                        } else {
+                            format!(
+                                "`{text}` is not declared: write `For Each {text} As <type> In ...`"
+                            )
+                        };
+                        self.error(range(&name), message);
+                    }
+                    if let Some(coll) = exprs(node).into_iter().next() {
+                        self.expr(&coll);
+                    }
+                    self.refused_loop_body(node, &text, &name);
                     return;
                 };
                 let Some(coll) = exprs(node).into_iter().next() else {
@@ -951,6 +1053,16 @@ impl Lowerer {
             }
             _ => {}
         }
+    }
+
+    /// The body of a loop already reported, checked for its own errors. An
+    /// undeclared variable is declared with the error type first, so its uses
+    /// are not reported again.
+    fn refused_loop_body(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) {
+        if self.lookup_var(text).is_none() {
+            self.declare_local(text, Ty::Error, range(name));
+        }
+        self.loop_body(node);
     }
 
     fn loop_body(&mut self, node: &SyntaxNode) -> Block {
