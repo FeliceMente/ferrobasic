@@ -174,13 +174,21 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.
-- [ ] A `For` with an undeclared counter, or `For Each v As T`, inside
-      `Process_Globals`: does B4X declare a module variable, a local, or
-      reject it? FerroBASIC rejects it until a recording shows
-      (`docs/spec/level0.md`, "Program structure"). Fixture:
-      `level0/process_globals_for`.
-- [ ] Whether a comment may follow a line continuation (` _ ' comment`);
-      FerroBASIC rejects it. Fixture: `level0/continuation_comment`.
+- [x] A `For` with an undeclared counter inside `Process_Globals` runs
+      (recording: `level0/process_globals_for`). FerroBASIC makes the
+      counter a local of `Process_Globals`.
+- [ ] Whether that counter is a module variable: can `AppStart` read it,
+      and do undeclared counters of the same name in other Subs share it?
+      FerroBASIC refuses both uses meanwhile (`docs/spec/level0.md`,
+      "Program structure"). Fixtures: `level0/process_globals_counter_visible`,
+      `level0/process_globals_counter_shared`.
+- [ ] Whether `For Each v As T` may declare its variable inside
+      `Process_Globals`; FerroBASIC rejects it. Fixture:
+      `level0/process_globals_for_each`.
+- [x] A comment may follow a line continuation (` _ ' comment`)
+      (recording: `level0/continuation_comment`).
+- [ ] Whether ` _'` (no space before the comment) continues the line;
+      FerroBASIC rejects it. Fixture: `level0/continuation_comment_tight`.
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the

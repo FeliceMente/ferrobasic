@@ -60,7 +60,7 @@ The "not yet" rows come from the
 | `Dim`, `Private`, `Public`, several names in one statement, initialisers | ✅ | [level0.md](spec/level0.md#declarations-and-scope); test `dim_scope` |
 | `Dim` with no `As` | 🟡 | provisionally `String` *(open)* |
 | `Const` (`Private Const Size As Int = 10`) | ❌ | not assigned to a level yet ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)); a precise diagnostic |
-| Implicit `Int` counter of `For i = …` | ✅ | test `for_implicit_continue`; not in `Process_Globals` *(open)* |
+| Implicit `Int` counter of `For i = …` | ✅ | test `for_implicit_continue`; in `Process_Globals` a local of it (test `process_globals_for`): whether it is a module variable is *(open)*, so another Sub may not use it undeclared (tests `process_globals_counter_visible`, `process_globals_counter_shared`); `For Each` there *(open)* (test `process_globals_for_each`) |
 | `For Each x In …` with no `As` and `x` undeclared | ❌ | the type is *(open)*: today it is an error asking for `As <type>` |
 
 ## Operators and expressions
@@ -75,7 +75,7 @@ The "not yet" rows come from the
 | `IIf(condition, a, b)` | ✅ | test `iif_branches` |
 | `Is` (`If v Is Button`) | ❌ | not assigned to a level yet; a precise diagnostic |
 | Number literals: decimal, `0x` hexadecimal, exponent (`1e3`) | ✅ | test `number_parsing` |
-| Line continuation ` _`, `:` between statements | ✅ | a comment after ` _` is *(open)*; tests `continuation_comment`, `colon_separator` |
+| Line continuation ` _`, `:` between statements | ✅ | a comment may follow ` _` (test `continuation_comment`); ` _'` without a space is *(open)* (test `continuation_comment_tight`); test `colon_separator` |
 
 ## Statements
 
