@@ -95,7 +95,8 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 
 `SortType(FieldName, Ascending)` and `SortTypeCaseInsensitive(FieldName, Ascending)`
 apply the same two rules to the named field of `Type` records (the field name
-is case-sensitive). As in jCore, the field is that of the first item's type:
+is case-sensitive, and can be `IsInitialized`). As in jCore, the field is
+that of the first item's type:
 
 - an empty list is left as it is;
 - a `Null` first item raises `java.lang.NullPointerException`, and a first item
@@ -105,6 +106,10 @@ is case-sensitive). As in jCore, the field is that of the first item's type:
   (`IllegalArgumentException`), a `Null` item or, case-sensitively, a `Null`
   field value (`NullPointerException`), and field values that do not compare
   (`ClassCastException`). Case-insensitively a `Null` field value is `"null"`.
+  Errors such as `StackOverflowError` are not wrapped.
+
+A sort that raises leaves the list as it was; B4J leaves it partly sorted
+(deviation D5).
 
 ## Map
 

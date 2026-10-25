@@ -229,7 +229,16 @@ tests):
   Which item raises first depends on the order `TimSort` compares in;
   FerroBASIC checks the items in list order, so in a list with several kinds
   of problem the wrapped cause can differ, never the `RuntimeException`
-  (deviation D4).
+  (deviation D4). The comparator catches `Exception`, so an `Error` such as
+  `StackOverflowError` (printing a field nested too deeply) is not wrapped.
+  The field can be `IsInitialized`: the class of a `Type` has a `boolean
+  IsInitialized` field, the first one its `toString` prints (measured with a
+  Java class of that shape, not yet with B4J).
+- A sort that raises (**measured**, JDK 21) leaves the list partly sorted:
+  `ArrayList.sort` runs `TimSort` on the list's own array and stops at the
+  failing comparison, so `[1, 3, 2, "x"]` is `[1, 2, 3, x]` after `Sort`
+  raises. FerroBASIC checks every item first and leaves the list as it was
+  (deviation D5).
 - **Map** ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java)): `Remove`
   returns the removed value or `Null`; `GetDefault` returns the default when
   the key is missing or its value is `Null`; `ContainsKey` is
