@@ -307,6 +307,7 @@ fn arithmetic_next_to_concat_needs_parentheses() {
         "\"x\" & -6 / 2",
         "\"x\" & 2 * 6 / 3",
         "2 * 3 Mod 4 & \"x\"",
+        "\"x\" & (1 + 2) / 3",
         "\"a\" & 1 + 2 & \"b\"",
     ] {
         let d = errors(&program(&format!("Dim r As String = {expr}")));
