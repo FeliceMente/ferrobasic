@@ -26,8 +26,11 @@ B4J itself (`docs/compatibility-testing.md`).
   failed `SortType` it is the error that `RuntimeException` wraps, not the
   `RuntimeException` (found by the recordings).
 - Lists can be compared 3000 levels deep and printed 7000 levels deep
-  before `StackOverflowError`, up from 1000, matching the depths B4J reached
-  on the recording machine (deviation D2).
+  before `StackOverflowError`, up from 1000: limits chosen within the depths
+  B4J reached and overflowed at on the recording machine (deviation D2).
+- A record that holds itself through a List, or records nested in Lists
+  more than about 49 deep, print differently from B4J, which stops printing
+  them there (deviation D6).
 - A sort that raises leaves the list as it was, where B4J leaves it partly
   sorted (deviation D5).
 - `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java

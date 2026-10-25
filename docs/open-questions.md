@@ -95,11 +95,10 @@ needs a recorded test):
       stack; the recording machine compares 2000 levels and prints 5000
       (recordings: `level0/deep_equals`, `deep_printing`). FerroBASIC's fixed
       limits, 3000 and 7000, are deviation D2.
-- [ ] Whether a record whose List holds the record overflows when printed
-      (FerroBASIC: it does, as the List prints through its wrapper). B4J
-      prints it 49 levels deep, then `[]`: jCore's `BA.TypeToString` gives
-      up once the Java stack is 150 frames deep. Fixture:
-      `level0/self_printing_record`.
+- [x] Whether a record whose List holds the record overflows when printed:
+      B4J prints it 49 levels deep, then `[]`, as jCore's `BA.TypeToString`
+      gives up once the Java stack is 150 frames deep (recording:
+      `level0/self_printing_record`). FerroBASIC overflows: deviation D6.
 - [ ] When B4J raises `java.lang.OutOfMemoryError` depends on the JVM's heap
       size, which a recording must state. FerroBASIC always says `Java heap
       space`; the JDK words an over-long String differently.
