@@ -326,7 +326,7 @@ The first implementation is done when, on Linux x86_64 and in CI:
    recorded, a `.provisional` file produces identical stdout, and the uncaught
    error named in `uncaught_error` when there is one
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
-   Tests with neither file, such as `precedence_open`, are only checked.
+   Tests with neither file, such as `precedence_and_or`, are only checked.
 5. For every test in point 4, `ferro bundle` produces a binary whose stdout and
    exit code are identical to `ferro run`'s. The binary must also keep working
    after the build tree and `ferro` itself are removed.

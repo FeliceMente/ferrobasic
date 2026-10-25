@@ -35,7 +35,7 @@ The "not yet" rows come from the
 | --- | --- | --- |
 | A single code module (`.bas`) | ✅ | the main module of a B4J non-UI app; [cli.md](spec/cli.md#inputs) |
 | A B4J console project (`.b4j`), or the folder holding it | 🟡 | only a console app with the `jcore` library and no other modules or files; each line that stands in the way is an error ([project-files.md](spec/project-files.md)). `ferro bundle` writes its program into the project's folder ([cli.md](spec/cli.md#commands)). |
-| `Sub Process_Globals`, `Sub AppStart (Args() As String)` | ✅ | [level0.md](spec/level0.md#program-structure); tests `process_globals_for`, `exit_code` |
+| `Sub Process_Globals`, `Sub AppStart (Args() As String)` | ✅ | both required, as in B4J; [level0.md](spec/level0.md#program-structure); tests `process_globals_for`, `exit_code`, `missing_process_globals` |
 | Several modules, calling another module's Subs | ❌ | Level 1. Today a call such as `Module2.F` is reported as an undeclared name. |
 | Class modules (`Class_Globals`, `Initialize`, `Me`) | ❌ | Level 1 |
 | UI apps (`AppType=JavaFX`, `Form`, layouts), B4XPages | ❌ | Level 4 |
@@ -68,9 +68,9 @@ The "not yet" rows come from the
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `+ - * /`, `Mod`, unary `-` | ✅ | `/` always gives `Double`; [level0.md](spec/level0.md#operators); test `division_and_mod` |
-| `&` string concatenation | ✅ | its precedence is *(open)* |
+| `&` string concatenation | ⚠️ | its precedence is *(open)*: B4J refuses `"x" & 1 + 2`, which FerroBASIC accepts for now (D7); tests `concat_*` |
 | `= <> < > <= >=` | ✅ | `<` and `>` on Strings, and String-number comparisons, are *(open)* |
-| `And`, `Or` (short-circuit), `Not(x)` | ✅ | their relative precedence is *(open)*; test `precedence_open` |
+| `And`, `Or` (short-circuit), `Not(x)` | ✅ | their relative precedence is *(open)*; test `precedence_and_or` |
 | Inline cast `x.As(T)` | ✅ | [level0-builtins.md](spec/level0-builtins.md#keywords-and-constants) |
 | `IIf(condition, a, b)` | ✅ | test `iif_branches` |
 | `Is` (`If v Is Button`) | ❌ | not assigned to a level yet; a precise diagnostic |

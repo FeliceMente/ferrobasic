@@ -133,7 +133,7 @@ fn arguments_go_to_app_start() {
     let source = dir.join("echo.bas");
     fs::write(
         &source,
-        "Sub AppStart (Args() As String)\n    Log(Args.Length)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Log(Args.Length)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n",
     )
     .unwrap();
     let binary = build_and_move(&source, &dir);
@@ -152,7 +152,7 @@ fn exit_codes_and_corrupt_binaries() {
     let source = dir.join("exit.bas");
     fs::write(
         &source,
-        "Sub AppStart (Args() As String)\n    Log(\"bye\")\n    ExitApplication2(7)\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Log(\"bye\")\n    ExitApplication2(7)\nEnd Sub\n",
     )
     .unwrap();
     let binary = build_and_move(&source, &dir);
