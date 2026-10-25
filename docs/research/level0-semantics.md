@@ -228,7 +228,8 @@ tests):
   `Comparable`, by `ClassCastException`. A list of one item is not compared.
   Which item raises first depends on the order `TimSort` compares in;
   FerroBASIC checks the items in list order, so in a list with several kinds
-  of problem the wrapped cause can differ, never the `RuntimeException`.
+  of problem the wrapped cause can differ, never the `RuntimeException`
+  (deviation D4).
 - **Map** ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java)): `Remove`
   returns the removed value or `Null`; `GetDefault` returns the default when
   the key is missing or its value is `Null`; `ContainsKey` is

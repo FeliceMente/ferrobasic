@@ -15,7 +15,8 @@ B4J itself (`docs/compatibility-testing.md`).
   item, as B4J does, on every list. A list mixing `Type`s, or a record with
   other values, is no longer sorted silently or reported as a missing field:
   errors while sorting raise `RuntimeException`, wrapping the cause, as in
-  B4J.
+  B4J. In a list with several different problems the cause can differ
+  (deviation D4).
 - `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java
   (`#If Java` … `#End If`) get one precise error each, saying what is
   missing, instead of generic syntax errors (#32). None of them is supported
