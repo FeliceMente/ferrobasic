@@ -23,7 +23,8 @@ B4J itself (`docs/compatibility-testing.md`).
 - A local declared with a module variable's name is an error, as B4J
   refuses it with another type; with the same type it is refused until a
   recording shows whether B4J makes it a new local. Before, it was a new
-  local.
+  local. A parameter with a module variable's name is refused too, until
+  a recording shows.
 - `Null` assigned, passed or returned as a `String` is the text `"null"`,
   as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
   null, so `IsNumber` or `.Length` on it raised `NullPointerException`.

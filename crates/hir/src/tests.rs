@@ -558,16 +558,22 @@ fn loops_in_process_globals() {
     let module = ok(&globals(each, "    Log(n)\n    For n = 1 To 2\n    Next"));
     assert_eq!(global(&module, "n"), Some(Ty::Int));
 
-    // One name, one type: a `Dim`, a counter and a `For Each` that agree
-    // are one module variable, in any order.
-    for body in [
-        format!("    Dim n As Int\n{each}"),
-        format!("{each}\n    Dim n As Int"),
-        format!("    For n = 1 To 2\n    Next\n{each}"),
-        format!("{each}\n    For n = 1 To 2\n    Next"),
+    // A counter or a `For Each` over a declared name is that variable.
+    for (body, ty) in [
+        (format!("    Dim n As Int\n{each}"), Ty::Int),
+        (format!("{each}\n    Dim n As Int"), Ty::Int),
+        (format!("{each}\n    For n = 1 To 2\n    Next"), Ty::Int),
+        (
+            "    Dim n As Double\n    For n = 1 To 2\n    Next".to_string(),
+            Ty::Double,
+        ),
+        (
+            "    For n = 1 To 3\n    Next\n    Dim n As Long".to_string(),
+            Ty::Long,
+        ),
     ] {
         let module = ok(&globals(&body, "    Log(n)"));
-        assert_eq!(global(&module, "n"), Some(Ty::Int), "{body}");
+        assert_eq!(global(&module, "n"), Some(ty), "{body}");
     }
     for (body, message) in [
         (
@@ -579,8 +585,12 @@ fn loops_in_process_globals() {
             "`n` is already declared as String in `Process_Globals`: this loop cannot declare it again as Int",
         ),
         (
-            "    For Each n As String In Array As String(\"a\")\n    Next\n    For n = 1 To 2\n        Log(n)\n    Next",
-            "`n` is already declared as String in `Process_Globals`: this loop cannot declare it again as Int",
+            "    For n = 1 To 2\n    Next\n    For Each n As Int In Array As Int(1)\n    Next",
+            "`n` is already an undeclared `For` counter in `Process_Globals`: whether this `For Each` may declare it again is not known yet, so declare it with `Dim`",
+        ),
+        (
+            "    For Each n As String In Array As String(\"a\")\n    Next\n    For n = 1 To 2\n    Next",
+            "a `For` counter must be a number, not String",
         ),
     ] {
         let diags = errors(&globals(body, ""));
@@ -595,8 +605,16 @@ fn loops_in_process_globals() {
             globals(body, app)
         )
     };
-    ok(&sub("    For Bump = 1 To 2\n    Next", "    Bump"));
-    for app in ["    Log(Bump)", "    Bump = 3"] {
+    ok(&sub(
+        "    For Bump = 1 To 2\n    Next",
+        "    Bump\n    Bump()",
+    ));
+    for app in [
+        "    Log(Bump)",
+        "    Bump = 3",
+        "    For Bump = 5 To 6\n    Next",
+        "    For Each Bump In Array As Int(1)\n    Next",
+    ] {
         let diags = errors(&sub("    For Bump = 1 To 2\n    Next", app));
         assert!(
             has(&diags, "`Bump` is both a Sub and a loop variable"),
@@ -713,6 +731,17 @@ fn locals_named_like_module_variables() {
     }
     // Its undeclared counter is the module variable, as before.
     ok(&program("    For Count = 1 To 2\n    Next"));
+    // A parameter with its name is open, so refused.
+    let diags = errors(&format!(
+        "{}Sub Show (Count As String)\nEnd Sub\n",
+        program("")
+    ));
+    assert_eq!(
+        diags,
+        [
+            "`Count` is also a module variable: whether a parameter may take its name is not known yet, so use another name"
+        ]
+    );
 }
 
 #[test]

@@ -190,8 +190,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       a counter (`Int`) then `For Each n As String` is refused (recording:
       `level0/process_globals_counter_and_for_each`).
 - [ ] With the same type (a counter, then `For Each n As Int`), one
-      variable? FerroBASIC takes it for one, as with a `Dim` (prints 6).
-      Fixture: `level0/process_globals_counter_and_for_each_int`.
+      variable? FerroBASIC refuses it. Fixture:
+      `level0/process_globals_counter_and_for_each_int`.
 - [x] A loop variable of `Process_Globals` may have a Sub's name, and a
       statement calling the Sub still works (recording:
       `level0/process_globals_loop_named_like_sub`).
@@ -205,6 +205,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] With the same type, does the local `Dim` declare a new local or mean
       the module variable? FerroBASIC refuses it. Fixture:
       `level0/local_dim_like_module_variable`.
+- [ ] May a parameter have a module variable's name, and does it hide it?
+      FerroBASIC refuses it. Fixture: `level0/parameter_like_module_variable`.
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).
