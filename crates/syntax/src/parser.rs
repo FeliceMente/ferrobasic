@@ -62,9 +62,10 @@ pub fn parse(text: &str) -> Parse {
     }
 }
 
-/// Binding powers of the binary operators, lowest first. The relative order
-/// of `&` and of `And`/`Or` is provisional (see `docs/open-questions.md`):
-/// change it here only, when a recording settles it.
+/// Binding powers of the binary operators, lowest first, as recorded from
+/// B4J (`And` above `Or`, comparisons below `&`). B4J also refuses `+`, `-`,
+/// `*` or a negation next to `&` without parentheses; the parser still
+/// builds those, so that tools see their tree, and `hir` reports them.
 fn infix_binding_power(kind: SyntaxKind) -> Option<(u8, u8)> {
     Some(match kind {
         OR_KW => (1, 2),

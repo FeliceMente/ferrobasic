@@ -17,6 +17,11 @@ related tests stay `pending-recording`.
       `True`). Recorded: `level0/concat_*`; FerroBASIC gives a precise error.
 - [ ] `&` next to `/` or `Mod`: FerroBASIC accepts both. Fixtures:
       `level0/concat_divide_after`, `concat_mod_after`.
+- [ ] A refused operator deeper in an operand of `&` (`"x" & -6 / 2`,
+      `"x" & 2 * 6 / 3`, `2 * 3 Mod 4 & "x"`): FerroBASIC refuses these as
+      it refuses the operator right next to `&`. Fixtures:
+      `level0/concat_negative_divided`, `concat_times_divided`,
+      `concat_times_mod_before`.
 - [x] `And` binds tighter than `Or`: `True Or False And False` is `True`
       (recording: `level0/precedence_and_or`). Against comparisons it is
       still open.

@@ -188,8 +188,10 @@ pub fn to_string_from(v: &Value, from: &Ty, program: &Program) -> Result<Value, 
     }
     let mut out = Vec::new();
     match (from, v) {
-        // A Null String or the Null literal stays a null String.
-        (Ty::String | Ty::Null, Value::Null) => return Ok(Value::Null),
+        // A null String stays one: Java converts nothing. The `Null`
+        // literal goes through `BA.ObjectToString`, so it is the text
+        // "null" (the MIR also folds it into that constant).
+        (Ty::String, Value::Null) => return Ok(Value::Null),
         (t, _) if is_wrapper_type(t) => wrapper_to_string(v, program, &mut out)?,
         _ => raw_to_string(v, program, &mut out)?,
     }
@@ -458,6 +460,10 @@ mod tests {
             Value::Char(0)
         ));
         assert_eq!(text(conv(Value::Double(3.0), Ty::Double, Ty::String)), "3");
+        // The `Null` literal is the text "null", not a null String.
+        let null = conv(Value::Null, Ty::Null, Ty::String).unwrap();
+        assert!(matches!(null, Value::Str(_)), "{null:?}");
+        assert_eq!(text(Ok(null)), "null");
         assert_eq!(
             text(conv(Value::Float(1.1), Ty::Float, Ty::String)),
             "1.100000023841858"
