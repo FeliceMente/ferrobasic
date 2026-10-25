@@ -388,9 +388,17 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `For i = 1 To 3`), and an undeclared counter of the same name in another
   Sub is the same variable (**recorded**: `process_globals_for`,
   `process_globals_counter_visible`, `process_globals_counter_shared`).
-  `For Each v As T` runs there too (**recorded**: `process_globals_for_each`);
-  whether other Subs see `v` is **open**
-  (`process_globals_for_each_visible`, `process_globals_for_each_shared`).
+  A `For Each v As T` variable there is a module variable too, which
+  AppStart reads and other Subs' undeclared counters share (**recorded**:
+  `process_globals_for_each`, `process_globals_for_each_visible`,
+  `process_globals_for_each_shared`). A `Dim n As Int` there, then
+  `For Each n As Int`, is one variable (**recorded**:
+  `process_globals_for_each_declared`), but a counter `n` then
+  `For Each n As String` is refused: "Current declaration does not match
+  previous one" (**recorded**: `process_globals_counter_and_for_each`). A
+  counter may have a Sub's name, and calling the Sub still works
+  (**recorded**: `process_globals_loop_named_like_sub`); reading the name is
+  **open** (`process_globals_loop_named_like_sub_read`).
   Test is `i <= b` for a
   positive step and `i >= b` for a negative step. **open**: whether `b` and
   `s` are evaluated once (expected, as in VB), and the value of `i` after the loop.
@@ -426,6 +434,11 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   ([forum](https://www.b4x.com/android/forum/threads/best-coding.108735/),
   [forum](https://www.b4x.com/android/forum/threads/easy-dim.20927/)).
   **forum** level; needs a recorded test.
+- A local `Dim i As String` where a module variable `i` is an `Int` is
+  refused: "Current declaration does not match previous one. Previous:
+  {Type=Int...}, Current: {Type=String...}" (**recorded**:
+  `process_globals_counter_hidden`). With the same type it is **open**
+  (`local_dim_like_module_variable`).
 - Primitives (numbers, `Boolean`, `Char`) are passed by value; everything else,
   including `String` and arrays, by reference copy (**docs**, booklet §2.1).
 - Local variables get their default value on every call (**docs**, booklet §2.6.3).

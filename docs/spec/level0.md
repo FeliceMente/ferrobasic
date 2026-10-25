@@ -55,17 +55,26 @@ End Sub
   before anything else. Statements there run too. An undeclared `For`
   counter there is a module variable, an `Int`: other Subs read it, and
   their own undeclared counters of that name are the same variable
-  (recorded). A `For Each v As T` loop there runs (recorded) and declares
-  `v` as a module variable of type `T` that only `Process_Globals` sees:
-  whether other Subs see it is *(open)*, so there `v` is undeclared, and
-  an undeclared counter `v` is a compile error. A name that is both an
-  undeclared counter and a `For Each` variable there is a compile error
-  *(open)*: declare it with `Dim`. So is a loop variable there named like
-  a Sub, a `Type`, `Bit` or a keyword, and a `For Each v As T` over a `v`
-  that a `Dim` there declares. `For i As T` there is *(open)*, so a
-  compile error: declare `i` with `Dim` and loop without `As`. All of this
-  is only for the main module: in `Class_Globals` a loop must use a
-  variable declared with `Dim`, without `As`.
+  (recorded). A `For Each v As T` variable there is a module variable of
+  type `T` the same way (recorded). Every declaration of a name there, a
+  `Dim`, a counter or a `For Each`, declares the same module variable, and
+  must agree on its type, in source order: B4J refuses a later one that
+  does not ("Current declaration does not match previous one", recorded).
+  A `Dim` after a loop that declared its name, with the same type, is that
+  variable. A counter over a
+  name that a `Dim` or another counter declared is that variable. With the
+  same type, a `For Each` over a name an undeclared counter or another
+  `For Each` declared, and a counter over a `For Each` variable, are
+  *(open)*, so compile errors. A loop variable there may have a Sub's
+  name: a statement `Bump` still calls the Sub (recorded). Any other use
+  of a module variable with a Sub's name, declared by a loop or a `Dim`
+  (read, assigned or looped over), is *(open)*, so a compile error, in
+  `Process_Globals` too, except where it is declared; a statement `Bump`
+  calls the Sub. A loop variable named like a `Type`, `Bit` or a
+  keyword is *(open)* too, and so is `For i As T` there: declare `i` with
+  `Dim` and loop without `As`. All of this is only for the main module:
+  in `Class_Globals` a loop must use a variable declared with `Dim`,
+  without `As`.
 - `Sub AppStart (Args() As String)` is the entry point. It is called after
   `Process_Globals` with the command-line arguments. The program ends when
   `AppStart` returns, with exit code 0.
@@ -117,6 +126,14 @@ End Sub
 - `Dim`, `Private` and `Public` in a Sub all declare a local. In
   `Process_Globals` they declare module variables. `Private` and `Public` only
   matter with several modules (Level 1).
+- A local may not take a module variable's name. With another type B4J
+  refuses it ("Current declaration does not match previous one",
+  recorded); with the same type, whether it declares a new local or means
+  the module variable is *(open)*, so it is a compile error too. This holds
+  for a `Dim` and for a `For Each v As T` in a Sub; an undeclared `For`
+  counter of that name is the module variable. A parameter with a module
+  variable's name is accepted and hides it in its Sub, as the generated
+  Java's parameter hides the field; whether B4J accepts it is *(open)*.
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
   A name without `As` takes the type of the next `As` to its right in the same
   statement.
