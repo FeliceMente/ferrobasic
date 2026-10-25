@@ -172,6 +172,18 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
     `UnsupportedOperationException` only if there is something to add;
   - a `SubList` view (`Collections.unmodifiableList`) always raises
     `UnsupportedOperationException`.
+- The other changes through a `SubList` view (**measured**, JDK 21, test
+  `list_stale_sublist`) are refused the same way, before the view is read:
+  `Add`, `InsertAt`, `RemoveAt`, `Set`, `Clear`, and `Sort` and
+  `SortCaseInsensitive` (`Collections.sort` calls the view's `sort`), even
+  when the parent has changed since. `SortType` and
+  `SortTypeCaseInsensitive` differ, following jCore's `sortList`
+  ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L203-L227)):
+  it reads the size first (so a stale view raises
+  `ConcurrentModificationException`), returns on an empty list, and looks
+  up the field on the first item (`NullPointerException` for `Null`,
+  `NoSuchFieldException` for a missing field) before the view refuses to
+  sort.
 
 ### Built-in members (source, docs)
 
@@ -202,6 +214,32 @@ tests):
   `compareToIgnoreCase`; `SortType` / `SortTypeCaseInsensitive` compare the
   named field the same ways, and return at once on an empty list. Every sort
   is `Collections.sort`, which is stable, also when descending.
+- `SortType` / `SortTypeCaseInsensitive` take the field from the first item
+  (`get(0).getClass().getDeclaredField`, so `Null` raises
+  `NullPointerException` and a missing field `NoSuchFieldException`), then
+  sort with a comparator that reads that field from every item with
+  `Field.get` and wraps any exception in a `RuntimeException`
+  ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L203-L227)).
+  **Measured** (JDK 21, test `list_sort_type_errors`): an item of another
+  type, or a non-record, raises `RuntimeException` caused by
+  `IllegalArgumentException`; a `Null` item or a `Null` field value, by
+  `NullPointerException` (case-insensitively the field is
+  `String.valueOf`'d, so `"null"`); field values that are not mutually
+  `Comparable`, by `ClassCastException`. A list of one item is not compared.
+  Which item raises first depends on the order `TimSort` compares in;
+  FerroBASIC checks the items in list order, so in a list with several kinds
+  of problem the wrapped cause can differ, never the `RuntimeException`
+  (deviation D4). The comparator catches `Exception`, so an `Error` such as
+  `StackOverflowError` (printing a field nested too deeply) is not wrapped.
+  FerroBASIC also accepts the field `IsInitialized`, which the class of a
+  `Type` is expected to have (its `toString` prints it first); measured
+  only with a Java class of that shape, so it is an open question, like the
+  fields of JDK classes (test `list_sort_type_class_fields`).
+- A sort that raises (**measured**, JDK 21) leaves the list partly sorted:
+  `ArrayList.sort` runs `TimSort` on the list's own array and stops at the
+  failing comparison, so `[1, 3, 2, "x"]` is `[1, 2, 3, x]` after `Sort`
+  raises. FerroBASIC checks every item first and leaves the list as it was
+  (deviation D5).
 - **Map** ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java)): `Remove`
   returns the removed value or `Null`; `GetDefault` returns the default when
   the key is missing or its value is `Null`; `ContainsKey` is

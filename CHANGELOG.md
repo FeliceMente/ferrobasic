@@ -7,6 +7,19 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- Changes through a `SubList` view whose parent has changed (`Add`,
+  `InsertAt`, `RemoveAt`, `Set`, `Clear`, `Sort`, `SortCaseInsensitive`)
+  raise `UnsupportedOperationException`, as in B4J, instead of
+  `ConcurrentModificationException` (#21).
+- `SortType` and `SortTypeCaseInsensitive` take the field from the first
+  item, as B4J does, on every list. A list mixing `Type`s, or a record with
+  other values, is no longer sorted silently or reported as a missing field:
+  errors while sorting raise `RuntimeException`, wrapping the cause, as in
+  B4J. In a list with several different problems the cause can differ
+  (deviation D4). `SortType("IsInitialized", …)` sorts by whether each
+  record is initialised (still to be confirmed against B4J).
+- A sort that raises leaves the list as it was, where B4J leaves it partly
+  sorted (deviation D5).
 - `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java
   (`#If Java` … `#End If`) get one precise error each, saying what is
   missing, instead of generic syntax errors (#32). None of them is supported
