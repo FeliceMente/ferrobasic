@@ -1,0 +1,15 @@
+[package]
+name = "ferro-recorder"
+description = "Records the expected output of conformance tests on the original toolchain."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ferro-corpus = { path = "../../crates/corpus" }
