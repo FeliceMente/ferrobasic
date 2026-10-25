@@ -60,7 +60,8 @@ End Sub
   whether other Subs see it is *(open)*, so there `v` is undeclared, and
   an undeclared counter `v` is a compile error. A name that is both an
   undeclared counter and a `For Each` variable there is a compile error
-  *(open)*: declare it with `Dim`. `For i As T` there is *(open)*, so a
+  *(open)*: declare it with `Dim`. So is a loop variable there named like
+  a Sub, `Bit` or a keyword. `For i As T` there is *(open)*, so a
   compile error: declare `i` with `Dim` and loop without `As`. All of this
   is only for the main module: in `Class_Globals` a loop must use a
   variable declared with `Dim`, without `As`.

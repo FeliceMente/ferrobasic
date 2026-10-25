@@ -190,7 +190,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_for_each_shared`.
 - [ ] A name that is both an undeclared `For` counter and a `For Each v As
       T` variable in `Process_Globals`: which type it has. FerroBASIC
-      refuses it.
+      refuses it. Fixture: `level0/process_globals_counter_and_for_each`.
+- [ ] Whether a loop variable that `Process_Globals` declares may have the
+      name of a Sub, of `Bit` or of a keyword, and then hides it in other
+      Subs. FerroBASIC refuses the name.
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).
