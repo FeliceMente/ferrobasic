@@ -69,6 +69,13 @@ impl Runner for Fake {
                     .bytes(),
                 );
                 run.code = Some(1);
+            } else if let Some(n) = line.strip_prefix("' TRACE ") {
+                for _ in 0..n.parse::<usize>().unwrap() {
+                    run.stderr.extend(
+                        b"	at java.util.ArrayList.equals(ArrayList.java:529)
+",
+                    );
+                }
             } else if line == "' HANG" {
                 return Ok(Run {
                     timed_out: true,
@@ -291,18 +298,30 @@ fn reports_builds_that_fail_or_hang() {
         &[
             ("broken", "' NO BUILD\n", PENDING, Some("x\n")),
             ("hangs", "' HANG\n", PENDING, Some("x\n")),
+            (
+                "overflows",
+                "' THROW: java.lang.StackOverflowError\n' TRACE 100\n",
+                PENDING,
+                Some(""),
+            ),
         ],
     );
     let mut config = config(&root);
     config.keep = true;
     let summary = record(&config, &fake(&root)).unwrap();
     let verdicts: Vec<_> = summary.entries.iter().map(|e| e.verdict).collect();
-    assert_eq!(verdicts, [Verdict::BuildFailed, Verdict::TimedOut]);
+    assert_eq!(
+        verdicts,
+        [Verdict::BuildFailed, Verdict::TimedOut, Verdict::Recorded]
+    );
     assert_eq!(summary.failures(), 2);
     let out = root.join("out");
-    assert!(!out.join("tests").exists());
-    assert_eq!(read(out.join("remove.txt")), "");
-    assert!(read(out.join("report.md")).contains("Error compiling program."));
+    let report = read(out.join("report.md"));
+    assert!(report.contains("Error compiling program."));
+    assert!(report.contains("3 tests: 2 failed"));
+    // A long trace is cut.
+    assert_eq!(report.matches("ArrayList.equals").count(), 37);
+    assert!(report.contains("… 63 more lines\n"));
     // --keep leaves the generated project, a console project with the code.
     let project = read(out.join("work/level0-broken/broken.b4j"));
     assert!(project.starts_with("AppType=StandardJava\n"));
