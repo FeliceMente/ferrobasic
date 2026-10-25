@@ -529,9 +529,10 @@ fn inline_cast_to_array_type() {
     ok(&program("Dim o As Object\nLog(o.As(String()).Length)"));
 }
 
-/// An undeclared `For` counter in `Process_Globals` is a local Int of it
-/// (recorded: the loop runs). Whether B4X makes it a module variable is
-/// open, so another Sub may not use the name as an undeclared counter.
+/// An undeclared `For` counter in `Process_Globals` is a module variable,
+/// an Int (recorded), and so is a `For Each v As T` variable there (by
+/// analogy; open). Another Sub may not use the latter as an undeclared
+/// counter, the one case where the analogy could matter.
 #[test]
 fn loops_in_process_globals() {
     let globals = |body: &str, app: &str| {
@@ -540,74 +541,82 @@ fn loops_in_process_globals() {
         )
     };
     let counted = "    For i = 1 To 3\n        Total = Total + i\n    Next";
-    let module = ok(&globals(counted, "    Log(Total)"));
-    let pg = module.sub(module.process_globals.unwrap());
-    assert!(
-        format!("{:?}", pg.body).contains("For"),
-        "the loop must be kept"
-    );
-    assert!(pg.locals.iter().any(|v| v.name == "i" && v.ty == Ty::Int));
-    assert!(module.globals.iter().all(|v| v.name != "i"));
-    // Another Sub may declare the name, but not use it undeclared.
-    ok(&globals(
+    let global = |module: &Module, name: &str| {
+        module
+            .globals
+            .iter()
+            .find(|v| v.name == name)
+            .map(|v| v.ty.clone())
+    };
+    let module = ok(&globals(
+        counted,
+        "    Log(i)\n    For I = 1 To 2\n    Next",
+    ));
+    assert_eq!(global(&module, "i"), Some(Ty::Int));
+    assert!(app_start(&module).locals.iter().all(|v| v.name != "I"));
+    // A local of the same name hides it, as before.
+    let module = ok(&globals(
         counted,
         "    Dim I As Int\n    For I = 1 To 2\n    Next",
     ));
-    let diags = errors(&globals(counted, "    Log(i)"));
-    assert!(has(&diags, "`i` is not declared"), "{diags:?}");
-    let diags = errors(&globals(counted, "    For I = 1 To 2\n    Next"));
+    assert!(app_start(&module).locals.iter().any(|v| v.name == "I"));
+    // A declared variable is the module variable, even after the loop.
+    let module = ok(&globals(
+        "    For i = 1 To 3\n    Next\n    Dim i As Long",
+        "",
+    ));
+    assert_eq!(global(&module, "i"), Some(Ty::Long));
+
+    let each = "    For Each n As Int In Array As Int(1, 2)\n        Total = Total + n\n    Next";
+    let module = ok(&globals(each, "    Log(n)"));
+    assert_eq!(global(&module, "n"), Some(Ty::Int));
+    let diags = errors(&globals(each, "    For n = 1 To 2\n    Next"));
     assert!(
         has(
             &diags,
-            "the `For` counter `I` is also an undeclared counter in `Process_Globals`"
+            "the `For` counter `n` is also the `For Each` variable of `Process_Globals`"
         ),
         "{diags:?}"
     );
-    // Declaring it in the loop is still refused there, even when the name
-    // is also an undeclared counter: its type is never ignored.
-    for body in [
-        "    For i = 1 To 2\n    Next\n    For i As Double = 0 To 1 Step 0.5\n    Next",
-        "    For x = 1 To 2\n    Next\n    For Each x As String In Array As String(\"a\")\n    Next",
-    ] {
-        let diags = errors(&globals(body, ""));
-        assert!(has(&diags, "variable `"), "{body}: {diags:?}");
-        assert!(
-            has(&diags, "must be declared first in `Process_Globals`"),
-            "{diags:?}"
-        );
-    }
-    // In `Class_Globals` (not recorded) an undeclared counter is refused.
-    let diags = errors(
-        "Sub Class_Globals\n    For i = 1 To 3\n    Next\nEnd Sub\n\nSub Initialize\nEnd Sub\n",
-    );
-    assert!(
-        has(
-            &diags,
-            "the `For` variable `i` must be declared first in `Class_Globals`"
-        ),
-        "{diags:?}"
-    );
-    let diags = errors(&globals("    For i As Int = 1 To 3\n    Next", ""));
-    assert!(
-        has(&diags, "the `For` variable `i` must be declared first"),
-        "{diags:?}"
-    );
+    ok(&globals(
+        each,
+        "    Dim n As Int\n    For n = 1 To 2\n    Next",
+    ));
     let diags = errors(&globals(
-        "    For Each v As Int In Array As Int(1, 2)\n    Next",
+        "    Dim n As String\n    For Each n As Int In Array As Int(1)\n    Next",
         "",
     ));
     assert!(
-        has(&diags, "the `For Each` variable `v` must be declared first"),
+        has(&diags, "`n` is already declared with another type"),
         "{diags:?}"
     );
-    // A declared variable is the module variable, as before, even when
-    // declared after the loop.
+
+    // `For ... As` there is still refused, even when the name is declared.
     for body in [
-        "    Dim i As Int\n    For i = 1 To 3\n    Next",
-        "    For i = 1 To 3\n    Next\n    Dim i As Int",
+        "    For i As Double = 0 To 1 Step 0.5\n    Next",
+        "    For i = 1 To 2\n    Next\n    For i As Double = 0 To 1 Step 0.5\n    Next",
     ] {
-        let module = ok(&globals(body, "    For i = 1 To 2\n    Next"));
-        assert!(module.globals.iter().any(|v| v.name == "i"), "{body}");
+        let diags = errors(&globals(body, ""));
+        assert!(
+            has(
+                &diags,
+                "the `For` variable `i` must be declared first in `Process_Globals`"
+            ),
+            "{body}: {diags:?}"
+        );
+    }
+    // In `Class_Globals` (not recorded) a loop must use a declared variable.
+    for body in [
+        "    For i = 1 To 3\n    Next",
+        "    Dim v As Int\n    For Each v As Int In Array As Int(1)\n    Next",
+    ] {
+        let diags = errors(&format!(
+            "Sub Class_Globals\n{body}\nEnd Sub\n\nSub Initialize\nEnd Sub\n"
+        ));
+        assert!(
+            has(&diags, "must be declared first in `Class_Globals`"),
+            "{body}: {diags:?}"
+        );
     }
 }
 
