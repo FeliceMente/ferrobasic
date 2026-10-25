@@ -7,6 +7,10 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- `SortType` on a list of plain values, by the name of a field their JDK
+  class declares (`"value"` on `Int`s), raises `NoSuchFieldException`
+  where B4J raises `InaccessibleObjectException`: deviation D7, recorded.
+  Sorting records by `IsInitialized` is confirmed by the same recording.
 - A comment may follow a line continuation (`1 + _ ' first part`), as in
   B4J. Before, it was an error.
 - A `For` with an undeclared counter runs in `Process_Globals` too, as in

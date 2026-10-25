@@ -146,14 +146,13 @@ needs a recorded test):
       `Can not get java.lang.Object field <class>.N on <class>`, naming B4J's
       generated classes, whose names are open too (see "How a record
       prints").
-- [ ] Which fields `SortType` finds on the first item's class: jCore calls
-      `getClass().getDeclaredField(name)`, then `setAccessible(true)`. On a
-      record, FerroBASIC finds the declared fields and `IsInitialized` (a
-      Java class shaped like B4J's generated `Type` class has it), and sorts
-      by it. On any other value it raises `NoSuchFieldException`, but JDK
-      classes declare private fields (`Integer.value`, `String.value`): JDK
-      21 raises `InaccessibleObjectException` from `setAccessible`, and
-      JDK 8 would sort by them. Fixture: `level0/list_sort_type_class_fields`.
+- [x] Which fields `SortType` finds on the first item's class (jCore calls
+      `getClass().getDeclaredField(name)`, then `setAccessible(true)`): a
+      record has `IsInitialized` too, and sorts by it; a field a JDK class
+      declares privately (`Integer.value`) raises
+      `InaccessibleObjectException` on OpenJDK 19 (recording:
+      `level0/list_sort_type_class_fields`). FerroBASIC raises
+      `NoSuchFieldException` there instead: deviation D7.
 - [x] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class),
       even though they contain the product's package name: kept for
       compatibility, since it is program output, not a FerroBASIC message.

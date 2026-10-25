@@ -239,10 +239,12 @@ tests):
   innermost cause (below; **recorded**, `list_sort_type_errors`). The
   comparator catches `Exception`, so an `Error` such as
   `StackOverflowError` (printing a field nested too deeply) is not wrapped.
-  FerroBASIC also accepts the field `IsInitialized`, which the class of a
-  `Type` is expected to have (its `toString` prints it first); measured
-  only with a Java class of that shape, so it is an open question, like the
-  fields of JDK classes (test `list_sort_type_class_fields`).
+  The class of a `Type` has the field `IsInitialized` too (its `toString`
+  prints it first), and `SortType` sorts by it (**recorded**:
+  `list_sort_type_class_fields`). A field a JDK class declares privately,
+  such as `Integer`'s `value`, raises `InaccessibleObjectException` from
+  `setAccessible` on OpenJDK 19 (**recorded**, same test); FerroBASIC
+  raises `NoSuchFieldException` there (deviation D7).
 - A sort that raises (**measured**, JDK 21) leaves the list partly sorted:
   `ArrayList.sort` runs `TimSort` on the list's own array and stops at the
   failing comparison, so `[1, 3, 2, "x"]` is `[1, 2, 3, x]` after `Sort`

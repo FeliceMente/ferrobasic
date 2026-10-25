@@ -95,12 +95,14 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 
 `SortType(FieldName, Ascending)` and `SortTypeCaseInsensitive(FieldName, Ascending)`
 apply the same two rules to the named field of `Type` records (the field name
-is case-sensitive, and can be `IsInitialized` *(open)*). As in jCore, the field is
+is case-sensitive, and can be `IsInitialized`, recorded). As in jCore, the field is
 that of the first item's type:
 
 - an empty list is left as it is;
 - a `Null` first item raises `java.lang.NullPointerException`, and a first item
-  without that field `java.lang.NoSuchFieldException`;
+  without that field `java.lang.NoSuchFieldException`; a first item that is not
+  a record raises it for every name, where B4J finds the fields its JDK class
+  declares (deviation D7);
 - while sorting a list of two items or more, every error is wrapped in a
   `java.lang.RuntimeException`: an item of another type or not a record
   (`IllegalArgumentException`), a `Null` item or, case-sensitively, a `Null`
