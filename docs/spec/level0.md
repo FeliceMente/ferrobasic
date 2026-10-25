@@ -56,8 +56,10 @@ End Sub
   counter there is an `Int` local of `Process_Globals` (B4J runs the loop,
   recorded). Whether B4X makes it a module variable instead is *(open)*, so
   using it in another Sub, read or as an undeclared counter, is a compile
-  error. A `For ... As` or `For Each` variable there must be declared first
-  (`Dim i As Int`), *(open)* too.
+  error. A loop that declares its variable with `As` there (`For i As
+  Int`, `For Each v As T`) is *(open)* too, so a compile error: declare it
+  with `Dim` and loop without `As`. All of this is only for the main
+  module: in `Class_Globals` an undeclared counter is a compile error.
 - `Sub AppStart (Args() As String)` is the entry point. It is called after
   `Process_Globals` with the command-line arguments. The program ends when
   `AppStart` returns, with exit code 0.

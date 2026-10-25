@@ -404,7 +404,7 @@ fn a_comment_may_follow_a_line_continuation() {
 fn a_comment_right_after_a_line_continuation_is_reported() {
     let errors = parse_errors(&in_sub("x = 1 + _' comment\n    2"));
     assert!(
-        errors[0].contains("needs a space before its `'`"),
+        errors[0].contains("a comment right after a line continuation `_` is not supported yet"),
         "{errors:?}"
     );
 }

@@ -563,7 +563,30 @@ fn loops_in_process_globals() {
         ),
         "{diags:?}"
     );
-    // Declaring it in the loop is still refused there.
+    // Declaring it in the loop is still refused there, even when the name
+    // is also an undeclared counter: its type is never ignored.
+    for body in [
+        "    For i = 1 To 2\n    Next\n    For i As Double = 0 To 1 Step 0.5\n    Next",
+        "    For x = 1 To 2\n    Next\n    For Each x As String In Array As String(\"a\")\n    Next",
+    ] {
+        let diags = errors(&globals(body, ""));
+        assert!(has(&diags, "variable `"), "{body}: {diags:?}");
+        assert!(
+            has(&diags, "must be declared first in `Process_Globals`"),
+            "{diags:?}"
+        );
+    }
+    // In `Class_Globals` (not recorded) an undeclared counter is refused.
+    let diags = errors(
+        "Sub Class_Globals\n    For i = 1 To 3\n    Next\nEnd Sub\n\nSub Initialize\nEnd Sub\n",
+    );
+    assert!(
+        has(
+            &diags,
+            "the `For` variable `i` must be declared first in `Class_Globals`"
+        ),
+        "{diags:?}"
+    );
     let diags = errors(&globals("    For i As Int = 1 To 3\n    Next", ""));
     assert!(
         has(&diags, "the `For` variable `i` must be declared first"),

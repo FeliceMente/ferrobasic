@@ -165,8 +165,8 @@ impl Lexer<'_> {
                 if spaces == 0 {
                     self.error(
                         self.pos,
-                        "a comment after a line continuation needs a space before its `'`: \
-                         write `_ '`",
+                        "a comment right after a line continuation `_` is not supported yet: \
+                         put a space before the `'`",
                     );
                     self.push(ERROR_TOKEN, 1);
                 } else {
