@@ -150,8 +150,10 @@ fn local_named(f: &Function, name: &str) -> LocalId {
 }
 
 #[test]
-fn layout_without_process_globals() {
-    let p = lower_text("Sub AppStart (Args() As String)\nLog(\"hi\")\nEnd Sub\n");
+fn layout_with_an_empty_process_globals() {
+    let p = lower_text(
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nLog(\"hi\")\nEnd Sub\n",
+    );
     assert_eq!(p.function(p.init).name, "Process_Globals");
     assert!(p.function(p.init).blocks[0].stmts.is_empty());
     assert_eq!(app(&p).name, "AppStart");

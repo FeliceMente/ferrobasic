@@ -7,7 +7,7 @@ mod common;
 use common::run;
 
 fn app_start(body: &str) -> String {
-    format!("Sub AppStart (Args() As String)\n{body}\nEnd Sub\n")
+    format!("Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n{body}\nEnd Sub\n")
 }
 
 /// Runs `body` in `AppStart` and expects it to print `expected` and end

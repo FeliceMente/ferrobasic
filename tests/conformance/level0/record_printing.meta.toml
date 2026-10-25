@@ -1,0 +1,15 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "pending-recording"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["record-tostring"]
+
+# No .provisional: how a record prints is an open question
+# (docs/open-questions.md). jCore's BA.TypeToString would add a line break
+# after every third field (IsInitialized counts); FerroBASIC adds none.
+
+# Filled in by tools/recorder when the expected output is recorded:
+# [recording]
+# product = "B4J"
+# version = ""
+# platform = ""
+# date = ""

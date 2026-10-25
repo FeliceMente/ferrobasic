@@ -7,6 +7,11 @@ B4J itself (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- A main module without `Sub Process_Globals` is an error, as in B4J, even
+  when the program declares no module variables (found by the recordings).
+- An array of 2 dimensions or more where a `List` is expected (for example
+  `List.Initialize2(Grid)`) is a compile error, as in B4J. Before, it gave a
+  list of the array's rows (since 0.0.2).
 - The first conformance tests are recorded from B4J itself (10.70, OpenJDK
   19, Windows 10), with the new recorder, `tools/recorder`: 24 tests record
   the same output FerroBASIC gives, and replace their hand-derived outputs.

@@ -221,8 +221,16 @@ impl Lowerer {
         for (i, node) in subs.iter().enumerate() {
             self.lower_sub(SubId(i as u32), node);
         }
+        let at = TextRange::empty(root.text_range().start());
+        // The original toolchain refuses a main module without it, even
+        // when the program has no module variables.
+        if self.module.process_globals.is_none() {
+            self.error(
+                at,
+                "missing `Sub Process_Globals`: the main module needs one, even an empty one",
+            );
+        }
         if self.module.app_start.is_none() {
-            let at = TextRange::empty(root.text_range().start());
             self.error(
                 at,
                 "missing `Sub AppStart (Args() As String)`: it is the program's entry point",
@@ -1024,6 +1032,9 @@ impl Lowerer {
         let message = match &expr.ty {
             Ty::Void => "this call does not return a value".to_string(),
             Ty::Iterable => "`Keys` and `Values` can only be used in `For Each`".to_string(),
+            Ty::Array(_, rank) if *to == Ty::List => format!(
+                "an array of {rank} dimensions cannot be used as a List: only a one-dimensional array converts to one"
+            ),
             from => format!(
                 "cannot convert {} to {}",
                 self.ty_name(from),
