@@ -283,8 +283,11 @@ pub fn convert(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value,
         Ty::Object => Ok(unwrap(v)),
         // An array declared as one (only rank 1 converts: `hir`) is wrapped,
         // as B4J's compiler does with `ArrayToList`.
+        // A null one raises, as `ArrayToList` does (`Arrays.asList(null)`,
+        // or `Array.length` for a primitive array).
         Ty::List if matches!(from, Ty::Array(..)) => match &v {
             Value::Array(a) => Ok(array_to_list(a)),
+            Value::Null => Err(Exc::bare(NULL_POINTER)),
             _ => rewrap(v, to, program),
         },
         Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception => rewrap(v, to, program),

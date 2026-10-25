@@ -157,7 +157,12 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   An array of rank 2 or more does not get there: the compiler casts it to
   `List` instead, which javac rejects (**recorded**, B4J 10.70: "int[][]
   cannot be converted to List"), so passing one where a `List` is expected
-  is a compile error. Through an `Object` variable it is *(open)*.
+  is a compile error. An array of any rank held in an `Object` raises
+  `ClassCastException` instead of being wrapped (**recorded**:
+  `list_from_1d_array_object`, `list_from_2d_array_object`). A declared
+  array that is `Null` raises `NullPointerException`: `ArrayToList` passes it
+  to `Arrays.asList`, or reads its `length` (**source**; test
+  `list_from_null_array`).
 - B4X arrays are Java arrays (jCore takes them as `int[]`, `Object[]`, …), so
   `Grid(i, j)` is Java's `grid[i][j]`, evaluated as the JLS says (§15.10.4,
   §15.26.1): `grid[i]` selects and checks the row before `j` is evaluated,
