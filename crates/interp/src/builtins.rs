@@ -746,10 +746,8 @@ impl Machine<'_, '_> {
             ListGet => list
                 .get(checked(n(0)?)?)?
                 .ok_or_else(|| Exc::internal("list index"))?,
+            // A read-only view was refused above, before its size was read.
             ListSet => {
-                if list.kind == ListKind::ReadOnly {
-                    return Err(unsupported());
-                }
                 let i = checked(n(0)?)?;
                 // A list sharing an array's storage checks the array's type.
                 let value = match &list.elem {
@@ -768,8 +766,9 @@ impl Machine<'_, '_> {
             }
             ListClear => {
                 match list.kind {
-                    // `Collections.unmodifiableList.clear` always throws.
-                    ListKind::ReadOnly => return Err(unsupported()),
+                    ListKind::ReadOnly => {
+                        return Err(Exc::internal("read-only view refused before its size"));
+                    }
                     // `Arrays.asList(...).clear()` only fails on a removal.
                     ListKind::FixedSize if size > 0 => return Err(unsupported()),
                     ListKind::FixedSize => {}
