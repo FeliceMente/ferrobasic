@@ -180,28 +180,42 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (recordings: `level0/process_globals_for`,
       `level0/process_globals_counter_visible`,
       `level0/process_globals_counter_shared`).
-- [x] `For Each v As T` runs inside `Process_Globals` (recording:
-      `level0/process_globals_for_each`).
-- [ ] Whether other Subs see that `For Each` variable, as they see the
-      `For` counter. FerroBASIC makes it a module variable only
-      `Process_Globals` sees, and refuses its name in other Subs, read or as
-      an undeclared counter, meanwhile. Fixtures:
-      `level0/process_globals_for_each_visible`,
-      `level0/process_globals_for_each_shared`.
-- [ ] A name that is both an undeclared `For` counter and a `For Each v As
-      T` variable in `Process_Globals`: which type it has. FerroBASIC
-      refuses it. Fixture: `level0/process_globals_counter_and_for_each`.
-- [ ] Whether a loop variable that `Process_Globals` declares may have the
-      name of a Sub, a `Type`, `Bit` or a keyword, and then hides it in
-      other Subs. FerroBASIC refuses the name. Fixture:
-      `level0/process_globals_loop_named_like_sub`.
-- [ ] Whether `For Each v As T` in `Process_Globals` may declare again a
-      `v` that a `Dim` there declares. FerroBASIC refuses it. Fixture:
-      `level0/process_globals_for_each_declared`.
-- [ ] Whether a local of another Sub may hide the undeclared counter of
-      `Process_Globals`, as FerroBASIC lets it hide a module variable
-      declared with `Dim` (the generated Java's local would hide the field).
-      Fixture: `level0/process_globals_counter_hidden`.
+- [x] `For Each v As T` inside `Process_Globals` declares a module
+      variable too, which other Subs see and share; with a `Dim` of the same
+      type first, it is that variable (recordings:
+      `level0/process_globals_for_each`, `level0/process_globals_for_each_visible`,
+      `level0/process_globals_for_each_shared`,
+      `level0/process_globals_for_each_declared`).
+- [x] Declarations of one name in `Process_Globals` must agree on its type:
+      a counter (`Int`) then `For Each n As String` is refused (recording:
+      `level0/process_globals_counter_and_for_each`).
+- [ ] With the same type, one variable? A counter, then `For Each n As
+      Int`; a `For Each`, then a counter; two `For Each n As Int`.
+      FerroBASIC refuses all three. Fixtures:
+      `level0/process_globals_counter_and_for_each_int`,
+      `level0/process_globals_for_each_then_counter`,
+      `level0/process_globals_for_each_twice`.
+- [x] A loop variable of `Process_Globals` may have a Sub's name, and a
+      statement calling the Sub still works (recording:
+      `level0/process_globals_loop_named_like_sub`).
+- [ ] Whether reading, assigning or looping over that name, elsewhere or
+      in `Process_Globals` itself, means the variable or the Sub, for a
+      module variable a loop or a `Dim` declares. FerroBASIC refuses it,
+      and a statement calls the Sub. Fixtures:
+      `level0/process_globals_loop_named_like_sub_read`,
+      `level0/module_variable_named_like_sub`. A loop variable
+      there named like a `Type`, `Bit` or a keyword is open too, and
+      refused.
+- [x] A local with a module variable's name and another type is refused
+      (recording: `level0/process_globals_counter_hidden`).
+- [ ] With the same type, does the local `Dim` declare a new local or mean
+      the module variable? FerroBASIC refuses it. Fixture:
+      `level0/local_dim_like_module_variable`.
+- [ ] May a parameter have a module variable's name, and does it hide it?
+      FerroBASIC accepts it, hiding the module variable in its Sub, as the
+      generated Java would (prints 3, then 5); if B4J refuses it,
+      FerroBASIC accepts more than B4J, never runs a valid program
+      differently. Fixture: `level0/parameter_like_module_variable`.
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).
