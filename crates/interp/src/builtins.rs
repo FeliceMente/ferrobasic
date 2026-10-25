@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use ferro_mir::{Builtin, Ty};
+use ferro_mir::{Builtin, RecordId, Ty};
 
 use crate::convert::{array_to_list, checked_store};
 use crate::machine::{Machine, Signal, as_array, int_of};
@@ -280,31 +280,38 @@ impl Machine<'_, '_> {
         Ok(out)
     }
 
-    /// The value of field `name` of every record in `items`.
-    fn field_keys(&self, items: &[Value], name: &[u16]) -> Result<Vec<Value>, Exc> {
+    /// The field `SortType` sorts by: jCore takes it from the first item's
+    /// class (`getDeclaredField`), so `Null` raises and any other value
+    /// without that field has no such field.
+    fn sort_field(&self, first: &Value, name: &[u16]) -> Result<(RecordId, usize), Exc> {
         let name = to_rust(name);
-        items
+        let r = match first {
+            Value::Record(r) => r,
+            Value::Null => return Err(Exc::bare(NULL_POINTER)),
+            _ => return Err(Exc::new(NO_SUCH_FIELD, name)),
+        };
+        let def = self
+            .program
+            .records
+            .get(r.id.0 as usize)
+            .ok_or_else(|| Exc::internal("missing record"))?;
+        // The spec says the field name is case-sensitive.
+        let i = def
+            .fields
             .iter()
-            .map(|item| {
-                let r = match item {
-                    Value::Record(r) => r,
-                    Value::Null => return Err(Exc::bare(NULL_POINTER)),
-                    _ => return Err(Exc::new(NO_SUCH_FIELD, name.clone())),
-                };
-                let def = self
-                    .program
-                    .records
-                    .get(r.id.0 as usize)
-                    .ok_or_else(|| Exc::internal("missing record"))?;
-                // The spec says the field name is case-sensitive.
-                let i = def
-                    .fields
-                    .iter()
-                    .position(|f| f.name == name)
-                    .ok_or_else(|| Exc::new(NO_SUCH_FIELD, name.clone()))?;
-                Ok(r.fields.borrow()[i].clone())
-            })
-            .collect()
+            .position(|f| f.name == name)
+            .ok_or_else(|| Exc::new(NO_SUCH_FIELD, name))?;
+        Ok((r.id, i))
+    }
+
+    /// The first item's field read from `item`, as `Field.get` reads it:
+    /// `Null` raises, and an item of another type is an illegal argument.
+    fn sort_key(item: &Value, (id, i): (RecordId, usize)) -> Result<Value, Exc> {
+        match item {
+            Value::Record(r) if r.id == id => Ok(r.fields.borrow()[i].clone()),
+            Value::Null => Err(Exc::bare(NULL_POINTER)),
+            _ => Err(Exc::bare(ILLEGAL_ARGUMENT)),
+        }
     }
 
     pub fn builtin(&mut self, b: Builtin, receiver: Option<Value>, args: Vec<Value>) -> R {
@@ -812,26 +819,46 @@ impl Machine<'_, '_> {
             }
             ListSort | ListSortCaseInsensitive | ListSortType | ListSortTypeCaseInsensitive => {
                 let by_field = matches!(b, ListSortType | ListSortTypeCaseInsensitive);
-                // `SortType` returns early on an empty list, then looks up the
-                // field on the first item before `Collections.sort`, which a
-                // read-only view refuses. (`Sort` on one was refused above.)
-                if by_field && size == 0 {
-                    return Ok(Value::Null);
-                }
-                if list.kind == ListKind::ReadOnly {
+                // `SortType` follows jCore's `sortList`: it returns on an empty
+                // list, takes the field from the first item, then calls
+                // `Collections.sort`, which a read-only view refuses. (`Sort`
+                // on one was refused above.) The comparator wraps every error
+                // in a `RuntimeException`.
+                let wrapped = |e: Exc| {
+                    if by_field {
+                        Exc::new(RUNTIME, e.to_java_string())
+                    } else {
+                        e
+                    }
+                };
+                let (values, keys, asc) = if by_field {
+                    if size == 0 {
+                        return Ok(Value::Null);
+                    }
                     let first = list.get(0)?.ok_or_else(|| Exc::internal("list index"))?;
-                    self.field_keys(&[first], str_arg(a(0)?)?)?;
-                    return Err(unsupported());
-                }
-                let values = list.to_vec()?;
-                let (keys, asc) = if by_field {
-                    (self.field_keys(&values, str_arg(a(0)?)?)?, bool_arg(a(1)?)?)
+                    let field = self.sort_field(&first, str_arg(a(0)?)?)?;
+                    if list.kind == ListKind::ReadOnly {
+                        return Err(unsupported());
+                    }
+                    let values = list.to_vec()?;
+                    // With two items or more, every item is compared.
+                    let keys = if values.len() < 2 {
+                        values.clone()
+                    } else {
+                        values
+                            .iter()
+                            .map(|v| Self::sort_key(v, field))
+                            .collect::<Result<Vec<_>, _>>()
+                            .map_err(wrapped)?
+                    };
+                    (values, keys, bool_arg(a(1)?)?)
                 } else {
-                    (values.clone(), bool_arg(a(0)?)?)
+                    let values = list.to_vec()?;
+                    (values.clone(), values, bool_arg(a(0)?)?)
                 };
                 let mut order: Vec<usize> = (0..values.len()).collect();
                 if matches!(b, ListSort | ListSortType) {
-                    self.check_comparable(&keys)?;
+                    self.check_comparable(&keys).map_err(wrapped)?;
                     order.sort_by(|&x, &y| {
                         let c = natural_cmp(&keys[x], &keys[y]);
                         if asc { c } else { c.reverse() }
