@@ -3,8 +3,7 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' A parameter with a module variable's name: accepted, hiding it (this
-    ' prints 3, then 5), or refused as a local Dim of another type is?
+    ' A parameter with a module variable's name: B4J refuses it.
     Show(3)
     Log(Count)
 End Sub
