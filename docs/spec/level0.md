@@ -65,12 +65,14 @@ End Sub
   a `Dim` declared is that variable, whatever its type. A `Dim` there
   cannot have a Sub's name (B4J: "Variable name cannot be the same as a
   sub name", recorded), but a loop variable may, there or in any Sub
-  (recorded). Every use of such a name in an expression, bare, with
+  (recorded; in a Sub an undeclared counter or a `For Each v As T`, as a
+  typed `For v As T` there is *(open)*). Every use of such a name in an expression, bare, with
   arguments or as a statement, calls the Sub, and assigning it is an
   error, wherever it is (recorded). A `For` in another Sub may loop over
   a counter of that name (recorded); any other loop over such a module
-  variable is *(open)*, and so is a loop variable of a Sub with that
-  name. A loop variable of `Process_Globals` named like a `Type`, `Bit`
+  variable, or again over such a loop variable of a Sub, is *(open)*, and
+  so is a loop variable of a Sub whose name is also such a module
+  variable's. In `Class_Globals`, a `Dim` with a Sub's name is *(open)*. A loop variable of `Process_Globals` named like a `Type`, `Bit`
   or a keyword is *(open)* too, and so is `For i As T` there: declare `i`
   with `Dim` and loop without `As`. All of this is only for the main module:
   in `Class_Globals` a loop must use a variable declared with `Dim`,

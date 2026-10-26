@@ -651,10 +651,6 @@ fn loops_in_process_globals() {
         ("", "    For Bump = 1 To 2\n        Log(Bump)\n    Next"),
         (
             "",
-            "    For Bump As Int = 1 To 2\n        Log(Bump)\n    Next",
-        ),
-        (
-            "",
             "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
         ),
     ] {
@@ -696,6 +692,41 @@ fn loops_in_process_globals() {
             "{body}{app}"
         );
     }
+    // A refused loop's bounds and body are still checked.
+    let diags = errors(&sub(
+        "    For Bump = 1 To 2\n    Next\n    For Bump = Missing To 3\n        Log(Other)\n    Next",
+        "",
+    ));
+    assert_eq!(diags.len(), 3, "{diags:?}");
+    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
+    assert!(has(&diags, "`Other` is not declared"), "{diags:?}");
+    // So is another loop of a Sub over its own loop variable with that
+    // name, and a typed `For` with that name (not recorded).
+    for app in [
+        "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+    ] {
+        let diags = errors(&sub("", app));
+        assert_eq!(
+            diags,
+            [
+                "`Bump` is a loop variable of this Sub with the name of a Sub: whether this loop \
+                 may loop over it again is not known yet, so use another name"
+            ],
+            "{app}"
+        );
+    }
+    let diags = errors(&sub(
+        "",
+        "    For Bump As Int = 1 To 2\n        Log(Bump)\n    Next",
+    ));
+    assert_eq!(
+        diags,
+        [
+            "`Bump` is a Sub: whether a `For Bump As <type>` may have its name is not known yet, \
+             so loop without `As`"
+        ]
+    );
     // A loop local with that name too, of the same type (open) or not.
     for (each, message) in [
         (
@@ -747,7 +778,11 @@ fn loops_in_process_globals() {
         ),
         (
             "",
-            "    For Bump As Int = 1 To 2\n    Next\n    Dim Bump As Int = 5",
+            "    For Bump = 1 To 2\n        Log(Bump)\n    Next\n    Dim Bump As Int",
+        ),
+        (
+            "",
+            "    Dim Bump As Int\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
         ),
     ] {
         let diags = errors(&sub(body, app));
@@ -757,7 +792,27 @@ fn loops_in_process_globals() {
             ["a variable cannot have the name of a Sub: `Bump` is a Sub"],
             "{body}{app}"
         );
+        // The loop's reads still call the Sub.
+        let (lowered, _) = self::module(&sub(body, app));
+        assert!(
+            !app.contains("Log") || format!("{:?}", app_start(&lowered).body).contains("Call"),
+            "{app}"
+        );
     }
+    // A `Dim` of `Class_Globals` with a Sub's name is not recorded.
+    let diags = errors(
+        "Sub Class_Globals\n    Dim Bump As Int\nEnd Sub\n\nSub Initialize\n    Log(Bump)\n    \
+         Bump = 1\nEnd Sub\n\nSub Bump As Int\n    Return 9\nEnd Sub\n",
+    );
+    // Classes are Level 1: only the errors about `Bump` matter here.
+    let diags: Vec<&String> = diags.iter().filter(|d| d.contains("`Bump`")).collect();
+    assert_eq!(
+        diags,
+        [
+            "`Bump` is a Sub: whether a variable of `Class_Globals` may have its name is not \
+             known yet, so use another name"
+        ]
+    );
     // A `Type`, `Bit` or a keyword is refused once, and the loop's body is
     // still checked, without reporting the variable again.
     for (body, what) in [
