@@ -4,18 +4,22 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
-use ferro_difftest::{Report, Target};
+use ferro_difftest::{DEFAULT_TIMEOUT, Report, Target};
 
 const USAGE: &str = "\
 usage: ferro-difftest [--target interp|standalone] [--ferro <path>] [--work <dir>]
-                      [--filter <text>] [--verbose] [--by-feature]
+                      [--timeout <seconds>] [--filter <text>] [--verbose]
+                      [--by-feature]
 
   --target      where the programs run (default: interp)
   --ferro       the ferro binary that builds standalone programs
                 (default: ferro next to this program)
-  --work        where standalone programs are built (default: a folder
-                next to ferro, emptied before and after)
+  --work        where standalone programs are built: in a folder of its
+                own made inside it, and removed after (default: the
+                system's temporary folder)
+  --timeout     how long one test may run before it fails (default: 60)
   --filter      only the tests whose name contains <text>
   --verbose     also list the deviation and pending tests
   --by-feature  also count the results by feature";
@@ -33,6 +37,7 @@ fn main() -> ExitCode {
 fn run(args: Vec<String>) -> Result<ExitCode, String> {
     let mut target = "interp".to_string();
     let (mut ferro, mut work, mut filter) = (None, None, None);
+    let mut timeout = DEFAULT_TIMEOUT;
     let (mut verbose, mut by_feature) = (false, false);
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -42,6 +47,17 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
             "--ferro" => ferro = Some(PathBuf::from(value("--ferro")?)),
             "--work" => work = Some(PathBuf::from(value("--work")?)),
             "--filter" => filter = Some(value("--filter")?),
+            "--timeout" => {
+                let text = value("--timeout")?;
+                match text.parse::<u64>() {
+                    Ok(seconds) if seconds > 0 => timeout = Duration::from_secs(seconds),
+                    _ => {
+                        return Err(format!(
+                            "--timeout must be a number of seconds, not {text:?}"
+                        ));
+                    }
+                }
+            }
             "--verbose" => verbose = true,
             "--by-feature" => by_feature = true,
             "-h" | "--help" => {
@@ -64,7 +80,9 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
                     ferro.display()
                 ));
             }
-            let work = work.unwrap_or_else(|| ferro.with_file_name("difftest-work"));
+            // A folder of its own, so that removing it removes nothing else.
+            let base = work.unwrap_or_else(std::env::temp_dir);
+            let work = base.join(format!("ferro-difftest-{}", std::process::id()));
             Target::Standalone { ferro, work }
         }
         other => return Err(format!("unknown target {other:?}: interp or standalone")),
@@ -76,7 +94,7 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
             return Err(format!("no test name contains {text:?}"));
         }
     }
-    let report = Report::run(&programs, &target);
+    let report = Report::run(&programs, &target, timeout);
     if let Target::Standalone { work, .. } = &target {
         let _ = std::fs::remove_dir_all(work);
     }

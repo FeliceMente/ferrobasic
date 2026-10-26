@@ -151,6 +151,7 @@ dependencies = [
  "ferro-hir",
  "ferro-interp",
  "ferro-mir",
+ "ferro-project",
  "ferro-syntax",
 ]
 
@@ -166,7 +167,6 @@ dependencies = [
 name = "ferro-interp"
 version = "0.0.4-dev"
 dependencies = [
- "ferro-corpus",
  "ferro-hir",
  "ferro-mir",
  "ferro-syntax",

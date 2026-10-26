@@ -43,7 +43,10 @@ fn judges_each_kind_of_test() {
         wrong.detail,
         "stdout differs at line 1: expected \"1\", got \"2\""
     );
-    assert_eq!(verdict(&recorded, Run::Rejected).state, State::Fail);
+    assert_eq!(
+        verdict(&recorded, Run::Rejected("why".into())).state,
+        State::Fail
+    );
     let provisional = program(
         "prov",
         Status::PendingRecording,
@@ -54,14 +57,23 @@ fn judges_each_kind_of_test() {
     assert_eq!((v.state, v.provisional), (State::Pass, true));
 
     let negative = program("neg", Status::Negative, true, None);
-    assert_eq!(verdict(&negative, Run::Rejected).state, State::Pass);
+    assert_eq!(
+        verdict(&negative, Run::Rejected("why".into())).state,
+        State::Pass
+    );
     assert_eq!(verdict(&negative, ran("")).state, State::Fail);
     let pending = program("pend", Status::PendingRecording, true, None);
-    assert_eq!(verdict(&pending, Run::Rejected).state, State::Pending);
+    assert_eq!(
+        verdict(&pending, Run::Rejected("why".into())).state,
+        State::Pending
+    );
     assert_eq!(verdict(&pending, ran("")).state, State::Fail);
     let open = program("open", Status::PendingRecording, false, None);
     assert_eq!(verdict(&open, ran("x\n")).state, State::Pending);
-    assert_eq!(verdict(&open, Run::Rejected).state, State::Fail);
+    assert_eq!(
+        verdict(&open, Run::Rejected("why".into())).state,
+        State::Fail
+    );
     let deviation = program("dev", Status::Deviation, false, None);
     assert_eq!(verdict(&deviation, ran("x\n")).state, State::Deviation);
     let no_output = program("none", Status::Recorded, false, None);
@@ -69,6 +81,73 @@ fn judges_each_kind_of_test() {
     assert_eq!(
         verdict(&recorded, Run::Broken("boom".into())).detail,
         "boom"
+    );
+}
+
+#[test]
+fn a_recorded_test_needs_its_recording() {
+    // A `.provisional` next to it does not stand in for the recording.
+    let p = program(
+        "recprov",
+        Status::Recorded,
+        false,
+        Some(("provisional", "1\n")),
+    );
+    assert_eq!(
+        verdict(&p, ran("1\n")).detail,
+        "recorded, but has no .expected output"
+    );
+}
+
+#[test]
+fn a_refused_program_says_why() {
+    let p = program("must", Status::Recorded, false, Some(("expected", "")));
+    assert_eq!(
+        verdict(&p, Run::Rejected("`x` is not declared".into())).detail,
+        "rejected, but must build:\n`x` is not declared"
+    );
+    assert_eq!(
+        first_error("t.bas:3:5: error: `x` is not declared\n      x\n1 error(s)\n"),
+        "`x` is not declared"
+    );
+}
+
+/// What `ferro run` does with a program, in process.
+fn interpreted(body: &str) -> Run {
+    interpret(&format!(
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n{body}\nEnd Sub\n"
+    ))
+}
+
+#[test]
+fn interprets_as_ferro_run_does() {
+    // The module header is checked as `ferro run` checks it.
+    let class = format!(
+        "Type=Class\nVersion=10\n@EndOfDesignText@\n{}",
+        "Sub Class_Globals\nEnd Sub\n"
+    );
+    assert!(matches!(interpret(&class), Run::Rejected(why) if why.contains("class module")));
+    assert!(matches!(interpreted("Log(Missing)"), Run::Rejected(why) if why.contains("`Missing`")));
+    // The exit code is the process's: its low 8 bits.
+    assert!(matches!(
+        interpreted("ExitApplication2(256 + 7)"),
+        Run::Ran { exit_code: 7, .. }
+    ));
+}
+
+#[test]
+fn a_program_that_does_not_end_fails() {
+    let p = program("loop", Status::Recorded, false, Some(("expected", "")));
+    fs::write(
+        &p.path,
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    \
+         For i = 1 To 2000000000\n    Next\nEnd Sub\n",
+    )
+    .unwrap();
+    let v = judge(&p, &Target::Interp, Duration::from_millis(100));
+    assert_eq!(
+        (v.state, v.detail.as_str()),
+        (State::Fail, "still running after 0 s: stopped")
     );
 }
 
@@ -143,7 +222,7 @@ fn the_report_counts_by_state_and_group() {
 /// The whole corpus on the interpreter: nothing fails.
 #[test]
 fn the_corpus_passes_on_the_interpreter() {
-    let report = Report::run(&ferro_corpus::programs(), &Target::Interp);
+    let report = Report::run(&ferro_corpus::programs(), &Target::Interp, DEFAULT_TIMEOUT);
     assert_eq!(report.failed(), 0, "\n{}", report.render(false, false));
     assert!(
         report

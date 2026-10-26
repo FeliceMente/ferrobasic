@@ -9,10 +9,22 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use ferro_corpus::{Program, Status};
+
+/// How long one test may take on a target before it fails: generous, as a
+/// program that loops forever is all it guards against.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The interpreter's stack, the one `ferro` gives it (`STACK_SIZE` in
+/// `crates/cli/src/main.rs`), so that deep recursion behaves the same.
+const STACK_SIZE: usize = 256 * 1024 * 1024;
 
 /// Where a program runs.
 pub enum Target {
@@ -78,7 +90,8 @@ impl Verdict {
 
 /// What a program did: refused to build, or ran.
 enum Run {
-    Rejected,
+    /// Refused to build, with the first reason given.
+    Rejected(String),
     Ran {
         stdout: String,
         error: Option<String>,
@@ -88,11 +101,11 @@ enum Run {
     Broken(String),
 }
 
-/// Runs one test on `target` and judges it.
-pub fn judge(program: &Program, target: &Target) -> Verdict {
+/// Runs one test on `target`, for at most `timeout`, and judges it.
+pub fn judge(program: &Program, target: &Target, timeout: Duration) -> Verdict {
     let run = match target {
-        Target::Interp => run_interp(program),
-        Target::Standalone { ferro, work } => run_standalone(program, ferro, work),
+        Target::Interp => run_interp(program, timeout),
+        Target::Standalone { ferro, work } => run_standalone(program, ferro, work, timeout),
     };
     verdict(program, run)
 }
@@ -101,12 +114,19 @@ fn verdict(program: &Program, run: Run) -> Verdict {
     let expected = program.expected_output();
     match (run, program.status) {
         (Run::Broken(why), _) => Verdict::new(State::Fail, why),
-        (Run::Rejected, _) if program.rejected => match program.status {
+        (Run::Rejected(_), _) if program.rejected => match program.status {
             Status::Negative => Verdict::new(State::Pass, ""),
             Status::Deviation => Verdict::new(State::Deviation, "rejected on purpose"),
             _ => Verdict::new(State::Pending, "rejected until recorded"),
         },
-        (Run::Rejected, _) => Verdict::new(State::Fail, "rejected, but must build"),
+        (Run::Rejected(why), _) => {
+            Verdict::new(State::Fail, format!("rejected, but must build:\n{why}"))
+        }
+        (Run::Ran { .. }, Status::Recorded)
+            if !program.path.with_extension("expected").exists() =>
+        {
+            Verdict::new(State::Fail, "recorded, but has no .expected output")
+        }
         (Run::Ran { .. }, _) if program.rejected => {
             Verdict::new(State::Fail, "builds, but must be rejected")
         }
@@ -196,78 +216,183 @@ fn output_diff(expected: &str, actual: &str) -> String {
     out
 }
 
-fn run_interp(program: &Program) -> Run {
+/// Runs a program the way `ferro run` does: the module header checked, then
+/// parsed, type-checked, lowered and interpreted on `ferro`'s stack. A
+/// program still running after `timeout` is left behind on its thread.
+fn run_interp(program: &Program, timeout: Duration) -> Run {
     let source = program.source();
-    let result = std::panic::catch_unwind(|| {
-        let parse = ferro_syntax::parse(&source);
-        if !parse.errors().is_empty() {
-            return Run::Rejected;
-        }
-        let (module, diags) = ferro_hir::check(&parse.syntax());
-        if !diags.is_empty() {
-            return Run::Rejected;
-        }
-        let lowered = ferro_mir::lower(&module);
-        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-        let outcome = ferro_interp::run(&lowered, &[], &mut stdout, &mut stderr);
-        Run::Ran {
-            stdout: String::from_utf8_lossy(&stdout).into_owned(),
-            error: outcome.error.map(|e| e.kind),
-            exit_code: outcome.exit_code,
-        }
-    });
-    result.unwrap_or_else(|_| Run::Broken("the interpreter panicked".into()))
+    let (send, receive) = mpsc::channel();
+    let started = thread::Builder::new()
+        .name(program.name.clone())
+        .stack_size(STACK_SIZE)
+        .spawn(move || {
+            let _ = send.send(interpret(&source));
+        });
+    if let Err(e) = started {
+        return Run::Broken(format!("cannot start the interpreter: {e}"));
+    }
+    match receive.recv_timeout(timeout) {
+        Ok(run) => run,
+        Err(mpsc::RecvTimeoutError::Timeout) => Run::Broken(timed_out(timeout)),
+        // The thread ended without an answer: it panicked.
+        Err(mpsc::RecvTimeoutError::Disconnected) => Run::Broken("the interpreter panicked".into()),
+    }
 }
 
-fn run_standalone(program: &Program, ferro: &Path, work: &Path) -> Run {
+fn interpret(source: &str) -> Run {
+    if let Some(problem) = ferro_project::check_module(source).first() {
+        return Run::Rejected(problem.message.clone());
+    }
+    let parse = ferro_syntax::parse(source);
+    if let Some(error) = parse.errors().first() {
+        return Run::Rejected(error.message.clone());
+    }
+    let (module, diags) = ferro_hir::check(&parse.syntax());
+    if let Some(diag) = diags.first() {
+        return Run::Rejected(diag.message.clone());
+    }
+    let lowered = ferro_mir::lower(&module);
+    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+    let outcome = ferro_interp::run(&lowered, &[], &mut stdout, &mut stderr);
+    Run::Ran {
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        error: outcome.error.map(|e| e.kind),
+        exit_code: exit_status(outcome.exit_code),
+    }
+}
+
+/// The exit status a process gets for an `ExitApplication2` code, as
+/// `ferro` computes it: its low 8 bits.
+fn exit_status(code: i32) -> i32 {
+    code & 0xff
+}
+
+fn timed_out(timeout: Duration) -> String {
+    format!("still running after {} s: stopped", timeout.as_secs())
+}
+
+fn run_standalone(program: &Program, ferro: &Path, work: &Path, timeout: Duration) -> Run {
     let dir = work.join(program.file_name());
     let _ = fs::remove_dir_all(&dir);
     if let Err(e) = fs::create_dir_all(&dir) {
         return Run::Broken(format!("{}: {e}", dir.display()));
     }
     let binary = dir.join(format!("prog{}", std::env::consts::EXE_SUFFIX));
-    let built = match Command::new(ferro)
+    let mut bundle = Command::new(ferro);
+    bundle
         .arg("bundle")
         .arg(&program.path)
         .arg("-o")
-        .arg(&binary)
-        .output()
-    {
-        Ok(out) => out,
-        Err(e) => return Run::Broken(format!("{}: {e}", ferro.display())),
-    };
-    let run = match built.status.code() {
-        Some(0) => match run_binary(Command::new(&binary).current_dir(&dir)) {
-            Ok(out) => Run::Ran {
-                stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-                error: uncaught_error(&String::from_utf8_lossy(&out.stderr)),
-                exit_code: out.status.code().unwrap_or(-1),
+        .arg(&binary);
+    let run = match output(&mut bundle, timeout) {
+        Err(e) => Run::Broken(format!("{}: {e}", ferro.display())),
+        Ok(None) => Run::Broken(format!("ferro bundle {}", timed_out(timeout))),
+        Ok(Some(built)) => match built.code {
+            Some(0) => match output(Command::new(&binary).current_dir(&dir), timeout) {
+                Ok(Some(out)) => Run::Ran {
+                    stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+                    error: uncaught_error(&String::from_utf8_lossy(&out.stderr)),
+                    exit_code: out.code.unwrap_or(-1),
+                },
+                Ok(None) => Run::Broken(timed_out(timeout)),
+                Err(e) => Run::Broken(format!("{}: {e}", binary.display())),
             },
-            Err(e) => Run::Broken(format!("{}: {e}", binary.display())),
+            // `ferro bundle` exits with 3 on a program it rejects, after its
+            // diagnostics.
+            Some(3) => Run::Rejected(first_error(&String::from_utf8_lossy(&built.stderr))),
+            code => Run::Broken(format!(
+                "ferro bundle exited with {code:?}: {}",
+                String::from_utf8_lossy(&built.stderr).trim()
+            )),
         },
-        // `ferro bundle` exits with 3 on a program it rejects.
-        Some(3) => Run::Rejected,
-        code => Run::Broken(format!(
-            "ferro bundle exited with {code:?}: {}",
-            String::from_utf8_lossy(&built.stderr).trim()
-        )),
     };
     let _ = fs::remove_dir_all(&dir);
     run
 }
 
-/// Runs a binary that was just written, retrying while Linux still sees it
-/// open for writing (`ETXTBSY`), as `crates/cli/tests/bundle.rs` explains.
-fn run_binary(command: &mut Command) -> std::io::Result<std::process::Output> {
+/// The first diagnostic `ferro` printed: the message of its first line,
+/// `<path>:<line>:<column>: error: <message>`.
+fn first_error(stderr: &str) -> String {
+    let line = stderr.lines().next().unwrap_or_default();
+    line.split_once("error: ")
+        .map_or(line, |(_, message)| message)
+        .to_string()
+}
+
+/// What a finished process gave.
+struct Finished {
+    code: Option<i32>,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+/// Runs `command` to its end, or kills it after `timeout` (`None`). A binary
+/// that was just written is retried while Linux still sees it open for
+/// writing (`ETXTBSY`), as `crates/cli/tests/bundle.rs` explains.
+fn output(command: &mut Command, timeout: Duration) -> std::io::Result<Option<Finished>> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = None;
     for _ in 0..200 {
-        match command.output() {
+        match command.spawn() {
             Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(10));
             }
-            result => return result,
+            result => {
+                child = Some(result?);
+                break;
+            }
         }
     }
-    command.output()
+    let mut child = match child {
+        Some(child) => child,
+        None => command.spawn()?,
+    };
+    // Read both pipes while waiting, so that a full pipe cannot stall it.
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            bytes
+        })
+    };
+    let stdout = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let stderr = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break Some(status);
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        thread::sleep(Duration::from_millis(5));
+    };
+    let (stdout, stderr) = (
+        stdout.join().unwrap_or_default(),
+        stderr.join().unwrap_or_default(),
+    );
+    Ok(status.map(|status| Finished {
+        code: status.code(),
+        stdout,
+        stderr,
+    }))
 }
 
 /// The kind of the uncaught error a program printed to stderr, in the shape
@@ -299,14 +424,34 @@ pub struct Report {
 }
 
 impl Report {
-    pub fn run(programs: &[Program], target: &Target) -> Report {
+    /// Judges every program, several at a time, each for at most `timeout`.
+    pub fn run(programs: &[Program], target: &Target, timeout: Duration) -> Report {
+        let workers = thread::available_parallelism().map_or(1, |n| n.get().min(8));
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let mut verdicts: Vec<Option<Verdict>> = vec![None; programs.len()];
+        let done = std::sync::Mutex::new(&mut verdicts);
+        thread::scope(|scope| {
+            for _ in 0..workers {
+                scope.spawn(|| {
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(program) = programs.get(i) else {
+                            break;
+                        };
+                        let verdict = judge(program, target, timeout);
+                        done.lock().unwrap()[i] = Some(verdict);
+                    }
+                });
+            }
+        });
         let entries = programs
             .iter()
-            .map(|p| Entry {
+            .zip(verdicts)
+            .map(|(p, verdict)| Entry {
                 name: p.name.clone(),
                 level: p.level,
                 features: p.features.clone(),
-                verdict: judge(p, target),
+                verdict: verdict.expect("every program is judged"),
             })
             .collect();
         Report {
