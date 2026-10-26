@@ -35,11 +35,12 @@ struct Lowerer {
     /// Loop variables of `Process_Globals` already refused with an error.
     refused_loop_names: HashSet<String>,
     /// Module variables that a loop of `Process_Globals` declares.
-    loop_declared: HashSet<String>,
+    /// With the kind of the loop (`For` or `For Each`) that declares each.
+    loop_declared: HashMap<String, SyntaxKind>,
     /// The current Sub's locals with a Sub's name, with the loop variable
     /// that declares each (none for a refused `Dim`): their uses mean the
     /// Sub (recorded).
-    sub_named_locals: HashMap<String, Option<TextRange>>,
+    sub_named_locals: HashMap<String, Option<(TextRange, SyntaxKind)>>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -563,7 +564,7 @@ impl Lowerer {
             return;
         }
         if let Some(&id) = self.globals.get(&k)
-            && self.loop_declared.contains(&k)
+            && self.loop_declared.contains_key(&k)
         {
             let existing = self.module.global(id).ty.clone();
             if existing != ty && existing != Ty::Error && ty != Ty::Error {
@@ -603,7 +604,7 @@ impl Lowerer {
             // that variable, whichever declarations and in which order
             // (recorded), and another type is refused (recorded).
             let existing = self.module.global(id).ty.clone();
-            let counter_over_dim = node.kind() == FOR_STMT && !self.loop_declared.contains(&k);
+            let counter_over_dim = node.kind() == FOR_STMT && !self.loop_declared.contains_key(&k);
             if counter_over_dim || existing == ty || existing == Ty::Error || ty == Ty::Error {
                 return;
             }
@@ -619,7 +620,7 @@ impl Lowerer {
             return;
         }
         if self.loop_name_free(&text, &name) {
-            self.loop_declared.insert(k);
+            self.loop_declared.insert(k, node.kind());
             self.declare_global(text, ty, range(&name));
         }
     }
@@ -805,7 +806,7 @@ impl Lowerer {
         }
         if !self.local_names.contains_key(&k) {
             if self.subs.contains_key(&k) {
-                self.sub_named_locals.insert(k, Some(at));
+                self.sub_named_locals.insert(k, Some((at, FOR_EACH_STMT)));
             } else if let Some(&id) = self.globals.get(&k)
                 && self.module.global(id).ty == ty
             {
@@ -820,9 +821,10 @@ impl Lowerer {
     /// (B4J: "Regular variable followed by '=' expected", recorded).
     fn declare_loop_local(&mut self, name: &str, ty: Ty, at: TextRange, typed: bool) {
         let k = key(name);
-        if !self.local_names.contains_key(&k) && self.subs.contains_key(&k) {
-            self.sub_named_locals.insert(k, Some(at));
+        let declared = self.local_names.contains_key(&k);
+        if self.subs.contains_key(&k) {
             if typed {
+                // Whatever declared the name first (recorded without one).
                 self.error(
                     at,
                     format!(
@@ -830,8 +832,14 @@ impl Lowerer {
                          with `As`, so loop without `As`"
                     ),
                 );
-                self.push_local(name, ty, at);
+                if !declared {
+                    self.sub_named_locals.insert(k, Some((at, FOR_STMT)));
+                    self.push_local(name, ty, at);
+                }
                 return;
+            }
+            if !declared {
+                self.sub_named_locals.insert(k, Some((at, FOR_STMT)));
             }
         }
         self.declare_local(name, ty, at);
@@ -1238,8 +1246,9 @@ impl Lowerer {
     /// (reported and checked here). A `For` may loop over a loop variable
     /// with a Sub's name anywhere, and must count with a number like any
     /// other (recorded). Another `For Each` over it is refused: without
-    /// `As`, as B4J does ("Current declaration does not match previous
-    /// one", recorded); with `As`, as open.
+    /// `As` where B4J's refusal is recorded ("Current declaration does not
+    /// match previous one": over a `For Each` of the same Sub, or in another
+    /// Sub over a counter of `Process_Globals`), as open anywhere else.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         let k = key(text);
@@ -1247,21 +1256,30 @@ impl Lowerer {
             return LoopVar::Found(found);
         }
         let at = range(name);
-        let what = match &found {
-            Some((VarRef::Global(id), _))
-                if self.loop_declared.contains(&k) && self.module.global(*id).range != at =>
-            {
-                "a module variable"
+        // What it loops over again, and whether B4J's refusal of a `For Each`
+        // without `As` there is recorded.
+        let (what, recorded) = match &found {
+            Some((VarRef::Global(id), _)) if self.module.global(*id).range != at => {
+                match self.loop_declared.get(&k) {
+                    Some(&kind) => (
+                        "a module variable",
+                        !self.in_process_globals && kind == FOR_STMT,
+                    ),
+                    None => return LoopVar::Found(found),
+                }
             }
-            Some((VarRef::Local(_), _)) if matches!(self.sub_named_locals.get(&k), Some(Some(declared)) if *declared != at) => {
-                "a loop variable of this Sub"
-            }
+            Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
+                Some(Some((declared, kind))) if *declared != at => {
+                    ("a loop variable of this Sub", *kind == FOR_EACH_STMT)
+                }
+                _ => return LoopVar::Found(found),
+            },
             _ => return LoopVar::Found(found),
         };
-        let message = if child(node, TYPE_REF).is_some() {
+        let message = if child(node, TYPE_REF).is_some() || !recorded {
             format!(
-                "`{text}` is {what} with the name of a Sub: whether another `For Each {text} As \
-                 <type>` may loop over it is not known yet, so use another name"
+                "`{text}` is {what} with the name of a Sub: whether another `For Each` may loop \
+                 over it here is not known yet, so use another name"
             )
         } else {
             format!(
@@ -1613,7 +1631,7 @@ impl Lowerer {
         let k = key(name);
         let sub_named = self.subs.contains_key(&k)
             && match found.0 {
-                VarRef::Global(_) => self.loop_declared.contains(&k),
+                VarRef::Global(_) => self.loop_declared.contains_key(&k),
                 VarRef::Local(_) => self.sub_named_locals.contains_key(&k),
             };
         (!sub_named).then_some(found)
