@@ -64,14 +64,19 @@ End Sub
   whichever kinds and in any order (recorded). A counter over a name that
   a `Dim` declared is that variable, whatever its type. A `Dim` there
   cannot have a Sub's name (B4J: "Variable name cannot be the same as a
-  sub name", recorded), but a loop variable there may (recorded): a
-  statement `Bump` or a bare read of `Bump` calls the Sub, in
-  `Process_Globals` too, and assigning it in another Sub is an error
-  (recorded). Looping over the name elsewhere, `Bump(args)`, and any other
-  use of it in `Process_Globals` but the loop that declares it, are
-  *(open)*, so compile errors. A loop variable named like a `Type`, `Bit` or a
-  keyword is *(open)* too, and so is `For i As T` there: declare `i` with
-  `Dim` and loop without `As`. All of this is only for the main module:
+  sub name", recorded), but a loop variable may, there or in any Sub
+  (recorded; in a Sub an undeclared counter or a `For Each v As T`, as a
+  typed `For v As T` there is *(open)*). Every use of such a name in an expression, bare, with
+  arguments or as a statement, calls the Sub, and assigning it is an
+  error, wherever it is (recorded, with the loop variable of the Sub's
+  return type; with another type, any use but a statement is *(open)*).
+  A `For` in another Sub may loop over
+  a counter of that name (recorded); any other loop over such a module
+  variable, or again over such a loop variable of a Sub, is *(open)*, and
+  so is a loop variable of a Sub whose name is also such a module
+  variable's. In `Class_Globals`, a `Dim` with a Sub's name is *(open)*. A loop variable of `Process_Globals` named like a `Type`, `Bit`
+  or a keyword is *(open)* too, and so is `For i As T` there: declare `i`
+  with `Dim` and loop without `As`. All of this is only for the main module:
   in `Class_Globals` a loop must use a variable declared with `Dim`,
   without `As`.
 - `Sub AppStart (Args() As String)` is the entry point. It is called after
@@ -132,7 +137,8 @@ End Sub
   name is the module variable; a `For i As T` of that name in a Sub is
   *(open)*, so a compile error. A local `Dim` cannot have a Sub's name
   (B4J: "Variable name cannot be the same as a sub name", recorded); a loop
-  variable of a Sub with a Sub's name is *(open)*, so a compile error.
+  variable may, and its uses mean the Sub (recorded, see "Program
+  structure").
 - A parameter cannot have a module variable's name (B4J: "Parameter name
   cannot hide global variable name", recorded).
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
