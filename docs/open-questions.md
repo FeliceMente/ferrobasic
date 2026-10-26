@@ -219,6 +219,13 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       Sub's and a module variable's: the module variable, a new local, or
       an error? FerroBASIC refuses it (test:
       `level0/local_for_each_named_like_sub_over_module_variable`).
+- [ ] A typed `For v As T` of a Sub with a Sub's name, and another loop
+      of a Sub over its own loop variable with a Sub's name. FerroBASIC
+      refuses both (tests: `level0/local_typed_counter_named_like_sub`,
+      `level0/local_counter_named_like_sub_loop_again`).
+- [ ] A `Dim` of `Class_Globals` with a Sub's name: refused as in
+      `Process_Globals`? FerroBASIC refuses it. Classes arrive at Level 1,
+      so it needs a class module in the corpus to record.
 - [ ] A loop variable of `Process_Globals` named like a `Type`, `Bit` or a
       keyword: FerroBASIC refuses it.
 - [x] A local `Dim` cannot have a Sub's name (recording:
