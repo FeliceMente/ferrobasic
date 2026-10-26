@@ -92,7 +92,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p ferro-cli -- run tests/conformance/level0/<file>.bas
 cargo run -p ferro-cli -- bundle tests/conformance/level0/<file>.bas -o /tmp/prog
 cargo run -p ferro-recorder -- --dry-run          # tests the recorder would record (it runs on Windows)
-cargo run -p ferro-difftest -- --target interp   # compare against recordings (once implemented)
+cargo run -p ferro-difftest                       # compare against recordings: the report
+cargo build -p ferro-cli && cargo run -p ferro-difftest -- --target standalone
 ```
 
 ## Before closing a task

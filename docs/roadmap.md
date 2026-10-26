@@ -62,5 +62,6 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] CLI command names settled: `build` renamed `bundle`; `compile`,
       `targets` and project-level `build` reserved, with their plan in
       `docs/spec/cli.md` ("Planned commands").
-- [ ] `ferro-difftest --target interp` and `--target standalone` against
-      `.expected` / `.provisional`.
+- [x] `ferro-difftest --target interp` and `--target standalone` against
+      `.expected` / `.provisional`, with the report by level and feature
+      ([compatibility-testing.md](compatibility-testing.md#the-report)).

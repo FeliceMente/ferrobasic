@@ -44,6 +44,10 @@ pub struct Program {
     /// The exit code the program ends with: `exit_code` (a program that calls
     /// `ExitApplication2`), else 1 with an uncaught error, else 0.
     pub exit_code: i32,
+    /// The language level it belongs to, from `level`.
+    pub level: Option<u8>,
+    /// What it tests, from `features`: the rows of the compatibility report.
+    pub features: Vec<String>,
 }
 
 impl Program {
@@ -183,7 +187,22 @@ fn from_meta(path: PathBuf, name: String, meta: &str) -> Result<Program, String>
             _ => return Err(format!("exit_code must be a number from 0 to 255, not {v}")),
         },
     };
+    let level = match value(meta, "level")? {
+        None => None,
+        Some(v) => Some(
+            v.parse::<u8>()
+                .map_err(|_| format!("level must be a number, not {v}"))?,
+        ),
+    };
+    let features = match value(meta, "features")? {
+        None => Vec::new(),
+        Some(v) => {
+            strings(&v).ok_or_else(|| format!("features must be a list of strings, not {v}"))?
+        }
+    };
     let program = Program {
+        level,
+        features,
         rejected,
         uncaught_error,
         exit_code,
@@ -230,6 +249,21 @@ fn string(meta: &str, key: &str) -> Result<Option<String>, String> {
             _ => Err(format!("{key} must be a string, not {v}")),
         },
     }
+}
+
+/// The strings of a one-line TOML array of strings: `["a", "b"]`.
+fn strings(value: &str) -> Option<Vec<String>> {
+    let inner = value.strip_prefix('[')?.strip_suffix(']')?.trim();
+    if inner.is_empty() {
+        return Some(Vec::new());
+    }
+    inner
+        .split(',')
+        .map(|item| {
+            let text = item.trim().strip_prefix('"')?.strip_suffix('"')?;
+            (!text.contains('"')).then(|| text.to_string())
+        })
+        .collect()
 }
 
 /// Cuts a `#` comment, outside quotes.
@@ -309,6 +343,25 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_level_and_features() {
+        let p = meta("status = \"recorded\"\nlevel = 0\nfeatures = [\"for\", \"scope\"]  # x\n")
+            .unwrap();
+        assert_eq!(p.level, Some(0));
+        assert_eq!(p.features, ["for", "scope"]);
+        let p = meta("status = \"recorded\"\nfeatures = []\n").unwrap();
+        assert_eq!(p.level, None);
+        assert!(p.features.is_empty());
+        for bad in [
+            "status = \"recorded\"\nlevel = one\n",
+            "status = \"recorded\"\nfeatures = for\n",
+            "status = \"recorded\"\nfeatures = [for]\n",
+            "status = \"recorded\"\nfeatures = [\"for\",]\n",
+        ] {
+            assert!(meta(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
     fn deviation_ids_come_from_the_id_column() {
         let table = "| ID | Area | Target(s) |\n| --- | --- | --- |\n| D1 | Syntax | all |\n| D12 | Runtime | all |\n";
         assert_eq!(deviation_ids(table), ["D1", "D12"]);
@@ -317,6 +370,11 @@ mod tests {
     #[test]
     fn the_corpus_is_found() {
         let programs = programs();
+        assert!(
+            programs
+                .iter()
+                .all(|p| p.level.is_some() && !p.features.is_empty())
+        );
         assert!(programs.iter().any(|p| p.name == "level0/prices_map"));
         assert!(programs.iter().any(|p| p.expected_output().is_some()));
     }

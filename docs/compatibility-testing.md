@@ -114,7 +114,8 @@ file: its expected stdout, derived by hand from the sources in
 
 ## Normalization
 
-- Line endings, temporary paths and timestamps are normalized.
+- Line endings, temporary paths and timestamps are normalized (Level 0 output
+  has only line endings to normalize).
 - Number-to-string formatting is visible behaviour, so it must match B4X, not
   be normalized away.
 - `Map` iteration order must match B4X too (insertion order, to verify).
@@ -127,6 +128,34 @@ pass, fail, documented deviation, pending. Accepted deviations live in
 
 The headline number, per target, is the share of corpus projects that build
 without changes and behave identically to the original.
+
+`ferro-difftest` prints it for the conformance corpus:
+
+```sh
+cargo run -p ferro-difftest                     # target interp
+cargo build -p ferro-cli
+cargo run -p ferro-difftest -- --target standalone
+cargo run -p ferro-difftest -- --verbose --by-feature --filter sort
+```
+
+- `interp` runs each program in the interpreter, in process. `standalone`
+  builds it with `ferro bundle` (the `ferro` next to `ferro-difftest`, or
+  `--ferro <path>`) and runs the binary, reading the uncaught error's kind
+  from its stderr.
+- A test passes when its normalized stdout, uncaught error kind and exit code
+  are the recorded ones; a `negative` test passes when it is rejected. Passes
+  against a `.provisional` output are counted apart.
+- A `deviation` test is reported as one when it runs, or when it is rejected
+  with `ferro_rejects`. Its reference output is described in its `.meta.toml`
+  in prose, so it is not compared yet.
+- A `pending-recording` test is pending; it fails if FerroBASIC accepts what
+  it marks `ferro_rejects`, or rejects what it does not.
+- The report lists the failures with the first differing line, then counts
+  each state by level, and by feature with `--by-feature`. The exit code is 0
+  when nothing fails, 1 otherwise, 2 on a usage error.
+
+The two targets also run as tests: `crates/difftest` on the interpreter, and
+`crates/cli/tests/difftest.rs` as standalone binaries.
 
 ## CI
 

@@ -129,6 +129,7 @@ name = "ferro-cli"
 version = "0.0.4-dev"
 dependencies = [
  "ferro-corpus",
+ "ferro-difftest",
  "ferro-hir",
  "ferro-interp",
  "ferro-mir",
@@ -145,6 +146,13 @@ version = "0.0.4-dev"
 [[package]]
 name = "ferro-difftest"
 version = "0.0.4-dev"
+dependencies = [
+ "ferro-corpus",
+ "ferro-hir",
+ "ferro-interp",
+ "ferro-mir",
+ "ferro-syntax",
+]
 
 [[package]]
 name = "ferro-hir"
