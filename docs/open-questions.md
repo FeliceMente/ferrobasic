@@ -210,24 +210,31 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (recordings: `level0/process_globals_loop_named_like_sub_loop_elsewhere`,
       `level0/process_globals_loop_named_like_sub_args`,
       `level0/process_globals_loop_named_like_sub_assign_inside`).
-- [ ] Looping over that name again: in `Process_Globals`, with a
-      `For Each` in another Sub, or over a `For Each` variable of
-      `Process_Globals`. FerroBASIC refuses it (tests:
+- [x] A `For` may loop over that name again: in `Process_Globals`, in
+      another Sub over a `For Each` variable of `Process_Globals`, or in a
+      Sub over its own loop variable (recordings:
       `level0/process_globals_loop_named_like_sub_loop_again`,
-      `level0/process_globals_for_each_named_like_sub_loop_elsewhere`).
-- [ ] A `For Each v As T` or `For v As T` of a Sub whose name is both a
-      Sub's and a module variable's: the module variable, a new local, or
-      an error? FerroBASIC refuses it (test:
-      `level0/local_for_each_named_like_sub_over_module_variable`).
-- [ ] A loop variable with a Sub's name whose type is not the Sub's return
-      type, used other than as a statement (`Bump.Length` on a `String`
-      loop variable, with `Sub Bump As Int`): the Sub or the variable?
-      FerroBASIC refuses it (test:
-      `level0/local_for_each_named_like_sub_member`).
-- [ ] A typed `For v As T` of a Sub with a Sub's name, and another loop
-      of a Sub over its own loop variable with a Sub's name. FerroBASIC
-      refuses both (tests: `level0/local_typed_counter_named_like_sub`,
+      `level0/process_globals_for_each_named_like_sub_loop_elsewhere`,
       `level0/local_counter_named_like_sub_loop_again`).
+- [ ] A `For Each` without `As` over that name again: in another Sub over
+      a loop variable of `Process_Globals`, or in a Sub over its own loop
+      variable. FerroBASIC refuses it (tests:
+      `level0/process_globals_loop_named_like_sub_for_each_elsewhere`,
+      `level0/local_for_each_named_like_sub_loop_again`).
+- [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
+      variable's of the same type is accepted, and reading it calls the
+      Sub (recording:
+      `level0/local_for_each_named_like_sub_over_module_variable`).
+- [ ] The same with another type than the module variable's: refused as
+      for any other name, or accepted? FerroBASIC refuses it (test:
+      `level0/local_for_each_named_like_sub_other_type`).
+- [x] The name is the Sub whatever the loop variable's type: `Bump.Length`
+      on a `String` loop variable, with `Sub Bump As Int`, is refused
+      ("Object expected", recording:
+      `level0/local_for_each_named_like_sub_member`).
+- [x] A typed `For v As T` of a Sub cannot have a Sub's name ("Regular
+      variable followed by '=' expected", recording:
+      `level0/local_typed_counter_named_like_sub`).
 - [ ] A `Dim` of `Class_Globals` with a Sub's name: refused as in
       `Process_Globals`? FerroBASIC refuses it. Classes arrive at Level 1,
       so it needs a class module in the corpus to record.
