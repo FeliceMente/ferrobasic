@@ -116,7 +116,8 @@ ferro version | help
 - Output that cannot be written (stdout or stderr closed, or a pipe whose
   reader has gone, as in `ferro help | head -1`) is dropped silently: it
   never crashes `ferro` or changes its exit code.
-- `ferro-difftest` drives the conformance tests.
+- `ferro-difftest` drives the conformance tests and prints the compatibility
+  report ([../compatibility-testing.md](../compatibility-testing.md#the-report)).
 
 ### Planned commands
 
