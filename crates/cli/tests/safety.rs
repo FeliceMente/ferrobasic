@@ -2,12 +2,16 @@
 //! would overwrite the input or `ferro` itself, non-UTF-8 arguments, closed
 //! pipes, files with many errors (`docs/spec/cli.md`).
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
+
+use common::run_written;
 
 const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
@@ -45,13 +49,6 @@ fn ferro_in(dir: &Path, args: &[&std::ffi::OsStr]) -> Output {
         .current_dir(dir)
         .output()
         .unwrap()
-}
-
-/// Runs an executable this test process just wrote: retried on "text file
-/// busy" (see `ferro_difftest::output_written`).
-fn run_written(command: &mut Command) -> Output {
-    let result = ferro_difftest::output_written(command);
-    result.unwrap_or_else(|e| panic!("{command:?}: {e}"))
 }
 
 fn os(s: &str) -> &std::ffi::OsStr {

@@ -1,7 +1,32 @@
 use super::*;
 
-/// A test whose `.bas` and outputs live in a fresh directory.
-fn program(name: &str, status: Status, rejected: bool, expected: Option<(&str, &str)>) -> Program {
+/// A test whose `.bas` and outputs live in a fresh directory, removed when
+/// the test ends.
+struct Fixture {
+    program: Program,
+    dir: PathBuf,
+}
+
+impl std::ops::Deref for Fixture {
+    type Target = Program;
+    fn deref(&self) -> &Program {
+        &self.program
+    }
+}
+
+impl std::ops::DerefMut for Fixture {
+    fn deref_mut(&mut self) -> &mut Program {
+        &mut self.program
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.dir);
+    }
+}
+
+fn program(name: &str, status: Status, rejected: bool, expected: Option<(&str, &str)>) -> Fixture {
     let dir = std::env::temp_dir().join(format!("difftest-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -10,7 +35,7 @@ fn program(name: &str, status: Status, rejected: bool, expected: Option<(&str, &
     if let Some((ext, text)) = expected {
         fs::write(path.with_extension(ext), text).unwrap();
     }
-    Program {
+    let program = Program {
         path,
         name: name.into(),
         status,
@@ -20,7 +45,8 @@ fn program(name: &str, status: Status, rejected: bool, expected: Option<(&str, &
         exit_code: 0,
         level: Some(0),
         features: vec!["f".into()],
-    }
+    };
+    Fixture { program, dir }
 }
 
 fn ran(stdout: &str) -> Run {
@@ -202,8 +228,14 @@ fn a_crash_is_not_a_program_ending() {
         code,
         stdout: Vec::new(),
         stderr: stderr.as_bytes().to_vec(),
+        overflowed: false,
     };
     assert!(crashed(&finished(None, "")));
+    // Windows: a stack overflow (0xC00000FD) ends the process with an
+    // exception's code.
+    assert!(crashed(&finished(Some(0xC00000FDu32 as i32), "")));
+    // A program that only prints the words is not a panic.
+    assert!(!crashed(&finished(Some(0), "the test panicked at noon\n")));
     assert!(crashed(&finished(
         Some(101),
         "thread 'main' panicked at src/x.rs:1:1:\nboom\n"
@@ -215,6 +247,53 @@ fn a_crash_is_not_a_program_ending() {
         "Error occurred on line: 5 (Main)\njava.lang.RuntimeException: x\n"
     )));
     assert_eq!(tail("1\n2\n3\n4\n5\n6\n7\n"), "3\n4\n5\n6\n7");
+}
+
+#[test]
+fn a_missing_final_line_break_is_named() {
+    assert_eq!(
+        output_diff("a\n", "a"),
+        "stdout differs at its end: a missing final line break\n"
+    );
+    assert_eq!(
+        output_diff("a", "a\n"),
+        "stdout differs at its end: an extra final line break\n"
+    );
+}
+
+#[test]
+fn output_past_the_limit_is_dropped() {
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut out = Capture::new(&stop);
+    std::io::Write::write_all(&mut out, &vec![b'x'; OUTPUT_LIMIT]).unwrap();
+    assert!(!out.overflowed);
+    std::io::Write::write_all(&mut out, b"y").unwrap();
+    assert!(out.overflowed);
+    assert_eq!(out.bytes.len(), OUTPUT_LIMIT);
+}
+
+#[test]
+fn a_test_that_cannot_be_read_fails_alone() {
+    let mut missing = program("missing", Status::Recorded, false, Some(("expected", "")));
+    missing.path = missing.dir.join("nowhere.bas");
+    let fine = program("fine", Status::Recorded, false, Some(("expected", "")));
+    fs::write(
+        &fine.path,
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\nEnd Sub\n",
+    )
+    .unwrap();
+    let programs = [missing.program.clone(), fine.program.clone()];
+    let report = Report::run(&programs, &Target::Interp, DEFAULT_TIMEOUT);
+    let states: Vec<_> = report.entries.iter().map(|e| e.verdict.state).collect();
+    assert_eq!(states, [State::Fail, State::Pass]);
+    assert!(
+        report.entries[0]
+            .verdict
+            .detail
+            .starts_with("could not be judged: "),
+        "{}",
+        report.entries[0].verdict.detail
+    );
 }
 
 #[test]
@@ -283,10 +362,6 @@ fn diffs_name_the_first_differing_line() {
     assert_eq!(
         output_diff("a\nb\n", "a\n"),
         "stdout differs at line 2: expected \"b\", got end of output (2 lines expected, 1 printed)\n"
-    );
-    assert_eq!(
-        output_diff("a\n", "a"),
-        "stdout differs at line 2: expected end of output, got end of output (1 lines expected, 1 printed)\n"
     );
 }
 

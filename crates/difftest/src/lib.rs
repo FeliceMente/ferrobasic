@@ -23,6 +23,10 @@ use ferro_corpus::{Program, Status};
 /// program that loops forever is all it guards against.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// The most output kept of one run: a program that prints more has run
+/// away, and fails rather than filling the memory.
+const OUTPUT_LIMIT: usize = 64 * 1024 * 1024;
+
 /// Where a program runs.
 pub enum Target {
     /// In process, through the interpreter.
@@ -211,6 +215,15 @@ fn output_diff(expected: &str, actual: &str) -> String {
         Some(text) => format!("{text:?}"),
         None => "end of output".to_string(),
     };
+    if e == a {
+        // Only the last line break differs.
+        let which = if expected.ends_with('\n') {
+            "a missing"
+        } else {
+            "an extra"
+        };
+        return format!("stdout differs at its end: {which} final line break\n");
+    }
     let mut out = format!(
         "stdout differs at line {}: expected {}, got {}",
         line + 1,
@@ -264,6 +277,9 @@ fn interpret(source: &str, stop: &Arc<AtomicBool>) -> Run {
     let mut stdout = Capture::new(stop);
     let mut stderr = Capture::new(stop);
     let outcome = ferro_cli::run(&module, &[], &mut stdout, &mut stderr);
+    if stdout.overflowed || stderr.overflowed {
+        return Run::Broken(too_much());
+    }
     match text(stdout.bytes) {
         Ok(stdout) => Run::Ran {
             stdout,
@@ -280,10 +296,12 @@ fn text(stdout: Vec<u8>) -> Result<String, Run> {
     String::from_utf8(stdout).map_err(|_| Run::Broken("stdout is not valid UTF-8".into()))
 }
 
-/// An output kept in memory until `stop` is set, then discarded: a program
-/// left running after its timeout must not fill the memory.
+/// An output kept in memory up to [`OUTPUT_LIMIT`], and until `stop` is
+/// set; the rest is discarded, so that a program that runs away, or is left
+/// running after its timeout, cannot fill the memory.
 struct Capture {
     bytes: Vec<u8>,
+    overflowed: bool,
     stop: Arc<AtomicBool>,
 }
 
@@ -291,6 +309,7 @@ impl Capture {
     fn new(stop: &Arc<AtomicBool>) -> Capture {
         Capture {
             bytes: Vec::new(),
+            overflowed: false,
             stop: Arc::clone(stop),
         }
     }
@@ -298,7 +317,10 @@ impl Capture {
 
 impl std::io::Write for Capture {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if !self.stop.load(Ordering::Relaxed) {
+        if self.stop.load(Ordering::Relaxed) {
+        } else if self.bytes.len() + buf.len() > OUTPUT_LIMIT {
+            self.overflowed = true;
+        } else {
             self.bytes.extend_from_slice(buf);
         }
         Ok(buf.len())
@@ -307,6 +329,13 @@ impl std::io::Write for Capture {
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+fn too_much() -> String {
+    format!(
+        "printed more than {} MiB: stopped",
+        OUTPUT_LIMIT / (1024 * 1024)
+    )
 }
 
 fn timed_out(timeout: Duration) -> String {
@@ -338,6 +367,7 @@ fn run_standalone(program: &Program, ferro: &Path, work: &Path, timeout: Duratio
         Ok(None) => Run::Broken(format!("ferro bundle {}", timed_out(timeout))),
         Ok(Some(built)) => match built.code {
             Some(0) => match output(Command::new(&binary).current_dir(&dir), timeout) {
+                Ok(Some(out)) if out.overflowed => Run::Broken(too_much()),
                 Ok(Some(out)) if crashed(&out) => Run::Broken(format!(
                     "the binary crashed ({}): {}",
                     out.code
@@ -380,10 +410,16 @@ fn first_error(stderr: &str) -> String {
 }
 
 /// Whether a binary stopped on a crash rather than at its program's end:
-/// killed by a signal, or a Rust panic (whose exit code 101 a program may
-/// also give, so its message decides).
+/// killed by a signal (Unix), ended by an exception such as a stack
+/// overflow (Windows: an NTSTATUS error code, `0xC…`), or a Rust panic,
+/// whose exit code 101 a program may also give, so the panic's own first
+/// line decides.
 fn crashed(out: &Finished) -> bool {
-    out.code.is_none() || String::from_utf8_lossy(&out.stderr).contains("panicked at")
+    let exception = out.code.is_some_and(|c| (c as u32) >= 0xC000_0000);
+    let panicked = String::from_utf8_lossy(&out.stderr)
+        .lines()
+        .any(|l| l.starts_with("thread '") && l.contains("' panicked at "));
+    out.code.is_none() || exception || panicked
 }
 
 /// The last lines of a crash's stderr.
@@ -397,12 +433,8 @@ struct Finished {
     code: Option<i32>,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
-}
-
-/// [`Command::output`] on a binary that was just written: retried while
-/// Linux still sees it open for writing (see [`retry_busy`]).
-pub fn output_written(command: &mut Command) -> std::io::Result<std::process::Output> {
-    retry_busy(|| command.output())
+    /// It printed more than [`OUTPUT_LIMIT`]; the rest was read and dropped.
+    overflowed: bool,
 }
 
 /// Starts a binary that was just written, for up to 2 s. Linux refuses to
@@ -431,13 +463,25 @@ fn output(command: &mut Command, timeout: Duration) -> std::io::Result<Option<Fi
         .stderr(Stdio::piped());
     let mut child = retry_busy(|| command.spawn())?;
     // Read both pipes while waiting, so that a full pipe cannot stall it.
+    // Past the limit, it is still read, so that the program can go on, but
+    // dropped.
     let drain = |pipe: Option<Box<dyn Read + Send>>| {
         thread::spawn(move || {
-            let mut bytes = Vec::new();
+            let (mut bytes, mut overflowed) = (Vec::new(), false);
+            let mut chunk = [0u8; 64 * 1024];
             if let Some(mut pipe) = pipe {
-                let _ = pipe.read_to_end(&mut bytes);
+                while let Ok(n) = pipe.read(&mut chunk) {
+                    if n == 0 {
+                        break;
+                    }
+                    if bytes.len() + n > OUTPUT_LIMIT {
+                        overflowed = true;
+                    } else {
+                        bytes.extend_from_slice(&chunk[..n]);
+                    }
+                }
             }
-            bytes
+            (bytes, overflowed)
         })
     };
     let stdout = drain(
@@ -455,24 +499,32 @@ fn output(command: &mut Command, timeout: Duration) -> std::io::Result<Option<Fi
     // A timeout too long to add to now is no deadline at all.
     let deadline = Instant::now().checked_add(timeout);
     let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break Some(status);
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(Some(status)),
+            // It cannot be watched: stop it rather than leave it running.
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break Err(e);
+            }
+            Ok(None) => {}
         }
         if deadline.is_some_and(|d| Instant::now() >= d) {
             let _ = child.kill();
             let _ = child.wait();
-            break None;
+            break Ok(None);
         }
         thread::sleep(Duration::from_millis(5));
     };
-    let (stdout, stderr) = (
+    let ((stdout, out_over), (stderr, err_over)) = (
         stdout.join().unwrap_or_default(),
         stderr.join().unwrap_or_default(),
     );
-    Ok(status.map(|status| Finished {
+    Ok(status?.map(|status| Finished {
         code: status.code(),
         stdout,
         stderr,
+        overflowed: out_over || err_over,
     }))
 }
 
@@ -488,6 +540,15 @@ pub fn uncaught_error(stderr: &str) -> Option<String> {
             .map_or(line, |(kind, _)| kind)
             .to_string(),
     )
+}
+
+/// What a panic said.
+fn reason(panic: &(dyn std::any::Any + Send)) -> String {
+    match (panic.downcast_ref::<&str>(), panic.downcast_ref::<String>()) {
+        (Some(text), _) => text.to_string(),
+        (_, Some(text)) => text.clone(),
+        _ => "a panic".to_string(),
+    }
 }
 
 /// One test's result in the report.
@@ -519,8 +580,17 @@ impl Report {
                         let Some(program) = programs.get(i) else {
                             break;
                         };
-                        let verdict = judge(program, target, timeout);
-                        done.lock().unwrap()[i] = Some(verdict);
+                        let verdict =
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                judge(program, target, timeout)
+                            }))
+                            .unwrap_or_else(|panic| {
+                                Verdict::new(
+                                    State::Fail,
+                                    format!("could not be judged: {}", reason(&*panic)),
+                                )
+                            });
+                        done.lock().unwrap_or_else(|e| e.into_inner())[i] = Some(verdict);
                     }
                 });
             }

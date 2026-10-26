@@ -3,9 +3,13 @@
 //! copied away from the build tree, must print exactly what `ferro run`
 //! prints and exit with the same code.
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+use common::run_written as run_binary;
 
 const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
@@ -45,13 +49,6 @@ fn exe(name: &str) -> String {
 
 fn ferro(args: &[&str]) -> Output {
     Command::new(FERRO).args(args).output().unwrap()
-}
-
-/// Runs an executable this test process just wrote: retried on "text file
-/// busy" (see `ferro_difftest::output_written`).
-fn run_binary(command: &mut Command) -> Output {
-    let result = ferro_difftest::output_written(command);
-    result.unwrap_or_else(|e| panic!("{command:?}: {e}"))
 }
 
 fn conformance_dir() -> PathBuf {
