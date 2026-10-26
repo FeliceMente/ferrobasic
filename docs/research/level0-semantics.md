@@ -401,30 +401,41 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   the name in another Sub, which returns the Sub's value (**recorded**:
   `process_globals_loop_named_like_sub_read`). In fact every use of such a
   name in an expression calls the Sub, inside its own loop, with arguments,
-  or for an undeclared counter or a `For Each v As T` of any Sub, all
-  recorded with the loop variable of the Sub's return type (only the
-  statement with another: *open* otherwise,
-  `local_for_each_named_like_sub_member`); a `For`
-  in another Sub may loop over
-  such a counter, and assigning it is refused ("Syntax error", or "'next' expected" inside
+  or for an undeclared counter or a `For Each v As T` of any Sub, whatever
+  the loop variable's type (`Bump.Length` on a `String` one, with
+  `Sub Bump As Int`: "Object expected"); a `For` may loop over such an
+  Int variable again: in `Process_Globals` over a `For` counter, in
+  another Sub over a `For` or `For Each` variable of `Process_Globals`,
+  and in a Sub over its own `For` counter,
+  and a `For Each v As T` of a Sub may also have the name of a module
+  variable of type `T`; a typed `For v As T` with a Sub's name is
+  refused ("Regular variable followed by '=' expected"); and assigning it
+  is refused ("Syntax error", or "'next' expected" inside
   its loop) (**recorded**: `process_globals_loop_named_like_sub_read_inside`,
   `process_globals_loop_named_like_sub_args`,
   `process_globals_loop_named_like_sub_loop_elsewhere`,
   `local_counter_named_like_sub`, `local_for_each_named_like_sub`,
   `process_globals_loop_named_like_sub_assign`,
-  `process_globals_loop_named_like_sub_assign_inside`); a `Dim` with a Sub's name is
-  refused: "Variable name cannot be the same as a sub name" (**recorded**:
-  `module_variable_named_like_sub`). Other loops over such a module
-  variable (again in `Process_Globals`, a `For Each` elsewhere, over a
-  `For Each` variable) and a loop local of a Sub with its name are not
-  recorded, nor are a typed `For v As T` of a Sub with a Sub's name, another
-  loop of a Sub over its own such loop variable, and a `Dim` of
-  `Class_Globals` with a Sub's name (*open*:
-  `local_typed_counter_named_like_sub`,
-  `local_counter_named_like_sub_loop_again`,
+  `process_globals_loop_named_like_sub_assign_inside`,
   `process_globals_loop_named_like_sub_loop_again`,
   `process_globals_for_each_named_like_sub_loop_elsewhere`,
-  `local_for_each_named_like_sub_over_module_variable`). With the same type, a counter and a
+  `local_counter_named_like_sub_loop_again`,
+  `local_for_each_named_like_sub_over_module_variable`,
+  `local_for_each_named_like_sub_member`,
+  `local_typed_counter_named_like_sub`); a `Dim` with a Sub's name is
+  refused: "Variable name cannot be the same as a sub name" (**recorded**:
+  `module_variable_named_like_sub`). Not recorded: a `For Each` without
+  `As` over such a variable again, a `For Each v As T` of a Sub with the
+  name of a Sub and of a module variable of another type, and a `Dim` of
+  `Class_Globals` with a Sub's name, nor are another `For Each` with `As`,
+  a `For` in the Sub (or `Process_Globals`) where a `For Each` declares
+  the name, and a `For` over a `String` one (*open*:
+  `local_counter_after_for_each_named_like_sub`,
+  `process_globals_counter_after_for_each_named_like_sub`,
+  `process_globals_string_loop_named_like_sub_counter_elsewhere`,
+  `process_globals_loop_named_like_sub_for_each_elsewhere`,
+  `local_for_each_named_like_sub_loop_again`,
+  `local_for_each_named_like_sub_other_type`). With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,
   `process_globals_for_each_then_counter`, `process_globals_for_each_twice`).

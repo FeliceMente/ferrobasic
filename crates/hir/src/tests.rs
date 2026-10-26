@@ -640,17 +640,34 @@ fn loops_in_process_globals() {
         app_start(&module).body
     );
     // Every use of the name in an expression calls the Sub, in
-    // `Process_Globals` too; a `For` in another Sub may loop over it, and a
-    // Sub's own loop variable may have the name (recorded).
+    // `Process_Globals` too; a `For` may loop over it again anywhere, and a
+    // Sub's own loop variable may have the name, also with a module variable
+    // of that name and type (recorded).
     for (body, app) in [
         ("    For Bump = 1 To 2\n        Log(Bump)\n    Next", ""),
         (
             "    For Bump = 1 To 2\n    Next",
             "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
         ),
+        (
+            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+            "",
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n    Next",
+            "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
+        ),
         ("", "    For Bump = 1 To 2\n        Log(Bump)\n    Next"),
         (
             "",
+            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        ),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
+        ),
+        (
+            "    For Bump = 1 To 2\n    Next",
             "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
         ),
     ] {
@@ -667,87 +684,123 @@ fn loops_in_process_globals() {
             "{app}: {all}"
         );
     }
-    // Any other loop over such a module variable is open: refused once.
-    for (body, app) in [
+    // The name is the Sub whatever the loop variable's type (recorded):
+    // as a statement and when read, it is a call; `.Length` is the Int's.
+    let each = "    For Each Bump As String In Array As String(\"x\")\n";
+    let module = ok(&sub(
+        "",
+        &format!("{each}        Bump\n        Log(Bump)\n    Next"),
+    ));
+    assert!(
+        format!("{:?}", app_start(&module).body)
+            .matches("Call")
+            .count()
+            >= 2,
+        "{:?}",
+        app_start(&module).body
+    );
+    let diags = errors(&sub(
+        "",
+        &format!("{each}        Log(Bump.Length)\n    Next"),
+    ));
+    assert_eq!(diags, ["Int has no member `Length` at Level 0"]);
+    // Another `For Each` over it, with or without `As`, is open: refused once.
+    for (body, app, what) in [
         (
             "    For Bump = 1 To 2\n    Next",
             "    For Each Bump In Array As Int(1)\n    Next",
+            "a module variable",
         ),
         (
-            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
             "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+            "a loop variable of this Sub",
         ),
         (
-            "    For Each Bump As Int In Array As Int(1)\n    Next",
-            "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump As Int In Array As Int(2)\n    Next",
+            "a loop variable of this Sub",
         ),
     ] {
         let diags = errors(&sub(body, app));
         assert_eq!(
             diags,
-            [
-                "`Bump` is a module variable with the name of a Sub: whether this loop may loop \
-                 over it again is not known yet, so use another name"
-            ],
+            [format!(
+                "`Bump` is {what} with the name of a Sub: whether another `For Each` may loop \
+                 over it is not known yet, so use another name"
+            )],
+            "{body}{app}"
+        );
+    }
+    // So is a `For` over it in the Sub where a `For Each` declares it, in
+    // either order, and a `For` over a loop variable of another type than
+    // a number.
+    for (body, app, what) in [
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n    Next",
+            "a loop variable of this Sub with the name of a Sub, declared by a `For Each`",
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(1)\n    Next",
+            "a loop variable of this Sub with the name of a Sub, declared by a `For Each`",
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n    Next",
+            "",
+            "a module variable with the name of a Sub, declared by a `For Each`",
+        ),
+        (
+            "    For Each Bump As String In Array As String(\"x\")\n    Next",
+            "    For Bump = 1 To 2\n    Next",
+            "a module variable of type String with the name of a Sub",
+        ),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(
+            diags,
+            [format!(
+                "`Bump` is {what}: whether a `For` may loop over it is not known yet, so use \
+                 another name"
+            )],
             "{body}{app}"
         );
     }
     // A refused loop's bounds and body are still checked.
     let diags = errors(&sub(
-        "    For Bump = 1 To 2\n    Next\n    For Bump = Missing To 3\n        Log(Other)\n    Next",
-        "",
+        "    For Bump = 1 To 2\n    Next",
+        "    For Each Bump In Array As Int(Missing)\n        Log(Other)\n    Next",
     ));
     assert_eq!(diags.len(), 3, "{diags:?}");
     assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
     assert!(has(&diags, "`Other` is not declared"), "{diags:?}");
-    // So is another loop of a Sub over its own loop variable with that
-    // name, and a typed `For` with that name (not recorded).
-    for app in [
-        "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
-        "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
-    ] {
-        let diags = errors(&sub("", app));
+    // A typed `For` cannot have the name (recorded), with a module variable
+    // of that name too.
+    for body in ["", "    For Bump = 1 To 2\n    Next"] {
+        let diags = errors(&sub(
+            body,
+            "    For Bump As Int = 1 To 2\n        Log(Bump)\n    Next",
+        ));
         assert_eq!(
             diags,
             [
-                "`Bump` is a loop variable of this Sub with the name of a Sub: whether this loop \
-                 may loop over it again is not known yet, so use another name"
+                "`Bump` is a Sub: a `For` counter with its name cannot be declared with `As`, \
+                 so loop without `As`"
             ],
-            "{app}"
+            "{body}"
         );
     }
+    // A loop local of another type than such a module variable is refused
+    // as for any other name (not recorded for a Sub's name).
     let diags = errors(&sub(
-        "",
-        "    For Bump As Int = 1 To 2\n        Log(Bump)\n    Next",
+        "    For Bump = 1 To 2\n    Next",
+        "    For Each Bump As String In Array As String()\n    Next",
     ));
     assert_eq!(
         diags,
-        [
-            "`Bump` is a Sub: whether a `For Bump As <type>` may have its name is not known yet, \
-             so loop without `As`"
-        ]
+        ["`Bump` is a module variable of type Int: a local cannot declare it again as String"]
     );
-    // A loop local with that name too, of the same type (open) or not.
-    for (each, message) in [
-        (
-            "Int",
-            "`Bump` is also a module variable (Int) and a Sub: whether this loop declares a \
-             new local is not known yet, so use another name",
-        ),
-        (
-            "String",
-            "`Bump` is a module variable of type Int: a local cannot declare it again as String",
-        ),
-    ] {
-        let app = format!("    For Each Bump As {each} In Array As {each}()\n    Next");
-        let diags = errors(&sub("    For Bump = 1 To 2\n    Next", &app));
-        assert_eq!(diags, [message], "{each}");
-    }
-    let diags = errors(&sub(
-        "    For Bump = 1 To 2\n    Next",
-        "    For Bump As Int = 5 To 6\n    Next",
-    ));
-    assert_eq!(diags.len(), 1, "{diags:?}");
     // Assigning it is an error, wherever it is (recorded).
     for (body, app) in [
         ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
@@ -815,26 +868,6 @@ fn loops_in_process_globals() {
              known yet, so use another name"
         ]
     );
-    // A use of a loop variable whose type differs from the Sub's return
-    // type is recorded only as a statement, which calls the Sub.
-    let each = "    For Each Bump As String In Array As String(\"x\")\n";
-    for (uses, refused) in [
-        ("        Log(Bump.Length)\n", true),
-        ("        Log(Bump)\n", true),
-        ("        Bump\n", false),
-    ] {
-        let text = sub("", &format!("{each}{uses}    Next"));
-        let (_, diags) = self::module(&text);
-        let expected: &[&str] = if refused {
-            &[
-                "`Bump` is a loop variable of type String and a Sub that returns Int: whether this \
-               use means the Sub is not known yet, so use another name",
-            ]
-        } else {
-            &[]
-        };
-        assert_eq!(diags, expected, "{uses}");
-    }
     // A `Type`, `Bit` or a keyword is refused once, and the loop's body is
     // still checked, without reporting the variable again.
     for (body, what) in [
