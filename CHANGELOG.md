@@ -21,15 +21,16 @@ B4J itself (`docs/compatibility-testing.md`).
   there too, and its variable is a module variable the same way. Before,
   both were errors. Declarations of one name there are one variable with
   the same type, and an error with another.
-- A local `Dim` with a module variable's name and type is that module
-  variable, as in B4J, and resets it; with another type it is an error, as
-  in B4J. Before, it was a new local.
+- A local `Dim` or `For Each v As T` with a module variable's name and
+  type is that module variable, as in B4J, and the `Dim` resets it; with
+  another type it is an error, as in B4J. Before, it was a new local.
 - A parameter with a module variable's name is an error, as in B4J
   ("Parameter name cannot hide global variable name"). Before, it hid the
   module variable.
-- A `Dim` with a Sub's name is an error in `Process_Globals`, as in B4J;
-  a loop variable there may have one, and in other Subs the name calls the
-  Sub, as in B4J. Before, a `Dim`'d one silently meant the variable.
+- A `Dim` with a Sub's name is an error, as in B4J, in `Process_Globals`
+  and in a Sub; a loop variable of `Process_Globals` may have one, and
+  reading the name calls the Sub while assigning it elsewhere is an error,
+  as in B4J. Before, a `Dim`'d one silently meant the variable.
 - `Null` assigned, passed or returned as a `String` is the text `"null"`,
   as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
   null, so `IsNumber` or `.Length` on it raised `NullPointerException`.

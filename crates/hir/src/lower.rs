@@ -769,20 +769,18 @@ impl Lowerer {
         });
     }
 
-    /// The name of a local `Dim`. With a module variable's name and type it
-    /// is that module variable, and re-executing it resets it, as a local's
-    /// `Dim` does (recorded: the `Dim` means the module variable). With a
-    /// Sub's name it is open.
+    /// The name a local `Dim` or `For Each v As T` declares. With a module
+    /// variable's name and type it is that module variable, which a
+    /// re-executed `Dim` resets (recorded). A Sub's name is refused
+    /// (recorded for a `Dim`).
     fn declare_dim_local(&mut self, name: &str, ty: Ty, at: TextRange) {
         let k = key(name);
         if !self.local_names.contains_key(&k) {
             if self.subs.contains_key(&k) {
+                // B4J: "Variable name cannot be the same as a sub name" (recorded).
                 self.error(
                     at,
-                    format!(
-                        "`{name}` is a Sub: whether a local may have its name is not known \
-                         yet, so use another name"
-                    ),
+                    format!("a variable cannot have the name of a Sub: `{name}` is a Sub"),
                 );
                 // Already reported: no second error for a module variable.
                 self.push_local(name, ty, at);
@@ -798,9 +796,9 @@ impl Lowerer {
 
     /// A local declared with a module variable's name: B4J refuses another
     /// type ("Current declaration does not match previous one", recorded);
-    /// a `Dim` of the same type is the module variable (`declare_dim_local`),
-    /// and whether a `For Each v As T` of the same type is a new local is
-    /// open, so it is refused.
+    /// a `Dim` or `For Each` of the same type is the module variable
+    /// (`declare_dim_local`), and whether a `For i As T` of the same type is
+    /// a new local is open, so it is refused.
     fn local_like_global(&mut self, name: &str, ty: &Ty, id: GlobalId, at: TextRange) {
         let existing = self.module.global(id).ty.clone();
         if existing == Ty::Error {
@@ -836,7 +834,7 @@ impl Lowerer {
                 FOR_EACH_STMT => {
                     if let (Some(name), Some(t)) = (child(&node, NAME), child(&node, TYPE_REF)) {
                         let ty = self.resolve_type(&t);
-                        self.declare_local(&name_of(&name), ty, range(&name));
+                        self.declare_dim_local(&name_of(&name), ty, range(&name));
                     }
                 }
                 FOR_STMT => {
@@ -1273,7 +1271,17 @@ impl Lowerer {
         match node.kind() {
             NAME_REF => {
                 let name = name_of(node);
-                match self.lookup_use(&name, range(node)) {
+                let found = self.lookup_var(&name);
+                if !self.in_process_globals && self.is_sub_named_global(&name, &found) {
+                    // B4J reads the name as the Sub: "Syntax error" at the
+                    // `=` (recorded).
+                    self.error(
+                        range(node),
+                        format!("cannot assign to `{name}`: it is a Sub, not a variable"),
+                    );
+                    return None;
+                }
+                match self.checked_use(&name, range(node), found) {
                     Some((var, ty)) => Some((Place::Var(var), ty)),
                     None => {
                         let message = if self.subs.contains_key(&key(&name)) {
@@ -1517,8 +1525,9 @@ impl Lowerer {
     }
 
     /// A module variable with a Sub's name, found where `name` is looked up.
-    /// Outside `Process_Globals`, a statement or a bare read of it calls the
-    /// Sub (recorded); any other use is open (`checked_use`).
+    /// A statement or a bare read of it calls the Sub, and assigning it in
+    /// another Sub is an error (recorded); any other use is open
+    /// (`checked_use`).
     fn is_sub_named_global(&self, name: &str, found: &Option<(VarRef, Ty)>) -> bool {
         matches!(found, Some((VarRef::Global(_), _))) && self.subs.contains_key(&key(name))
     }
@@ -1574,11 +1583,10 @@ impl Lowerer {
         let at = range(node);
         let name = name_of(node);
         let full = args.map_or(at, |_| range(&node.parent().unwrap()));
-        // Outside `Process_Globals`, a bare read calls the Sub rather than read
-        // a module variable of its name (recorded); with arguments it is open.
+        // A bare read calls the Sub rather than read a module variable of its
+        // name, in `Process_Globals` too (recorded); with arguments it is open.
         let found = self.lookup_var(&name);
-        let sub_wins =
-            args.is_none() && !self.in_process_globals && self.is_sub_named_global(&name, &found);
+        let sub_wins = args.is_none() && self.is_sub_named_global(&name, &found);
         let found = if sub_wins {
             None
         } else {
