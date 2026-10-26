@@ -149,10 +149,11 @@ fn a_program_that_does_not_end_fails() {
     fs::write(
         &p.path,
         "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    \
-         For i = 1 To 2000000\n    Next\nEnd Sub\n",
+         Do While 1 = 1\n    Loop\nEnd Sub\n",
     )
     .unwrap();
-    // The loop takes a second or two, so the thread left behind ends soon.
+    // The thread left behind spins until the test process ends; its
+    // output, if any, is discarded.
     let v = judge(&p, &Target::Interp, Duration::from_millis(100));
     assert_eq!(
         (v.state, v.detail.as_str()),
@@ -171,6 +172,49 @@ fn a_timeout_too_long_for_a_deadline_is_none() {
     assert_eq!(judge(&p, &Target::Interp, Duration::MAX).state, State::Pass);
     let out = output(Command::new(env!("CARGO")).arg("--version"), Duration::MAX);
     assert_eq!(out.unwrap().unwrap().code, Some(0));
+}
+
+#[test]
+fn a_pending_test_with_a_recording_is_flagged() {
+    let p = program(
+        "stale",
+        Status::PendingRecording,
+        false,
+        Some(("expected", "1\n")),
+    );
+    assert_eq!(
+        verdict(&p, ran("1\n")).detail,
+        "has a recording: set its status to \"recorded\" in its .meta.toml"
+    );
+}
+
+#[test]
+fn carriage_returns_show_in_the_diff() {
+    assert_eq!(
+        output_diff("1\n", "1\r\n"),
+        "stdout differs at line 1: expected \"1\", got \"1\\r\"\n"
+    );
+}
+
+#[test]
+fn a_crash_is_not_a_program_ending() {
+    let finished = |code, stderr: &str| Finished {
+        code,
+        stdout: Vec::new(),
+        stderr: stderr.as_bytes().to_vec(),
+    };
+    assert!(crashed(&finished(None, "")));
+    assert!(crashed(&finished(
+        Some(101),
+        "thread 'main' panicked at src/x.rs:1:1:\nboom\n"
+    )));
+    // `ExitApplication2(101)` is a program's ending, not a crash.
+    assert!(!crashed(&finished(Some(101), "")));
+    assert!(!crashed(&finished(
+        Some(1),
+        "Error occurred on line: 5 (Main)\njava.lang.RuntimeException: x\n"
+    )));
+    assert_eq!(tail("1\n2\n3\n4\n5\n6\n7\n"), "3\n4\n5\n6\n7");
 }
 
 #[test]

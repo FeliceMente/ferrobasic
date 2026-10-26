@@ -130,17 +130,26 @@ fn verdict(program: &Program, run: Run) -> Verdict {
         return Verdict::new(State::Fail, "builds, but must be rejected");
     }
     let recorded = program.path.with_extension("expected").exists();
-    if program.status == Status::Recorded && !recorded {
-        return Verdict::new(State::Fail, "recorded, but has no .expected output");
+    match program.status {
+        Status::Recorded if !recorded => {
+            return Verdict::new(State::Fail, "recorded, but has no .expected output");
+        }
+        Status::PendingRecording if recorded => {
+            return Verdict::new(
+                State::Fail,
+                "has a recording: set its status to \"recorded\" in its .meta.toml",
+            );
+        }
+        _ => {}
     }
-    let expected = program.expected_output();
+    let expected = program.expected_output().map(|e| normalize(&e));
     // The uncaught error and the exit code are known for every test that
     // runs, also one whose output there is none to compare with yet.
     let mut why = String::new();
     if let Some(expected) = &expected
-        && stdout != normalize(expected)
+        && stdout != *expected
     {
-        why += &output_diff(&normalize(expected), &stdout);
+        why += &output_diff(expected, &stdout);
     }
     if error != program.uncaught_error {
         let _ = writeln!(
@@ -188,14 +197,17 @@ pub fn normalize(output: &str) -> String {
 }
 
 /// The first line where two outputs differ, and how many lines each has.
+/// Lines end at `\n` only, so that a `\r` shows in the line it ends.
 fn output_diff(expected: &str, actual: &str) -> String {
-    let (e, a): (Vec<&str>, Vec<&str>) = (expected.lines().collect(), actual.lines().collect());
+    let lines =
+        |text: &str| -> Vec<String> { text.split_terminator('\n').map(String::from).collect() };
+    let (e, a) = (lines(expected), lines(actual));
     let line = e
         .iter()
         .zip(&a)
         .position(|(x, y)| x != y)
         .unwrap_or(e.len().min(a.len()));
-    let at = |lines: &[&str]| match lines.get(line) {
+    let at = |lines: &[String]| match lines.get(line) {
         Some(text) => format!("{text:?}"),
         None => "end of output".to_string(),
     };
@@ -302,8 +314,11 @@ fn timed_out(timeout: Duration) -> String {
 }
 
 fn run_standalone(program: &Program, ferro: &Path, work: &Path, timeout: Duration) -> Run {
-    // Absolute, as the binary runs from inside it.
-    let dir = match std::path::absolute(work.join(program.file_name())) {
+    // Numbered, so that no two tests share one, whatever their names; and
+    // absolute, as the binary runs from inside it.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let dir = match std::path::absolute(work.join(format!("{n}-{}", program.file_name()))) {
         Ok(dir) => dir,
         Err(e) => return Run::Broken(format!("{}: {e}", work.display())),
     };
@@ -323,6 +338,12 @@ fn run_standalone(program: &Program, ferro: &Path, work: &Path, timeout: Duratio
         Ok(None) => Run::Broken(format!("ferro bundle {}", timed_out(timeout))),
         Ok(Some(built)) => match built.code {
             Some(0) => match output(Command::new(&binary).current_dir(&dir), timeout) {
+                Ok(Some(out)) if crashed(&out) => Run::Broken(format!(
+                    "the binary crashed ({}): {}",
+                    out.code
+                        .map_or("killed by a signal".into(), |c| format!("exit code {c}")),
+                    tail(&String::from_utf8_lossy(&out.stderr))
+                )),
                 Ok(Some(out)) => match text(out.stdout) {
                     Ok(stdout) => Run::Ran {
                         stdout,
@@ -336,7 +357,9 @@ fn run_standalone(program: &Program, ferro: &Path, work: &Path, timeout: Duratio
             },
             // `ferro bundle` exits with 3 on a program it rejects, after its
             // diagnostics.
-            Some(3) => Run::Rejected(first_error(&String::from_utf8_lossy(&built.stderr))),
+            Some(code) if code == i32::from(ferro_cli::EXIT_COMPILE_ERRORS) => {
+                Run::Rejected(first_error(&String::from_utf8_lossy(&built.stderr)))
+            }
             code => Run::Broken(format!(
                 "ferro bundle exited with {code:?}: {}",
                 String::from_utf8_lossy(&built.stderr).trim()
@@ -356,6 +379,19 @@ fn first_error(stderr: &str) -> String {
         .to_string()
 }
 
+/// Whether a binary stopped on a crash rather than at its program's end:
+/// killed by a signal, or a Rust panic (whose exit code 101 a program may
+/// also give, so its message decides).
+fn crashed(out: &Finished) -> bool {
+    out.code.is_none() || String::from_utf8_lossy(&out.stderr).contains("panicked at")
+}
+
+/// The last lines of a crash's stderr.
+fn tail(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr.trim_end().lines().collect();
+    lines[lines.len().saturating_sub(5)..].join("\n")
+}
+
 /// What a finished process gave.
 struct Finished {
     code: Option<i32>,
@@ -363,30 +399,37 @@ struct Finished {
     stderr: Vec<u8>,
 }
 
-/// Runs `command` to its end, or kills it after `timeout` (`None`). A binary
-/// that was just written is retried while Linux still sees it open for
-/// writing (`ETXTBSY`), as `crates/cli/tests/bundle.rs` explains.
+/// [`Command::output`] on a binary that was just written: retried while
+/// Linux still sees it open for writing (see [`retry_busy`]).
+pub fn output_written(command: &mut Command) -> std::io::Result<std::process::Output> {
+    retry_busy(|| command.output())
+}
+
+/// Starts a binary that was just written, for up to 2 s. Linux refuses to
+/// run a file that some process still has open for writing (`ETXTBSY`). With
+/// several threads, a child process another thread is starting can hold a
+/// copy of this thread's write descriptor for a moment, between its `fork`
+/// and its `exec`; so retry briefly instead of failing at random.
+fn retry_busy<T>(mut start: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    for _ in 0..200 {
+        match start() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            result => return result,
+        }
+    }
+    start()
+}
+
+/// Runs `command` to its end, or kills it after `timeout` (`None`), started
+/// as a binary that was just written (see [`retry_busy`]).
 fn output(command: &mut Command, timeout: Duration) -> std::io::Result<Option<Finished>> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = None;
-    for _ in 0..200 {
-        match command.spawn() {
-            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
-                thread::sleep(Duration::from_millis(10));
-            }
-            result => {
-                child = Some(result?);
-                break;
-            }
-        }
-    }
-    let mut child = match child {
-        Some(child) => child,
-        None => command.spawn()?,
-    };
+    let mut child = retry_busy(|| command.spawn())?;
     // Read both pipes while waiting, so that a full pipe cannot stall it.
     let drain = |pipe: Option<Box<dyn Read + Send>>| {
         thread::spawn(move || {

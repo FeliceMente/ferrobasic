@@ -4,6 +4,10 @@
 
 use ferro_syntax::{TextRange, TextSize};
 
+/// The exit code of `ferro check`, `run` and `bundle` on a program with
+/// errors (`docs/spec/cli.md`).
+pub const EXIT_COMPILE_ERRORS: u8 = 3;
+
 /// Stack for all of `ferro`'s work. The parser limits nesting
 /// (`MAX_NESTING` in `ferro-syntax`), but the later stages and the
 /// interpreter still recurse over trees and values; a large stack keeps any
