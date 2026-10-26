@@ -64,4 +64,4 @@ jobs:
           "$ferro" bundle tests/conformance/level0/prices_map.bas -o prices_map
           file prices_map
           file prices_map | grep -Eq 'statically linked|static-pie linked'
-          ./prices_map | diff - tests/conformance/level0/prices_map.provisional
+          ./prices_map | diff - tests/conformance/level0/prices_map.expected
