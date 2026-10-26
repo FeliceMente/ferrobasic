@@ -138,13 +138,21 @@ cargo run -p ferro-difftest -- --target standalone
 cargo run -p ferro-difftest -- --verbose --by-feature --filter sort
 ```
 
-- `interp` runs each program in the interpreter, in process. `standalone`
-  builds it with `ferro bundle` (the `ferro` next to `ferro-difftest`, or
-  `--ferro <path>`) and runs the binary, reading the uncaught error's kind
-  from its stderr.
+- `interp` runs each program the way `ferro run` does, in process: the module
+  header checked, then parsed, type-checked and interpreted on `ferro`'s
+  stack, with the exit code's low 8 bits. `standalone` builds it with
+  `ferro bundle` (the `ferro` next to `ferro-difftest`, or `--ferro <path>`)
+  in a folder of its own under the system's temporary folder (or under
+  `--work`), removed after, and runs the binary, reading the uncaught error's
+  kind from its stderr.
+- Tests run several at a time, each for at most 60 seconds (`--timeout`): a
+  program still running then fails, so a loop that never ends cannot hang
+  the report.
 - A test passes when its normalized stdout, uncaught error kind and exit code
   are the recorded ones; a `negative` test passes when it is rejected. Passes
-  against a `.provisional` output are counted apart.
+  against a `.provisional` output are counted apart; a `recorded` test with
+  no `.expected` fails. A test refused that must build fails with the first
+  diagnostic.
 - A `deviation` test is reported as one when it runs, or when it is rejected
   with `ferro_rejects`. Its reference output is described in its `.meta.toml`
   in prose, so it is not compared yet.

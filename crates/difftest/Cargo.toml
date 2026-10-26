@@ -17,6 +17,7 @@ workspace = true
 
 [dependencies]
 ferro-corpus = { path = "../corpus" }
+ferro-project = { path = "../project" }
 ferro-syntax = { path = "../syntax" }
 ferro-hir = { path = "../hir" }
 ferro-mir = { path = "../mir" }
