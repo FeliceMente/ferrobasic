@@ -251,19 +251,29 @@ fn string(meta: &str, key: &str) -> Result<Option<String>, String> {
     }
 }
 
-/// The strings of a one-line TOML array of strings: `["a", "b"]`.
+/// The strings of a one-line TOML array of basic strings without escapes:
+/// `["a", "b, c"]`. A comma inside quotes belongs to its string.
 fn strings(value: &str) -> Option<Vec<String>> {
-    let inner = value.strip_prefix('[')?.strip_suffix(']')?.trim();
-    if inner.is_empty() {
-        return Some(Vec::new());
+    let mut rest = value.strip_prefix('[')?.strip_suffix(']')?.trim();
+    let mut items = Vec::new();
+    while !rest.is_empty() {
+        let after = rest.strip_prefix('"')?;
+        let end = after.find('"')?;
+        items.push(after[..end].to_string());
+        rest = after[end + 1..].trim_start();
+        match rest.strip_prefix(',') {
+            // A trailing comma is not accepted: one more string must follow.
+            Some(next) => {
+                rest = next.trim_start();
+                if rest.is_empty() {
+                    return None;
+                }
+            }
+            None if rest.is_empty() => {}
+            None => return None,
+        }
     }
-    inner
-        .split(',')
-        .map(|item| {
-            let text = item.trim().strip_prefix('"')?.strip_suffix('"')?;
-            (!text.contains('"')).then(|| text.to_string())
-        })
-        .collect()
+    Some(items)
 }
 
 /// Cuts a `#` comment, outside quotes.
@@ -348,6 +358,8 @@ mod tests {
             .unwrap();
         assert_eq!(p.level, Some(0));
         assert_eq!(p.features, ["for", "scope"]);
+        let p = meta("status = \"recorded\"\nfeatures = [\"a, b\",\"c\"]\n").unwrap();
+        assert_eq!(p.features, ["a, b", "c"]);
         let p = meta("status = \"recorded\"\nfeatures = []\n").unwrap();
         assert_eq!(p.level, None);
         assert!(p.features.is_empty());
@@ -356,6 +368,8 @@ mod tests {
             "status = \"recorded\"\nfeatures = for\n",
             "status = \"recorded\"\nfeatures = [for]\n",
             "status = \"recorded\"\nfeatures = [\"for\",]\n",
+            "status = \"recorded\"\nfeatures = [\"for\" \"scope\"]\n",
+            "status = \"recorded\"\nfeatures = [\"for]\n",
         ] {
             assert!(meta(bad).is_err(), "{bad:?}");
         }

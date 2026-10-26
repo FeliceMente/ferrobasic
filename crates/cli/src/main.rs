@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use ferro_cli::{STACK_SIZE, exit_status};
+use ferro_cli::{EXIT_COMPILE_ERRORS, STACK_SIZE, exit_status};
 
 /// Everything after the header of `ferro help`.
 const COMMANDS: &str = "\
@@ -68,7 +68,6 @@ const LICENSES: &str = concat!(
 
 /// Exit codes from `docs/spec/cli.md`.
 const EXIT_USAGE: u8 = 2;
-const EXIT_COMPILE_ERRORS: u8 = 3;
 
 /// Name of the program inside a standalone binary's payload.
 const MAIN_ENTRY: &str = "main.bas";

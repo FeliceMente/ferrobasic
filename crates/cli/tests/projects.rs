@@ -53,18 +53,11 @@ fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-/// Runs an executable this test process just wrote, retrying on "text file
-/// busy" (see `run_binary` in `tests/bundle.rs`).
+/// Runs an executable this test process just wrote: retried on "text file
+/// busy" (see `ferro_difftest::output_written`).
 fn run_written(command: &mut Command) -> Output {
-    for _ in 0..200 {
-        match command.output() {
-            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            result => return result.unwrap(),
-        }
-    }
-    panic!("{command:?}: still \"text file busy\" after 2 s");
+    let result = ferro_difftest::output_written(command);
+    result.unwrap_or_else(|e| panic!("{command:?}: {e}"))
 }
 
 #[test]
