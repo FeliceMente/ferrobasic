@@ -12,3 +12,5 @@ features = ["dim", "scope"]
 # version = ""
 # platform = ""
 # date = ""
+
+# The comment in the .bas predates this refusal, which settles it.
