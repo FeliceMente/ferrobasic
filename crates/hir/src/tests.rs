@@ -784,6 +784,7 @@ fn loops_in_process_globals() {
             "",
             "    Dim Bump As Int\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
         ),
+        ("", "    Dim Bump As Int\n    Bump = 3"),
     ] {
         let diags = errors(&sub(body, app));
         assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
@@ -802,8 +803,9 @@ fn loops_in_process_globals() {
     // A `Dim` of `Class_Globals` with a Sub's name is not recorded.
     let diags = errors(
         "Sub Class_Globals\n    Dim Bump As Int\nEnd Sub\n\nSub Initialize\n    Log(Bump)\n    \
-         Bump = 1\nEnd Sub\n\nSub Bump As Int\n    Return 9\nEnd Sub\n",
+         Bump = 1\n    Bump\nEnd Sub\n\nSub Bump As Int\n    Return 9\nEnd Sub\n",
     );
+    assert!(!has(&diags, "not a statement"), "{diags:?}");
     // Classes are Level 1: only the errors about `Bump` matter here.
     let diags: Vec<&String> = diags.iter().filter(|d| d.contains("`Bump`")).collect();
     assert_eq!(
@@ -813,6 +815,26 @@ fn loops_in_process_globals() {
              known yet, so use another name"
         ]
     );
+    // A use of a loop variable whose type differs from the Sub's return
+    // type is recorded only as a statement, which calls the Sub.
+    let each = "    For Each Bump As String In Array As String(\"x\")\n";
+    for (uses, refused) in [
+        ("        Log(Bump.Length)\n", true),
+        ("        Log(Bump)\n", true),
+        ("        Bump\n", false),
+    ] {
+        let text = sub("", &format!("{each}{uses}    Next"));
+        let (_, diags) = self::module(&text);
+        let expected: &[&str] = if refused {
+            &[
+                "`Bump` is a loop variable of type String and a Sub that returns Int: whether this \
+               use means the Sub is not known yet, so use another name",
+            ]
+        } else {
+            &[]
+        };
+        assert_eq!(diags, expected, "{uses}");
+    }
     // A `Type`, `Bit` or a keyword is refused once, and the loop's body is
     // still checked, without reporting the variable again.
     for (body, what) in [

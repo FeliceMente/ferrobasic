@@ -68,7 +68,9 @@ End Sub
   (recorded; in a Sub an undeclared counter or a `For Each v As T`, as a
   typed `For v As T` there is *(open)*). Every use of such a name in an expression, bare, with
   arguments or as a statement, calls the Sub, and assigning it is an
-  error, wherever it is (recorded). A `For` in another Sub may loop over
+  error, wherever it is (recorded, with the loop variable of the Sub's
+  return type; with another type, any use but a statement is *(open)*).
+  A `For` in another Sub may loop over
   a counter of that name (recorded); any other loop over such a module
   variable, or again over such a loop variable of a Sub, is *(open)*, and
   so is a loop variable of a Sub whose name is also such a module

@@ -219,6 +219,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       Sub's and a module variable's: the module variable, a new local, or
       an error? FerroBASIC refuses it (test:
       `level0/local_for_each_named_like_sub_over_module_variable`).
+- [ ] A loop variable with a Sub's name whose type is not the Sub's return
+      type, used other than as a statement (`Bump.Length` on a `String`
+      loop variable, with `Sub Bump As Int`): the Sub or the variable?
+      FerroBASIC refuses it (test:
+      `level0/local_for_each_named_like_sub_member`).
 - [ ] A typed `For v As T` of a Sub with a Sub's name, and another loop
       of a Sub over its own loop variable with a Sub's name. FerroBASIC
       refuses both (tests: `level0/local_typed_counter_named_like_sub`,

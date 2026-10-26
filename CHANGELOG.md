@@ -30,7 +30,9 @@ B4J itself (`docs/compatibility-testing.md`).
 - A `Dim` with a Sub's name is an error, as in B4J, in `Process_Globals`
   and in a Sub. A loop variable may have one, in `Process_Globals` or in
   a Sub: every use of the name in an expression calls the Sub and
-  assigning it is an error, as in B4J. Before, a `Dim`'d one silently
+  assigning it is an error, as in B4J (a use other than a statement is
+  refused when the loop variable's type is not the Sub's return type: not
+  recorded yet). Before, a `Dim`'d one silently
   meant the variable.
 - `Null` assigned, passed or returned as a `String` is the text `"null"`,
   as in B4J, which converts it with `BA.ObjectToString`: before, it stayed

@@ -2,7 +2,7 @@
 status = "pending-recording"   # pending-recording | recorded | deviation | negative
 ferro_rejects = true   # rejected until a recording shows what B4X does
 level = 0
-features = ["for-in-process-globals"]
+features = ["for-each", "scope"]
 
 # Filled in by tools/recorder when the expected output is recorded:
 # [recording]
