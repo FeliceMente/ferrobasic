@@ -36,7 +36,11 @@ fn judges_each_kind_of_test() {
     let recorded = program("rec", Status::Recorded, false, Some(("expected", "1\n")));
     assert_eq!(verdict(&recorded, ran("1\n")).state, State::Pass);
     assert!(!verdict(&recorded, ran("1\n")).provisional);
-    assert_eq!(verdict(&recorded, ran("1\r\n")).state, State::Pass);
+    // Only the recording's line endings are normalized: what FerroBASIC
+    // prints is compared as it is.
+    assert_eq!(verdict(&recorded, ran("1\r\n")).state, State::Fail);
+    let crlf = program("crlf", Status::Recorded, false, Some(("expected", "1\r\n")));
+    assert_eq!(verdict(&crlf, ran("1\n")).state, State::Pass);
     let wrong = verdict(&recorded, ran("2\n"));
     assert_eq!(wrong.state, State::Fail);
     assert_eq!(
@@ -114,9 +118,13 @@ fn a_refused_program_says_why() {
 
 /// What `ferro run` does with a program, in process.
 fn interpreted(body: &str) -> Run {
-    interpret(&format!(
+    run_text(&format!(
         "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n{body}\nEnd Sub\n"
     ))
+}
+
+fn run_text(source: &str) -> Run {
+    interpret(source, &Arc::new(AtomicBool::new(false)))
 }
 
 #[test]
@@ -126,7 +134,7 @@ fn interprets_as_ferro_run_does() {
         "Type=Class\nVersion=10\n@EndOfDesignText@\n{}",
         "Sub Class_Globals\nEnd Sub\n"
     );
-    assert!(matches!(interpret(&class), Run::Rejected(why) if why.contains("class module")));
+    assert!(matches!(run_text(&class), Run::Rejected(why) if why.contains("class module")));
     assert!(matches!(interpreted("Log(Missing)"), Run::Rejected(why) if why.contains("`Missing`")));
     // The exit code is the process's: its low 8 bits.
     assert!(matches!(
@@ -141,14 +149,69 @@ fn a_program_that_does_not_end_fails() {
     fs::write(
         &p.path,
         "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    \
-         For i = 1 To 2000000000\n    Next\nEnd Sub\n",
+         For i = 1 To 2000000\n    Next\nEnd Sub\n",
     )
     .unwrap();
+    // The loop takes a second or two, so the thread left behind ends soon.
     let v = judge(&p, &Target::Interp, Duration::from_millis(100));
     assert_eq!(
         (v.state, v.detail.as_str()),
-        (State::Fail, "still running after 0 s: stopped")
+        (State::Fail, "still running after 100ms: stopped")
     );
+}
+
+#[test]
+fn a_timeout_too_long_for_a_deadline_is_none() {
+    let p = program("forever", Status::Recorded, false, Some(("expected", "")));
+    fs::write(
+        &p.path,
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\nEnd Sub\n",
+    )
+    .unwrap();
+    assert_eq!(judge(&p, &Target::Interp, Duration::MAX).state, State::Pass);
+    let out = output(Command::new(env!("CARGO")).arg("--version"), Duration::MAX);
+    assert_eq!(out.unwrap().unwrap().code, Some(0));
+}
+
+#[test]
+fn output_must_be_utf8() {
+    assert_eq!(text(b"ok\n".to_vec()).ok().as_deref(), Some("ok\n"));
+    assert!(
+        matches!(text(vec![0xff]), Err(Run::Broken(why)) if why == "stdout is not valid UTF-8")
+    );
+}
+
+#[test]
+fn output_left_behind_is_discarded() {
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut out = Capture::new(&stop);
+    std::io::Write::write_all(&mut out, b"kept").unwrap();
+    stop.store(true, Ordering::Relaxed);
+    std::io::Write::write_all(&mut out, b"dropped").unwrap();
+    assert_eq!(out.bytes, b"kept");
+}
+
+#[test]
+fn every_test_that_runs_has_its_error_and_exit_code_checked() {
+    for status in [Status::Deviation, Status::PendingRecording] {
+        let mut p = program(&format!("{status:?}"), status, false, None);
+        p.uncaught_error = Some("java.lang.RuntimeException".into());
+        p.exit_code = 1;
+        let v = verdict(&p, ran("x\n"));
+        assert_eq!(v.state, State::Fail, "{status:?}");
+        assert!(
+            v.detail
+                .starts_with("uncaught error none, expected java.lang.RuntimeException"),
+            "{status:?}: {}",
+            v.detail
+        );
+        let crashed = Run::Ran {
+            stdout: String::new(),
+            error: Some("java.lang.RuntimeException".into()),
+            exit_code: 1,
+        };
+        assert_ne!(verdict(&p, crashed).state, State::Fail, "{status:?}");
+    }
 }
 
 #[test]

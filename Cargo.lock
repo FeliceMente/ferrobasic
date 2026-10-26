@@ -147,12 +147,8 @@ version = "0.0.4-dev"
 name = "ferro-difftest"
 version = "0.0.4-dev"
 dependencies = [
+ "ferro-cli",
  "ferro-corpus",
- "ferro-hir",
- "ferro-interp",
- "ferro-mir",
- "ferro-project",
- "ferro-syntax",
 ]
 
 [[package]]

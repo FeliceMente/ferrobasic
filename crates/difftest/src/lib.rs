@@ -12,7 +12,8 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -21,10 +22,6 @@ use ferro_corpus::{Program, Status};
 /// How long one test may take on a target before it fails: generous, as a
 /// program that loops forever is all it guards against.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
-
-/// The interpreter's stack, the one `ferro` gives it (`STACK_SIZE` in
-/// `crates/cli/src/main.rs`), so that deep recursion behaves the same.
-const STACK_SIZE: usize = 256 * 1024 * 1024;
 
 /// Where a program runs.
 pub enum Target {
@@ -111,72 +108,70 @@ pub fn judge(program: &Program, target: &Target, timeout: Duration) -> Verdict {
 }
 
 fn verdict(program: &Program, run: Run) -> Verdict {
+    let (stdout, error, exit_code) = match run {
+        Run::Broken(why) => return Verdict::new(State::Fail, why),
+        Run::Rejected(why) if !program.rejected => {
+            return Verdict::new(State::Fail, format!("rejected, but must build:\n{why}"));
+        }
+        Run::Rejected(_) => {
+            return match program.status {
+                Status::Negative => Verdict::new(State::Pass, ""),
+                Status::Deviation => Verdict::new(State::Deviation, "rejected on purpose"),
+                _ => Verdict::new(State::Pending, "rejected until recorded"),
+            };
+        }
+        Run::Ran {
+            stdout,
+            error,
+            exit_code,
+        } => (stdout, error, exit_code),
+    };
+    if program.rejected {
+        return Verdict::new(State::Fail, "builds, but must be rejected");
+    }
+    let recorded = program.path.with_extension("expected").exists();
+    if program.status == Status::Recorded && !recorded {
+        return Verdict::new(State::Fail, "recorded, but has no .expected output");
+    }
     let expected = program.expected_output();
-    match (run, program.status) {
-        (Run::Broken(why), _) => Verdict::new(State::Fail, why),
-        (Run::Rejected(_), _) if program.rejected => match program.status {
-            Status::Negative => Verdict::new(State::Pass, ""),
-            Status::Deviation => Verdict::new(State::Deviation, "rejected on purpose"),
-            _ => Verdict::new(State::Pending, "rejected until recorded"),
-        },
-        (Run::Rejected(why), _) => {
-            Verdict::new(State::Fail, format!("rejected, but must build:\n{why}"))
-        }
-        (Run::Ran { .. }, Status::Recorded)
-            if !program.path.with_extension("expected").exists() =>
-        {
-            Verdict::new(State::Fail, "recorded, but has no .expected output")
-        }
-        (Run::Ran { .. }, _) if program.rejected => {
-            Verdict::new(State::Fail, "builds, but must be rejected")
-        }
-        (Run::Ran { .. }, Status::Deviation) if expected.is_none() => Verdict::new(
+    // The uncaught error and the exit code are known for every test that
+    // runs, also one whose output there is none to compare with yet.
+    let mut why = String::new();
+    if let Some(expected) = &expected
+        && stdout != normalize(expected)
+    {
+        why += &output_diff(&normalize(expected), &stdout);
+    }
+    if error != program.uncaught_error {
+        let _ = writeln!(
+            why,
+            "uncaught error {}, expected {}",
+            shown(error.as_deref()),
+            shown(program.uncaught_error.as_deref())
+        );
+    }
+    if exit_code != program.exit_code {
+        let _ = writeln!(why, "exit code {exit_code}, expected {}", program.exit_code);
+    }
+    if !why.is_empty() {
+        return Verdict::new(State::Fail, why.trim_end());
+    }
+    match (program.status, expected) {
+        (Status::Deviation, None) => Verdict::new(
             State::Deviation,
             "runs; its reference output is described in its .meta.toml",
         ),
-        (Run::Ran { .. }, Status::PendingRecording) if expected.is_none() => {
+        (Status::Deviation, Some(_)) => Verdict::new(State::Deviation, ""),
+        (Status::PendingRecording, None) => {
             Verdict::new(State::Pending, "runs; no output to compare yet")
         }
-        (Run::Ran { .. }, _) if expected.is_none() => {
-            Verdict::new(State::Fail, "recorded, but has no .expected output")
-        }
-        (
-            Run::Ran {
-                stdout,
-                error,
-                exit_code,
-            },
-            status,
-        ) => {
-            let expected = expected.unwrap();
-            let mut why = String::new();
-            if normalize(&stdout) != normalize(&expected) {
-                why += &output_diff(&normalize(&expected), &normalize(&stdout));
-            }
-            if error != program.uncaught_error {
-                let _ = writeln!(
-                    why,
-                    "uncaught error {}, expected {}",
-                    shown(error.as_deref()),
-                    shown(program.uncaught_error.as_deref())
-                );
-            }
-            if exit_code != program.exit_code {
-                let _ = writeln!(why, "exit code {exit_code}, expected {}", program.exit_code);
-            }
-            if !why.is_empty() {
-                return Verdict::new(State::Fail, why.trim_end());
-            }
-            let recorded = program.path.with_extension("expected").exists();
-            Verdict {
-                state: match status {
-                    Status::Deviation => State::Deviation,
-                    _ => State::Pass,
-                },
-                provisional: !recorded,
-                detail: String::new(),
-            }
-        }
+        (_, Some(_)) => Verdict {
+            state: State::Pass,
+            provisional: !recorded,
+            detail: String::new(),
+        },
+        // A `negative` test that builds was refused above.
+        (_, None) => Verdict::new(State::Fail, "no output to compare with"),
     }
 }
 
@@ -184,9 +179,10 @@ fn shown(error: Option<&str>) -> &str {
     error.unwrap_or("none")
 }
 
-/// What is compared of an output: line endings are not behaviour
+/// What a recorded output is compared as: line endings are not behaviour
 /// (`docs/compatibility-testing.md`, "Normalization"), and number formatting
-/// and `Map` order are, so nothing else is normalized.
+/// and `Map` order are, so nothing else is normalized. What FerroBASIC
+/// prints is compared as it is.
 pub fn normalize(output: &str) -> String {
     output.replace("\r\n", "\n")
 }
@@ -216,63 +212,101 @@ fn output_diff(expected: &str, actual: &str) -> String {
     out
 }
 
-/// Runs a program the way `ferro run` does: the module header checked, then
-/// parsed, type-checked, lowered and interpreted on `ferro`'s stack. A
-/// program still running after `timeout` is left behind on its thread.
+/// Runs a program the way `ferro run` does, through the same steps
+/// (`ferro_cli`), on `ferro`'s stack. A program still running after
+/// `timeout` is left behind on its thread, its output from then on
+/// discarded: a thread cannot be stopped, so it keeps a core busy until it
+/// ends or the process does.
 fn run_interp(program: &Program, timeout: Duration) -> Run {
     let source = program.source();
     let (send, receive) = mpsc::channel();
+    let stop = Arc::new(AtomicBool::new(false));
+    let stopped = Arc::clone(&stop);
     let started = thread::Builder::new()
         .name(program.name.clone())
-        .stack_size(STACK_SIZE)
+        .stack_size(ferro_cli::STACK_SIZE)
         .spawn(move || {
-            let _ = send.send(interpret(&source));
+            let _ = send.send(interpret(&source, &stopped));
         });
     if let Err(e) = started {
         return Run::Broken(format!("cannot start the interpreter: {e}"));
     }
     match receive.recv_timeout(timeout) {
         Ok(run) => run,
-        Err(mpsc::RecvTimeoutError::Timeout) => Run::Broken(timed_out(timeout)),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            stop.store(true, Ordering::Relaxed);
+            Run::Broken(timed_out(timeout))
+        }
         // The thread ended without an answer: it panicked.
         Err(mpsc::RecvTimeoutError::Disconnected) => Run::Broken("the interpreter panicked".into()),
     }
 }
 
-fn interpret(source: &str) -> Run {
-    if let Some(problem) = ferro_project::check_module(source).first() {
-        return Run::Rejected(problem.message.clone());
-    }
-    let parse = ferro_syntax::parse(source);
-    if let Some(error) = parse.errors().first() {
-        return Run::Rejected(error.message.clone());
-    }
-    let (module, diags) = ferro_hir::check(&parse.syntax());
-    if let Some(diag) = diags.first() {
-        return Run::Rejected(diag.message.clone());
-    }
-    let lowered = ferro_mir::lower(&module);
-    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-    let outcome = ferro_interp::run(&lowered, &[], &mut stdout, &mut stderr);
-    Run::Ran {
-        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-        error: outcome.error.map(|e| e.kind),
-        exit_code: exit_status(outcome.exit_code),
+fn interpret(source: &str, stop: &Arc<AtomicBool>) -> Run {
+    let header_errors = ferro_cli::header_errors(source, false);
+    let (module, errors) = ferro_cli::check(source, header_errors);
+    let Some(module) = module else {
+        let first = errors.into_iter().next().map(|(_, message)| message);
+        return Run::Rejected(first.unwrap_or_default());
+    };
+    let mut stdout = Capture::new(stop);
+    let mut stderr = Capture::new(stop);
+    let outcome = ferro_cli::run(&module, &[], &mut stdout, &mut stderr);
+    match text(stdout.bytes) {
+        Ok(stdout) => Run::Ran {
+            stdout,
+            error: outcome.error.map(|e| e.kind),
+            exit_code: i32::from(ferro_cli::exit_status(outcome.exit_code)),
+        },
+        Err(broken) => broken,
     }
 }
 
-/// The exit status a process gets for an `ExitApplication2` code, as
-/// `ferro` computes it: its low 8 bits.
-fn exit_status(code: i32) -> i32 {
-    code & 0xff
+/// A program's stdout as text: bytes that are not UTF-8 are a failure, not
+/// something to replace and compare.
+fn text(stdout: Vec<u8>) -> Result<String, Run> {
+    String::from_utf8(stdout).map_err(|_| Run::Broken("stdout is not valid UTF-8".into()))
+}
+
+/// An output kept in memory until `stop` is set, then discarded: a program
+/// left running after its timeout must not fill the memory.
+struct Capture {
+    bytes: Vec<u8>,
+    stop: Arc<AtomicBool>,
+}
+
+impl Capture {
+    fn new(stop: &Arc<AtomicBool>) -> Capture {
+        Capture {
+            bytes: Vec::new(),
+            stop: Arc::clone(stop),
+        }
+    }
+}
+
+impl std::io::Write for Capture {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if !self.stop.load(Ordering::Relaxed) {
+            self.bytes.extend_from_slice(buf);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 fn timed_out(timeout: Duration) -> String {
-    format!("still running after {} s: stopped", timeout.as_secs())
+    format!("still running after {timeout:?}: stopped")
 }
 
 fn run_standalone(program: &Program, ferro: &Path, work: &Path, timeout: Duration) -> Run {
-    let dir = work.join(program.file_name());
+    // Absolute, as the binary runs from inside it.
+    let dir = match std::path::absolute(work.join(program.file_name())) {
+        Ok(dir) => dir,
+        Err(e) => return Run::Broken(format!("{}: {e}", work.display())),
+    };
     let _ = fs::remove_dir_all(&dir);
     if let Err(e) = fs::create_dir_all(&dir) {
         return Run::Broken(format!("{}: {e}", dir.display()));
@@ -289,10 +323,13 @@ fn run_standalone(program: &Program, ferro: &Path, work: &Path, timeout: Duratio
         Ok(None) => Run::Broken(format!("ferro bundle {}", timed_out(timeout))),
         Ok(Some(built)) => match built.code {
             Some(0) => match output(Command::new(&binary).current_dir(&dir), timeout) {
-                Ok(Some(out)) => Run::Ran {
-                    stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-                    error: uncaught_error(&String::from_utf8_lossy(&out.stderr)),
-                    exit_code: out.code.unwrap_or(-1),
+                Ok(Some(out)) => match text(out.stdout) {
+                    Ok(stdout) => Run::Ran {
+                        stdout,
+                        error: uncaught_error(&String::from_utf8_lossy(&out.stderr)),
+                        exit_code: out.code.unwrap_or(-1),
+                    },
+                    Err(broken) => broken,
                 },
                 Ok(None) => Run::Broken(timed_out(timeout)),
                 Err(e) => Run::Broken(format!("{}: {e}", binary.display())),
@@ -372,12 +409,13 @@ fn output(command: &mut Command, timeout: Duration) -> std::io::Result<Option<Fi
             .take()
             .map(|p| Box::new(p) as Box<dyn Read + Send>),
     );
-    let deadline = Instant::now() + timeout;
+    // A timeout too long to add to now is no deadline at all.
+    let deadline = Instant::now().checked_add(timeout);
     let status = loop {
         if let Some(status) = child.try_wait()? {
             break Some(status);
         }
-        if Instant::now() >= deadline {
+        if deadline.is_some_and(|d| Instant::now() >= d) {
             let _ = child.kill();
             let _ = child.wait();
             break None;
@@ -429,7 +467,7 @@ impl Report {
         let workers = thread::available_parallelism().map_or(1, |n| n.get().min(8));
         let next = std::sync::atomic::AtomicUsize::new(0);
         let mut verdicts: Vec<Option<Verdict>> = vec![None; programs.len()];
-        let done = std::sync::Mutex::new(&mut verdicts);
+        let done = Mutex::new(&mut verdicts);
         thread::scope(|scope| {
             for _ in 0..workers {
                 scope.spawn(|| {

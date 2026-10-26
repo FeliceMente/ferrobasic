@@ -1,6 +1,7 @@
 # Conformance test metadata. See docs/compatibility-testing.md.
 status = "deviation"   # pending-recording | recorded | deviation | negative
 deviation = "D6"   # docs/deviations.md
+uncaught_error = "java.lang.StackOverflowError"   # FerroBASIC's, by D6
 level = 0
 features = ["record-tostring", "self-reference", "stack-overflow"]
 
