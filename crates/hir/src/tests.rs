@@ -684,13 +684,27 @@ fn loops_in_process_globals() {
             "{app}: {all}"
         );
     }
-    // The name is the Sub whatever the loop variable's type (recorded).
+    // The name is the Sub whatever the loop variable's type (recorded):
+    // as a statement and when read, it is a call; `.Length` is the Int's.
+    let each = "    For Each Bump As String In Array As String(\"x\")\n";
+    let module = ok(&sub(
+        "",
+        &format!("{each}        Bump\n        Log(Bump)\n    Next"),
+    ));
+    assert!(
+        format!("{:?}", app_start(&module).body)
+            .matches("Call")
+            .count()
+            >= 2,
+        "{:?}",
+        app_start(&module).body
+    );
     let diags = errors(&sub(
         "",
-        "    For Each Bump As String In Array As String(\"x\")\n        Log(Bump.Length)\n    Next",
+        &format!("{each}        Log(Bump.Length)\n    Next"),
     ));
     assert_eq!(diags, ["Int has no member `Length` at Level 0"]);
-    // A `For Each` without `As` over it again is open: refused once.
+    // Another `For Each` over it, with or without `As`, is open: refused once.
     for (body, app, what) in [
         (
             "    For Bump = 1 To 2\n    Next",
@@ -702,13 +716,53 @@ fn loops_in_process_globals() {
             "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
             "a loop variable of this Sub",
         ),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump As Int In Array As Int(2)\n    Next",
+            "a loop variable of this Sub",
+        ),
     ] {
         let diags = errors(&sub(body, app));
         assert_eq!(
             diags,
             [format!(
-                "`Bump` is {what} with the name of a Sub: whether a `For Each` may loop over it \
-                 again is not known yet, so use another name"
+                "`Bump` is {what} with the name of a Sub: whether another `For Each` may loop \
+                 over it is not known yet, so use another name"
+            )],
+            "{body}{app}"
+        );
+    }
+    // So is a `For` over it in the Sub where a `For Each` declares it, in
+    // either order, and a `For` over a loop variable of another type than
+    // a number.
+    for (body, app, what) in [
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n    Next",
+            "a loop variable of this Sub with the name of a Sub, declared by a `For Each`",
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(1)\n    Next",
+            "a loop variable of this Sub with the name of a Sub, declared by a `For Each`",
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n    Next",
+            "",
+            "a module variable with the name of a Sub, declared by a `For Each`",
+        ),
+        (
+            "    For Each Bump As String In Array As String(\"x\")\n    Next",
+            "    For Bump = 1 To 2\n    Next",
+            "a module variable of type String with the name of a Sub",
+        ),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(
+            diags,
+            [format!(
+                "`Bump` is {what}: whether a `For` may loop over it is not known yet, so use \
+                 another name"
             )],
             "{body}{app}"
         );
