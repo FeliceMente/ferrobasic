@@ -70,15 +70,17 @@ End Sub
   followed by '=' expected", recorded). Every use of such a name in an
   expression, bare, with arguments or as a statement, calls the Sub,
   whatever the loop variable's type, and assigning it is an error,
-  wherever it is (recorded). A `For` may loop over an Int one again: in
-  another Sub, whichever loop of `Process_Globals` declares it, and in
-  the same Sub when a `For` declares it (recorded). Any other loop over
-  it is *(open)*: another `For Each`, with or without `As`, a `For` in the
-  Sub where a `For Each` declares it, or a `For` over one that is not a
-  number. A
+  wherever it is (recorded). A `For` may loop over it again anywhere,
+  whichever loop declares it, and counts with a number as any `For` does
+  (B4J: "Loop iterator should be a numeric variable", recorded). Another
+  `For Each` without `As` over it is an error in a Sub over its own
+  `For Each` variable, and in another Sub over a counter of
+  `Process_Globals` (B4J: "Current declaration does not match previous
+  one", recorded); anywhere else, and with `As` in the same Sub, it is
+  *(open)*. A
   `For Each v As T` of a Sub may have the name of a Sub and of a module
-  variable of type `T` (recorded); with another type it is refused as
-  for any other name *(open)*. In `Class_Globals`, a `Dim` with a Sub's
+  variable of type `T`, and with another type it is an error as for any
+  other name (recorded). In `Class_Globals`, a `Dim` with a Sub's
   name is *(open)*. A loop variable of `Process_Globals` named like a `Type`, `Bit`
   or a keyword is *(open)* too, and so is `For i As T` there: declare `i`
   with `Dim` and loop without `As`. All of this is only for the main module:
