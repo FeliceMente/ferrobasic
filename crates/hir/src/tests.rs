@@ -639,42 +639,126 @@ fn loops_in_process_globals() {
         "{:?}",
         app_start(&module).body
     );
-    // A bare read calls the Sub in `Process_Globals` too (recorded), and
-    // assigning it in another Sub is an error (recorded).
-    let module = ok(&sub(
-        "    For Bump = 1 To 2\n        Log(Bump)\n    Next",
-        "",
-    ));
-    let pg = module.sub(module.process_globals.unwrap());
-    assert!(format!("{:?}", pg.body).contains("Call"), "{:?}", pg.body);
-    let diags = errors(&sub("    For Bump = 1 To 2\n    Next", "    Bump = 3"));
-    assert_eq!(
-        diags,
-        ["cannot assign to `Bump`: it is a Sub, not a variable"]
-    );
-    // Every other use is open: reported once, also in `Process_Globals`,
-    // where only the loop declaring it may name it.
+    // Every use of the name in an expression calls the Sub, in
+    // `Process_Globals` too; a `For` in another Sub may loop over it, and a
+    // Sub's own loop variable may have the name (recorded).
     for (body, app) in [
-        ("    For Bump = 1 To 2\n    Next", "    Log(Bump(1))"),
-        ("    For Bump = 1 To 2\n        Bump = 4\n    Next", ""),
+        ("    For Bump = 1 To 2\n        Log(Bump)\n    Next", ""),
         (
             "    For Bump = 1 To 2\n    Next",
-            "    For Bump = 5 To 6\n    Next",
+            "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
         ),
+        ("", "    For Bump = 1 To 2\n        Log(Bump)\n    Next"),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
+        ),
+    ] {
+        let module = ok(&sub(body, app));
+        let all = format!("{:?}", module.subs);
+        assert!(
+            !body.contains("Log")
+                || format!("{:?}", module.sub(module.process_globals.unwrap()).body)
+                    .contains("Call"),
+            "{body}"
+        );
+        assert!(
+            !app.contains("Log") || format!("{:?}", app_start(&module).body).contains("Call"),
+            "{app}: {all}"
+        );
+    }
+    // Any other loop over such a module variable is open: refused once.
+    for (body, app) in [
         (
             "    For Bump = 1 To 2\n    Next",
             "    For Each Bump In Array As Int(1)\n    Next",
         ),
         (
-            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n    Next",
+            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
             "",
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n    Next",
+            "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
         ),
     ] {
         let diags = errors(&sub(body, app));
-        assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
-        assert!(
-            has(&diags, "`Bump` is both a Sub and a module variable"),
-            "{app}: {diags:?}"
+        assert_eq!(
+            diags,
+            [
+                "`Bump` is a module variable with the name of a Sub: whether this loop may loop \
+                 over it again is not known yet, so use another name"
+            ],
+            "{body}{app}"
+        );
+    }
+    // A refused loop's bounds and body are still checked.
+    let diags = errors(&sub(
+        "    For Bump = 1 To 2\n    Next\n    For Bump = Missing To 3\n        Log(Other)\n    Next",
+        "",
+    ));
+    assert_eq!(diags.len(), 3, "{diags:?}");
+    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
+    assert!(has(&diags, "`Other` is not declared"), "{diags:?}");
+    // So is another loop of a Sub over its own loop variable with that
+    // name, and a typed `For` with that name (not recorded).
+    for app in [
+        "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+    ] {
+        let diags = errors(&sub("", app));
+        assert_eq!(
+            diags,
+            [
+                "`Bump` is a loop variable of this Sub with the name of a Sub: whether this loop \
+                 may loop over it again is not known yet, so use another name"
+            ],
+            "{app}"
+        );
+    }
+    let diags = errors(&sub(
+        "",
+        "    For Bump As Int = 1 To 2\n        Log(Bump)\n    Next",
+    ));
+    assert_eq!(
+        diags,
+        [
+            "`Bump` is a Sub: whether a `For Bump As <type>` may have its name is not known yet, \
+             so loop without `As`"
+        ]
+    );
+    // A loop local with that name too, of the same type (open) or not.
+    for (each, message) in [
+        (
+            "Int",
+            "`Bump` is also a module variable (Int) and a Sub: whether this loop declares a \
+             new local is not known yet, so use another name",
+        ),
+        (
+            "String",
+            "`Bump` is a module variable of type Int: a local cannot declare it again as String",
+        ),
+    ] {
+        let app = format!("    For Each Bump As {each} In Array As {each}()\n    Next");
+        let diags = errors(&sub("    For Bump = 1 To 2\n    Next", &app));
+        assert_eq!(diags, [message], "{each}");
+    }
+    let diags = errors(&sub(
+        "    For Bump = 1 To 2\n    Next",
+        "    For Bump As Int = 5 To 6\n    Next",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    // Assigning it is an error, wherever it is (recorded).
+    for (body, app) in [
+        ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
+        ("    For Bump = 1 To 2\n        Bump = 4\n    Next", ""),
+        ("", "    For Bump = 1 To 2\n        Bump = 4\n    Next"),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(
+            diags,
+            ["cannot assign to `Bump`: it is a Sub, not a variable"],
+            "{body}{app}"
         );
     }
     // A `Dim` cannot have a Sub's name, module or local (recorded).
@@ -683,37 +767,74 @@ fn loops_in_process_globals() {
         diags,
         ["a variable cannot have the name of a Sub: `Bump` is a Sub"]
     );
-    // Reported once, also where a loop variable has that name.
-    for body in ["", "    For Bump = 1 To 2\n    Next"] {
-        let diags = errors(&sub(body, "    Dim Bump As Int"));
-        assert_eq!(diags.len(), 1, "{body}: {diags:?}");
+    // Reported once, also where a loop variable has that name, even a
+    // loop of the same Sub before the `Dim`.
+    for (body, app) in [
+        ("", "    Dim Bump As Int"),
+        ("    For Bump = 1 To 2\n    Next", "    Dim Bump As Int"),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    Dim Bump As Int = 5",
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n        Log(Bump)\n    Next\n    Dim Bump As Int",
+        ),
+        (
+            "",
+            "    Dim Bump As Int\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        ),
+        ("", "    Dim Bump As Int\n    Bump = 3"),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
         assert_eq!(
             diags,
             ["a variable cannot have the name of a Sub: `Bump` is a Sub"],
-            "{body}"
+            "{body}{app}"
         );
-    }
-    // A loop variable of a Sub with a Sub's name is open: refused once.
-    for app in [
-        "    For Bump = 1 To 2\n        Log(Bump)\n    Next",
-        "    For Bump As Int = 1 To 2\n    Next",
-        "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
-    ] {
-        let diags = errors(&sub("", app));
-        assert_eq!(
-            diags,
-            [
-                "`Bump` is a Sub: whether a loop variable may have its name is not known yet, so use another name"
-            ],
+        // The loop's reads still call the Sub.
+        let (lowered, _) = self::module(&sub(body, app));
+        assert!(
+            !app.contains("Log") || format!("{:?}", app_start(&lowered).body).contains("Call"),
             "{app}"
         );
     }
-    // A refused loop's bounds are still checked.
-    let diags = errors(&sub(
-        "    For Bump = 1 To 2\n    Next",
-        "    For Bump = Missing To 3\n    Next",
-    ));
-    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
+    // A `Dim` of `Class_Globals` with a Sub's name is not recorded.
+    let diags = errors(
+        "Sub Class_Globals\n    Dim Bump As Int\nEnd Sub\n\nSub Initialize\n    Log(Bump)\n    \
+         Bump = 1\n    Bump\nEnd Sub\n\nSub Bump As Int\n    Return 9\nEnd Sub\n",
+    );
+    assert!(!has(&diags, "not a statement"), "{diags:?}");
+    // Classes are Level 1: only the errors about `Bump` matter here.
+    let diags: Vec<&String> = diags.iter().filter(|d| d.contains("`Bump`")).collect();
+    assert_eq!(
+        diags,
+        [
+            "`Bump` is a Sub: whether a variable of `Class_Globals` may have its name is not \
+             known yet, so use another name"
+        ]
+    );
+    // A use of a loop variable whose type differs from the Sub's return
+    // type is recorded only as a statement, which calls the Sub.
+    let each = "    For Each Bump As String In Array As String(\"x\")\n";
+    for (uses, refused) in [
+        ("        Log(Bump.Length)\n", true),
+        ("        Log(Bump)\n", true),
+        ("        Bump\n", false),
+    ] {
+        let text = sub("", &format!("{each}{uses}    Next"));
+        let (_, diags) = self::module(&text);
+        let expected: &[&str] = if refused {
+            &[
+                "`Bump` is a loop variable of type String and a Sub that returns Int: whether this \
+               use means the Sub is not known yet, so use another name",
+            ]
+        } else {
+            &[]
+        };
+        assert_eq!(diags, expected, "{uses}");
+    }
     // A `Type`, `Bit` or a keyword is refused once, and the loop's body is
     // still checked, without reporting the variable again.
     for (body, what) in [
