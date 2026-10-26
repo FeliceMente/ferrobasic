@@ -68,6 +68,10 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
         }
     }
     let target = match target.as_str() {
+        // Not silently ignored: the standalone binary would seem tested.
+        "interp" if ferro.is_some() || work.is_some() => {
+            return Err("--ferro and --work are for --target standalone".into());
+        }
         "interp" => Target::Interp,
         "standalone" => {
             let ferro = match ferro {
