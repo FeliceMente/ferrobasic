@@ -36,7 +36,7 @@ struct Lowerer {
     refused_loop_names: HashSet<String>,
     /// Module variables that a loop of `Process_Globals` declares, and which
     /// kind of loop.
-    loop_origins: HashMap<String, LoopOrigin>,
+    loop_declared: HashSet<String>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -180,13 +180,6 @@ fn error_expr(range: TextRange) -> Expr {
         ty: Ty::Error,
         range,
     }
-}
-
-/// The loop of `Process_Globals` that declared a module variable.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum LoopOrigin {
-    Counter,
-    ForEach,
 }
 
 // Module level.
@@ -545,8 +538,16 @@ impl Lowerer {
     /// same type is that variable, as after a `Dim`; another type is refused.
     fn declare_dim_global(&mut self, name: String, ty: Ty, at: TextRange) {
         let k = key(&name);
+        if self.subs.contains_key(&k) {
+            // B4J: "Variable name cannot be the same as a sub name" (recorded).
+            self.error(
+                at,
+                format!("a variable cannot have the name of a Sub: `{name}` is a Sub"),
+            );
+            return;
+        }
         if let Some(&id) = self.globals.get(&k)
-            && self.loop_origins.contains_key(&k)
+            && self.loop_declared.contains(&k)
         {
             let existing = self.module.global(id).ty.clone();
             if existing != ty && existing != Ty::Error && ty != Ty::Error {
@@ -581,49 +582,28 @@ impl Lowerer {
             return;
         }
         if let Some(&id) = self.globals.get(&k) {
+            // A counter over a `Dim`'s variable of any type is that variable
+            // (its type is checked when lowered). Otherwise the same type is
+            // that variable, whichever declarations and in which order
+            // (recorded), and another type is refused (recorded).
             let existing = self.module.global(id).ty.clone();
-            let origin = self.loop_origins.get(&k).copied();
-            let message = match (node.kind(), origin) {
-                // A counter over a `Dim`'s variable, or another counter's, is
-                // that variable.
-                (FOR_STMT, None | Some(LoopOrigin::Counter)) => return,
-                // Another type is refused (recorded).
-                _ if existing != ty && existing != Ty::Error && ty != Ty::Error => {
-                    let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
-                    format!(
-                        "`{text}` is already declared as {existing} in `Process_Globals`: \
-                         this loop cannot declare it again as {ty}"
-                    )
-                }
-                (FOR_STMT, Some(LoopOrigin::ForEach)) => format!(
-                    "`{text}` is already a `For Each` variable in `Process_Globals`: \
-                     whether this `For` counter is that variable is not known yet, so \
-                     declare it with `Dim`"
-                ),
-                // The same type as a `Dim` is that variable (recorded).
-                (_, None) => return,
-                (_, Some(LoopOrigin::Counter)) => format!(
-                    "`{text}` is already an undeclared `For` counter in `Process_Globals`: \
-                     whether this `For Each` may declare it again is not known yet, so \
-                     declare it with `Dim`"
-                ),
-                (_, Some(LoopOrigin::ForEach)) => format!(
-                    "`{text}` is already the variable of another `For Each` in \
-                     `Process_Globals`: whether this one may declare it again is not \
-                     known yet, so declare it with `Dim`"
-                ),
-            };
+            let counter_over_dim = node.kind() == FOR_STMT && !self.loop_declared.contains(&k);
+            if counter_over_dim || existing == ty || existing == Ty::Error || ty == Ty::Error {
+                return;
+            }
+            let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
             self.refused_loop_names.insert(k);
-            self.error(range(&name), message);
+            self.error(
+                range(&name),
+                format!(
+                    "`{text}` is already declared as {existing} in `Process_Globals`: this \
+                     loop cannot declare it again as {ty}"
+                ),
+            );
             return;
         }
         if self.loop_name_free(&text, &name) {
-            let origin = if node.kind() == FOR_STMT {
-                LoopOrigin::Counter
-            } else {
-                LoopOrigin::ForEach
-            };
-            self.loop_origins.insert(k, origin);
+            self.loop_declared.insert(k);
             self.declare_global(text, ty, range(&name));
         }
     }
@@ -722,6 +702,28 @@ impl Lowerer {
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
         self.loops = 0;
         self.exits = 0;
+        if !self.in_process_globals {
+            // B4J: "Parameter name cannot hide global variable name" (recorded).
+            let count = self.module.sub(id).params as usize;
+            let clashes: Vec<(TextRange, String)> = self.locals[..count]
+                .iter()
+                .filter(|p| {
+                    self.globals
+                        .get(&key(&p.name))
+                        .is_some_and(|&g| self.module.global(g).ty != Ty::Error)
+                })
+                .map(|p| (p.range, p.name.clone()))
+                .collect();
+            for (at, name) in clashes {
+                self.error(
+                    at,
+                    format!(
+                        "the parameter `{name}` has the name of a module variable: a parameter \
+                         cannot hide a module variable"
+                    ),
+                );
+            }
+        }
         let Some(body) = child(node, BLOCK) else {
             return;
         };
@@ -764,10 +766,35 @@ impl Lowerer {
         }
     }
 
+    /// The name of a local `Dim`. With a module variable's name and type it
+    /// is that module variable, and re-executing it resets it, as a local's
+    /// `Dim` does (recorded: the `Dim` means the module variable). With a
+    /// Sub's name it is open.
+    fn declare_dim_local(&mut self, name: &str, ty: Ty, at: TextRange) {
+        let k = key(name);
+        if !self.local_names.contains_key(&k) {
+            if self.subs.contains_key(&k) {
+                self.error(
+                    at,
+                    format!(
+                        "`{name}` is a Sub: whether a local may have its name is not known \
+                         yet, so use another name"
+                    ),
+                );
+            } else if let Some(&id) = self.globals.get(&k)
+                && self.module.global(id).ty == ty
+            {
+                return;
+            }
+        }
+        self.declare_local(name, ty, at);
+    }
+
     /// A local declared with a module variable's name: B4J refuses another
     /// type ("Current declaration does not match previous one", recorded);
-    /// whether the same type declares a new local or means the module
-    /// variable is open, so it is refused too.
+    /// a `Dim` of the same type is the module variable (`declare_dim_local`),
+    /// and whether a `For Each v As T` of the same type is a new local is
+    /// open, so it is refused.
     fn local_like_global(&mut self, name: &str, ty: &Ty, id: GlobalId, at: TextRange) {
         let existing = self.module.global(id).ty.clone();
         if existing == Ty::Error {
@@ -776,8 +803,9 @@ impl Lowerer {
         let shown = self.ty_name(&existing);
         let message = if existing == *ty {
             format!(
-                "`{name}` is also a module variable ({shown}): whether this declares a new \
-                 local or means the module variable is not known yet, so use another name"
+                "`{name}` is also a module variable ({shown}): whether this loop declares a \
+                 new local or means the module variable is not known yet, so declare it \
+                 with `Dim`"
             )
         } else {
             let ty = self.ty_name(ty);
@@ -796,7 +824,7 @@ impl Lowerer {
                 DIM_STMT => {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
-                        self.declare_local(&name, ty, range(&decl));
+                        self.declare_dim_local(&name, ty, range(&decl));
                     }
                 }
                 FOR_EACH_STMT => {
@@ -1490,9 +1518,10 @@ impl Lowerer {
     }
 
     /// `name` used as a variable, read or written. If it is a module variable
-    /// with a Sub's name, whether it means the variable or the Sub is open
-    /// (a statement calls the Sub: `statement_sub_call`), so it is reported,
-    /// here for every use, and given the error type.
+    /// with a Sub's name, a statement calls the Sub (`statement_sub_call`)
+    /// and so does a read outside `Process_Globals` (`name_ref`, recorded);
+    /// any other use is open, so it is reported, here, and given the error
+    /// type.
     fn lookup_use(&mut self, name: &str, at: TextRange) -> Option<(VarRef, Ty)> {
         let found = self.lookup_var(name);
         if !self.is_sub_named_global(name, &found) {
@@ -1530,7 +1559,16 @@ impl Lowerer {
         let at = range(node);
         let name = name_of(node);
         let full = args.map_or(at, |_| range(&node.parent().unwrap()));
-        if let Some((var, ty)) = self.lookup_use(&name, at) {
+        // Outside `Process_Globals` the Sub wins over a module variable of
+        // its name (recorded).
+        let sub_wins =
+            !self.in_process_globals && self.is_sub_named_global(&name, &self.lookup_var(&name));
+        let found = if sub_wins {
+            None
+        } else {
+            self.lookup_use(&name, at)
+        };
+        if let Some((var, ty)) = found {
             let var_expr = Expr {
                 kind: ExprKind::Var(var),
                 ty: ty.clone(),

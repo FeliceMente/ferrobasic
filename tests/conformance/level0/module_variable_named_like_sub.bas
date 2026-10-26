@@ -3,9 +3,7 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' A module variable declared with a Sub's name, read as a value: the
-    ' variable (this prints 4) or the Sub (9)? FerroBASIC rejects it until a
-    ' recording shows.
+    ' A module variable declared with a Sub's name: B4J refuses the Dim.
     Log(Bump)
 End Sub
 
