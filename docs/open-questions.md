@@ -221,12 +221,22 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       recording:
       `level0/process_globals_string_loop_named_like_sub_counter_elsewhere`).
 - [x] Another `For Each` without `As` over that name is refused ("Current
-      declaration does not match previous one", recordings:
+      declaration does not match previous one") in another Sub over a
+      counter of `Process_Globals`, and in a Sub over its own `For Each`
+      variable (recordings:
       `level0/process_globals_loop_named_like_sub_for_each_elsewhere`,
       `level0/local_for_each_named_like_sub_loop_again`).
-- [ ] Another `For Each v As T` over that name, of the same type: accepted,
-      as a `For` is? FerroBASIC refuses it (test:
-      `level0/local_typed_for_each_named_like_sub_loop_again`).
+- [ ] The same elsewhere: in a Sub over its own `For` counter, in
+      `Process_Globals` over its own loop variable, and in another Sub over
+      a `For Each` variable of `Process_Globals`. FerroBASIC refuses them
+      (tests: `level0/local_for_each_after_counter_named_like_sub`,
+      `level0/process_globals_loop_named_like_sub_for_each_again`,
+      `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`).
+- [ ] Another `For Each v As T` of the same type over that name in the
+      same Sub: accepted, as a `For` is? FerroBASIC refuses it (test:
+      `level0/local_typed_for_each_named_like_sub_loop_again`). In another
+      Sub over a loop variable of `Process_Globals` it is a `For Each` over
+      a module variable of type `T`, accepted as recorded below.
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:

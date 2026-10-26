@@ -406,7 +406,9 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `Sub Bump As Int`: "Object expected"); a `For` may loop over such a
   variable again anywhere, whichever loop declares it, but only over a
   number ("Loop iterator should be a numeric variable"); another
-  `For Each` without `As` over it is refused, and so is a `For Each` of
+  `For Each` without `As` over it is refused, in a Sub over its own
+  `For Each` variable and in another Sub over a counter of
+  `Process_Globals`, and so is a `For Each` of
   another type than a module variable of its name ("Current declaration
   does not match previous one");
   and a `For Each v As T` of a Sub may also have the name of a module
@@ -433,8 +435,12 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `local_for_each_named_like_sub_other_type`); a `Dim` with a Sub's name is
   refused: "Variable name cannot be the same as a sub name" (**recorded**:
   `module_variable_named_like_sub`). Not recorded: another `For Each`
-  with `As` over such a variable, and a `Dim` of `Class_Globals` with a
-  Sub's name (*open*: `local_typed_for_each_named_like_sub_loop_again`).
+  with `As` over such a variable in the same Sub, another without `As`
+  anywhere else, and a `Dim` of `Class_Globals` with a Sub's name (*open*:
+  `local_typed_for_each_named_like_sub_loop_again`,
+  `local_for_each_after_counter_named_like_sub`,
+  `process_globals_loop_named_like_sub_for_each_again`,
+  `process_globals_for_each_named_like_sub_for_each_elsewhere`).
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,
