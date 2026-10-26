@@ -639,11 +639,24 @@ fn loops_in_process_globals() {
         "{:?}",
         app_start(&module).body
     );
-    // Every other use is reported once, also in `Process_Globals`, where
-    // only the loop declaring it may name it.
+    // A bare read calls the Sub in `Process_Globals` too (recorded), and
+    // assigning it in another Sub is an error (recorded).
+    let module = ok(&sub(
+        "    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        "",
+    ));
+    let pg = module.sub(module.process_globals.unwrap());
+    assert!(format!("{:?}", pg.body).contains("Call"), "{:?}", pg.body);
+    let diags = errors(&sub("    For Bump = 1 To 2\n    Next", "    Bump = 3"));
+    assert_eq!(
+        diags,
+        ["cannot assign to `Bump`: it is a Sub, not a variable"]
+    );
+    // Every other use is open: reported once, also in `Process_Globals`,
+    // where only the loop declaring it may name it.
     for (body, app) in [
-        ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
         ("    For Bump = 1 To 2\n    Next", "    Log(Bump(1))"),
+        ("    For Bump = 1 To 2\n        Bump = 4\n    Next", ""),
         (
             "    For Bump = 1 To 2\n    Next",
             "    For Bump = 5 To 6\n    Next",
@@ -652,7 +665,6 @@ fn loops_in_process_globals() {
             "    For Bump = 1 To 2\n    Next",
             "    For Each Bump In Array As Int(1)\n    Next",
         ),
-        ("    For Bump = 1 To 2\n        Log(Bump)\n    Next", ""),
         (
             "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n    Next",
             "",
@@ -665,7 +677,7 @@ fn loops_in_process_globals() {
             "{app}: {diags:?}"
         );
     }
-    // A `Dim` cannot have a Sub's name (recorded), and a local one is open.
+    // A `Dim` cannot have a Sub's name, module or local (recorded).
     let diags = errors(&sub("    Dim Bump As Int = 4", ""));
     assert_eq!(
         diags,
@@ -675,9 +687,25 @@ fn loops_in_process_globals() {
     for body in ["", "    For Bump = 1 To 2\n    Next"] {
         let diags = errors(&sub(body, "    Dim Bump As Int"));
         assert_eq!(diags.len(), 1, "{body}: {diags:?}");
-        assert!(
-            has(&diags, "`Bump` is a Sub: whether a local may have its name"),
-            "{diags:?}"
+        assert_eq!(
+            diags,
+            ["a variable cannot have the name of a Sub: `Bump` is a Sub"],
+            "{body}"
+        );
+    }
+    // A loop variable of a Sub with a Sub's name is open: refused once.
+    for app in [
+        "    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        "    For Bump As Int = 1 To 2\n    Next",
+        "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
+    ] {
+        let diags = errors(&sub("", app));
+        assert_eq!(
+            diags,
+            [
+                "`Bump` is a Sub: whether a loop variable may have its name is not known yet, so use another name"
+            ],
+            "{app}"
         );
     }
     // A refused loop's bounds are still checked.
@@ -787,7 +815,11 @@ fn locals_named_like_module_variables() {
             "`Count` is a module variable of type Int: a local cannot declare it again as String",
         ),
         (
-            "    For Each Count As Int In Array As Int(1)\n    Next",
+            "    For Each Count As String In Array As String(\"a\")\n    Next",
+            "`Count` is a module variable of type Int: a local cannot declare it again as String",
+        ),
+        (
+            "    For Count As Int = 1 To 2\n    Next",
             "`Count` is also a module variable (Int): whether this loop declares a new local or means the module variable is not known yet, so loop over it without `As`",
         ),
     ] {
@@ -795,10 +827,11 @@ fn locals_named_like_module_variables() {
         assert_eq!(diags.len(), 1, "{app}: {diags:?}");
         assert!(has(&diags, message), "{app}: {diags:?}");
     }
-    // A `Dim` of its name and type is the module variable (recorded), and
-    // so is its undeclared counter.
+    // A `Dim` or `For Each` of its name and type is the module variable
+    // (recorded), and so is its undeclared counter.
     for app in [
         "    Dim count As Int\n    count = 7",
+        "    For Each Count As Int In Array As Int(1)\n    Next",
         "    For Count = 1 To 2\n    Next",
     ] {
         let module = ok(&program(app));

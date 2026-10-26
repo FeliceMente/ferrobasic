@@ -201,24 +201,33 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_loop_named_like_sub_read`). A `Dim` there
       cannot have a Sub's name (recording:
       `level0/module_variable_named_like_sub`).
-- [ ] Assigning that name in another Sub, and reading it inside
-      `Process_Globals`: the variable or the Sub? FerroBASIC refuses both.
-      Fixtures: `level0/process_globals_loop_named_like_sub_assign`,
-      `level0/process_globals_loop_named_like_sub_read_inside`. A loop
+- [x] Reading that name inside `Process_Globals` calls the Sub too, and
+      assigning it in another Sub is a syntax error (recordings:
+      `level0/process_globals_loop_named_like_sub_read_inside`,
+      `level0/process_globals_loop_named_like_sub_assign`).
+- [ ] Looping over that name in another Sub, `Bump(args)`, and assigning
+      or looping over it again in `Process_Globals`: FerroBASIC refuses
+      them. Fixtures: `level0/process_globals_loop_named_like_sub_loop_elsewhere`,
+      `level0/process_globals_loop_named_like_sub_args`,
+      `level0/process_globals_loop_named_like_sub_assign_inside`. A loop
       variable there named like a `Type`, `Bit` or a keyword is open too,
       and refused.
-- [ ] May a local `Dim` have a Sub's name? FerroBASIC refuses it. Fixture:
-      `level0/local_dim_named_like_sub`.
+- [x] A local `Dim` cannot have a Sub's name (recording:
+      `level0/local_dim_named_like_sub`).
+- [ ] May a loop variable of a Sub (an undeclared `For` counter, `For i As
+      T`, `For Each v As T`) have a Sub's name, as one of `Process_Globals`
+      may? FerroBASIC refuses it. Fixtures:
+      `level0/local_counter_named_like_sub`,
+      `level0/local_for_each_named_like_sub`.
 - [x] A local with a module variable's name and another type is refused
       (recording: `level0/process_globals_counter_hidden`).
 - [x] With the same type, the local `Dim` means the module variable
       (recording: `level0/local_dim_like_module_variable`).
-- [ ] Does that `Dim` reset the module variable? FerroBASIC resets it, as
-      re-executing a local's `Dim` does (prints 0). Fixture:
-      `level0/local_dim_resets_module_variable`.
-- [ ] Does a `For Each v As T` in a Sub, with a module variable's name and
-      type, mean the module variable? FerroBASIC refuses it. Fixture:
-      `level0/local_for_each_like_module_variable`.
+- [x] That `Dim` resets the module variable (recording:
+      `level0/local_dim_resets_module_variable`).
+- [x] A `For Each v As T` in a Sub, with a module variable's name and
+      type, means the module variable too (recording:
+      `level0/local_for_each_like_module_variable`).
 - [x] A parameter cannot have a module variable's name: "Parameter name
       cannot hide global variable name" (recording:
       `level0/parameter_like_module_variable`).

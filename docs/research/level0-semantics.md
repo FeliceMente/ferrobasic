@@ -444,8 +444,11 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   refused: "Current declaration does not match previous one. Previous:
   {Type=Int...}, Current: {Type=String...}" (**recorded**:
   `process_globals_counter_hidden`). With the same type it is the module
-  variable (**recorded**: `local_dim_like_module_variable`); whether it
-  resets it is **open** (`local_dim_resets_module_variable`).
+  variable, which the `Dim` resets (**recorded**:
+  `local_dim_like_module_variable`, `local_dim_resets_module_variable`), and
+  so is a `For Each v As T` of that name and type (**recorded**:
+  `local_for_each_like_module_variable`). A local `Dim` with a Sub's name is
+  refused as a module one is (**recorded**: `local_dim_named_like_sub`).
 - A parameter with a module variable's name is refused: "Parameter name
   cannot hide global variable name" (**recorded**:
   `parameter_like_module_variable`).
