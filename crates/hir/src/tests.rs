@@ -640,22 +640,13 @@ fn loops_in_process_globals() {
         app_start(&module).body
     );
     // Every use of the name in an expression calls the Sub, in
-    // `Process_Globals` too, and a loop over it is accepted anywhere: in
-    // another Sub, again in `Process_Globals`, or as a Sub's own loop
-    // variable (recorded).
+    // `Process_Globals` too; a `For` in another Sub may loop over it, and a
+    // Sub's own loop variable may have the name (recorded).
     for (body, app) in [
         ("    For Bump = 1 To 2\n        Log(Bump)\n    Next", ""),
         (
             "    For Bump = 1 To 2\n    Next",
             "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
-        ),
-        (
-            "    For Bump = 1 To 2\n    Next",
-            "    For Each Bump In Array As Int(1)\n    Next",
-        ),
-        (
-            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n    Next",
-            "",
         ),
         ("", "    For Bump = 1 To 2\n        Log(Bump)\n    Next"),
         (
@@ -680,6 +671,52 @@ fn loops_in_process_globals() {
             "{app}: {all}"
         );
     }
+    // Any other loop over such a module variable is open: refused once.
+    for (body, app) in [
+        (
+            "    For Bump = 1 To 2\n    Next",
+            "    For Each Bump In Array As Int(1)\n    Next",
+        ),
+        (
+            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+            "",
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n    Next",
+            "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
+        ),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(
+            diags,
+            [
+                "`Bump` is a module variable with the name of a Sub: whether this loop may loop \
+                 over it again is not known yet, so use another name"
+            ],
+            "{body}{app}"
+        );
+    }
+    // A loop local with that name too, of the same type (open) or not.
+    for (each, message) in [
+        (
+            "Int",
+            "`Bump` is also a module variable (Int) and a Sub: whether this loop declares a \
+             new local is not known yet, so use another name",
+        ),
+        (
+            "String",
+            "`Bump` is a module variable of type Int: a local cannot declare it again as String",
+        ),
+    ] {
+        let app = format!("    For Each Bump As {each} In Array As {each}()\n    Next");
+        let diags = errors(&sub("    For Bump = 1 To 2\n    Next", &app));
+        assert_eq!(diags, [message], "{each}");
+    }
+    let diags = errors(&sub(
+        "    For Bump = 1 To 2\n    Next",
+        "    For Bump As Int = 5 To 6\n    Next",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
     // Assigning it is an error, wherever it is (recorded).
     for (body, app) in [
         ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
@@ -699,14 +736,26 @@ fn loops_in_process_globals() {
         diags,
         ["a variable cannot have the name of a Sub: `Bump` is a Sub"]
     );
-    // Reported once, also where a loop variable has that name.
-    for body in ["", "    For Bump = 1 To 2\n    Next"] {
-        let diags = errors(&sub(body, "    Dim Bump As Int"));
-        assert_eq!(diags.len(), 1, "{body}: {diags:?}");
+    // Reported once, also where a loop variable has that name, even a
+    // loop of the same Sub before the `Dim`.
+    for (body, app) in [
+        ("", "    Dim Bump As Int"),
+        ("    For Bump = 1 To 2\n    Next", "    Dim Bump As Int"),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    Dim Bump As Int = 5",
+        ),
+        (
+            "",
+            "    For Bump As Int = 1 To 2\n    Next\n    Dim Bump As Int = 5",
+        ),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
         assert_eq!(
             diags,
             ["a variable cannot have the name of a Sub: `Bump` is a Sub"],
-            "{body}"
+            "{body}{app}"
         );
     }
     // A `Type`, `Bit` or a keyword is refused once, and the loop's body is

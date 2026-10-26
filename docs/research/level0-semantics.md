@@ -401,8 +401,8 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   the name in another Sub, which returns the Sub's value (**recorded**:
   `process_globals_loop_named_like_sub_read`). In fact every use of such a
   name in an expression calls the Sub, inside its own loop, with arguments,
-  or for a loop variable of any Sub; a loop over it is accepted anywhere,
-  and assigning it is refused ("Syntax error", or "'next' expected" inside
+  or for a loop variable of any Sub; a `For` in another Sub may loop over
+  such a counter, and assigning it is refused ("Syntax error", or "'next' expected" inside
   its loop) (**recorded**: `process_globals_loop_named_like_sub_read_inside`,
   `process_globals_loop_named_like_sub_args`,
   `process_globals_loop_named_like_sub_loop_elsewhere`,
@@ -410,7 +410,12 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `process_globals_loop_named_like_sub_assign`,
   `process_globals_loop_named_like_sub_assign_inside`); a `Dim` with a Sub's name is
   refused: "Variable name cannot be the same as a sub name" (**recorded**:
-  `module_variable_named_like_sub`). With the same type, a counter and a
+  `module_variable_named_like_sub`). Other loops over such a module
+  variable (again in `Process_Globals`, a `For Each` elsewhere, over a
+  `For Each` variable) and a loop local of a Sub with its name are not
+  recorded (*open*: `process_globals_loop_named_like_sub_loop_again`,
+  `process_globals_for_each_named_like_sub_loop_elsewhere`,
+  `local_for_each_named_like_sub_over_module_variable`). With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,
   `process_globals_for_each_then_counter`, `process_globals_for_each_twice`).

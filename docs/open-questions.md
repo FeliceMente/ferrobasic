@@ -210,6 +210,15 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (recordings: `level0/process_globals_loop_named_like_sub_loop_elsewhere`,
       `level0/process_globals_loop_named_like_sub_args`,
       `level0/process_globals_loop_named_like_sub_assign_inside`).
+- [ ] Looping over that name again: in `Process_Globals`, with a
+      `For Each` in another Sub, or over a `For Each` variable of
+      `Process_Globals`. FerroBASIC refuses it (tests:
+      `level0/process_globals_loop_named_like_sub_loop_again`,
+      `level0/process_globals_for_each_named_like_sub_loop_elsewhere`).
+- [ ] A `For Each v As T` or `For v As T` of a Sub whose name is both a
+      Sub's and a module variable's: the module variable, a new local, or
+      an error? FerroBASIC refuses it (test:
+      `level0/local_for_each_named_like_sub_over_module_variable`).
 - [ ] A loop variable of `Process_Globals` named like a `Type`, `Bit` or a
       keyword: FerroBASIC refuses it.
 - [x] A local `Dim` cannot have a Sub's name (recording:
