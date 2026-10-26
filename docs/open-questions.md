@@ -210,31 +210,40 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (recordings: `level0/process_globals_loop_named_like_sub_loop_elsewhere`,
       `level0/process_globals_loop_named_like_sub_args`,
       `level0/process_globals_loop_named_like_sub_assign_inside`).
-- [x] A `For` may loop over an Int variable with that name again: in
-      `Process_Globals` over a `For` counter, in another Sub over a `For`
-      or `For Each` variable of `Process_Globals`, or in a Sub over its own
-      `For` counter (recordings:
+- [x] A `For` may loop over that name again anywhere, whichever loop
+      declares it (recordings:
       `level0/process_globals_loop_named_like_sub_loop_again`,
       `level0/process_globals_for_each_named_like_sub_loop_elsewhere`,
-      `level0/local_counter_named_like_sub_loop_again`).
-- [ ] Another `For Each` over that name, with or without `As`: in another
-      Sub over a loop variable of `Process_Globals`, or in a Sub over its
-      own loop variable. FerroBASIC refuses it (tests, without `As`:
+      `level0/local_counter_named_like_sub_loop_again`,
+      `level0/local_counter_after_for_each_named_like_sub`,
+      `level0/process_globals_counter_after_for_each_named_like_sub`), and
+      only over a number ("Loop iterator should be a numeric variable",
+      recording:
+      `level0/process_globals_string_loop_named_like_sub_counter_elsewhere`).
+- [x] Another `For Each` without `As` over that name is refused ("Current
+      declaration does not match previous one") in another Sub over a
+      counter of `Process_Globals`, and in a Sub over its own `For Each`
+      variable (recordings:
       `level0/process_globals_loop_named_like_sub_for_each_elsewhere`,
       `level0/local_for_each_named_like_sub_loop_again`).
-- [ ] A `For` over that name where a `For Each` declares it, in the same
-      Sub or in `Process_Globals`, and a `For` over a loop variable of that
-      name that is not a number (a `String` one). FerroBASIC refuses them
-      (tests: `level0/local_counter_after_for_each_named_like_sub`,
-      `level0/process_globals_counter_after_for_each_named_like_sub`,
-      `level0/process_globals_string_loop_named_like_sub_counter_elsewhere`).
+- [ ] The same elsewhere: in a Sub over its own `For` counter, in
+      `Process_Globals` over its own loop variable, and in another Sub over
+      a `For Each` variable of `Process_Globals`. FerroBASIC refuses them
+      (tests: `level0/local_for_each_after_counter_named_like_sub`,
+      `level0/process_globals_loop_named_like_sub_for_each_again`,
+      `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`).
+- [ ] Another `For Each v As T` of the same type over that name in the
+      same Sub: accepted, as a `For` is? FerroBASIC refuses it (test:
+      `level0/local_typed_for_each_named_like_sub_loop_again`). In another
+      Sub over a loop variable of `Process_Globals` it is a `For Each` over
+      a module variable of type `T`, accepted as recorded below.
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:
       `level0/local_for_each_named_like_sub_over_module_variable`).
-- [ ] The same with another type than the module variable's: refused as
-      for any other name, or accepted? FerroBASIC refuses it (test:
-      `level0/local_for_each_named_like_sub_other_type`).
+- [x] With another type than the module variable's, it is refused as for
+      any other name ("Current declaration does not match previous one",
+      recording: `level0/local_for_each_named_like_sub_other_type`).
 - [x] The name is the Sub whatever the loop variable's type: `Bump.Length`
       on a `String` loop variable, with `Sub Bump As Int`, is refused
       ("Object expected", recording:
