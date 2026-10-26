@@ -31,7 +31,8 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   and in a Sub. A loop variable may have one, in `Process_Globals` or in
   a Sub, unless it is a typed `For v As T`: every use of the name in an
   expression calls the Sub, whatever the loop variable's type, a `For`
-  may loop over it again, and assigning it is an error, as in B4J.
+  may loop over a counter of that name again, and assigning it is an
+  error, as in B4J.
   Before, a `Dim`'d one silently meant the variable.
 - `Null` assigned, passed or returned as a `String` is the text `"null"`,
   as in B4J, which converts it with `BA.ObjectToString`: before, it stayed

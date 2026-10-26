@@ -40,7 +40,7 @@ struct Lowerer {
     /// The current Sub's locals with a Sub's name, with the loop variable
     /// that declares each (none for a refused `Dim`): their uses mean the
     /// Sub (recorded).
-    sub_named_locals: HashMap<String, Option<TextRange>>,
+    sub_named_locals: HashMap<String, Option<(TextRange, SyntaxKind)>>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -806,7 +806,7 @@ impl Lowerer {
         }
         if !self.local_names.contains_key(&k) {
             if self.subs.contains_key(&k) {
-                self.sub_named_locals.insert(k, Some(at));
+                self.sub_named_locals.insert(k, Some((at, FOR_EACH_STMT)));
             } else if let Some(&id) = self.globals.get(&k)
                 && self.module.global(id).ty == ty
             {
@@ -822,7 +822,7 @@ impl Lowerer {
     fn declare_loop_local(&mut self, name: &str, ty: Ty, at: TextRange, typed: bool) {
         let k = key(name);
         if !self.local_names.contains_key(&k) && self.subs.contains_key(&k) {
-            self.sub_named_locals.insert(k, Some(at));
+            self.sub_named_locals.insert(k, Some((at, FOR_STMT)));
             if typed {
                 self.error(
                     at,
@@ -1235,35 +1235,57 @@ impl Lowerer {
     }
 
     /// The variable a `For` / `For Each` loops over, or the loop refused
-    /// (reported and checked here). A `For` may loop again over a loop
-    /// variable with a Sub's name, module variable or local, in any Sub
-    /// (recorded); whether a `For Each` may is open.
+    /// (reported and checked here). A loop variable with a Sub's name may be
+    /// looped over again by a numeric `For` in another Sub than
+    /// `Process_Globals`, which declares it with either loop, or in the
+    /// same Sub when a `For` declares it (recorded); any other loop over it
+    /// is open.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         let k = key(text);
+        if !self.subs.contains_key(&k) {
+            return LoopVar::Found(found);
+        }
         let at = range(name);
-        let what = match found {
-            _ if node.kind() == FOR_STMT => return LoopVar::Found(found),
-            Some((VarRef::Global(id), _))
-                if self.subs.contains_key(&k)
-                    && self.loop_declared.contains_key(&k)
-                    && self.module.global(id).range != at =>
-            {
-                "a module variable"
-            }
-            Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
-                Some(Some(declared)) if *declared != at => "a loop variable of this Sub",
+        let (declarer, same_sub, what) = match &found {
+            Some((VarRef::Global(id), _)) => match self.loop_declared.get(&k) {
+                Some(&kind) if self.module.global(*id).range != at => {
+                    (kind, self.in_process_globals, "a module variable")
+                }
                 _ => return LoopVar::Found(found),
             },
-            _ => return LoopVar::Found(found),
+            Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
+                Some(Some((declared, kind))) if *declared != at => {
+                    (*kind, true, "a loop variable of this Sub")
+                }
+                _ => return LoopVar::Found(found),
+            },
+            None => return LoopVar::Found(found),
         };
-        self.error(
-            at,
+        let ty = found
+            .as_ref()
+            .map(|(_, ty)| ty.clone())
+            .unwrap_or(Ty::Error);
+        let message = if node.kind() == FOR_EACH_STMT {
             format!(
-                "`{text}` is {what} with the name of a Sub: whether a `For Each` may loop over \
-                 it again is not known yet, so use another name"
-            ),
-        );
+                "`{text}` is {what} with the name of a Sub: whether another `For Each` may loop \
+                 over it is not known yet, so use another name"
+            )
+        } else if !ty.is_numeric() && ty != Ty::Error {
+            let ty = self.ty_name(&ty);
+            format!(
+                "`{text}` is {what} of type {ty} with the name of a Sub: whether a `For` may \
+                 loop over it is not known yet, so use another name"
+            )
+        } else if same_sub && declarer == FOR_EACH_STMT {
+            format!(
+                "`{text}` is {what} with the name of a Sub, declared by a `For Each`: whether a \
+                 `For` may loop over it is not known yet, so use another name"
+            )
+        } else {
+            return LoopVar::Found(found);
+        };
+        self.error(at, message);
         self.refused_loop(node, text, name);
         LoopVar::Refused
     }

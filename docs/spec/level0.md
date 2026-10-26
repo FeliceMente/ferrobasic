@@ -70,8 +70,12 @@ End Sub
   followed by '=' expected", recorded). Every use of such a name in an
   expression, bare, with arguments or as a statement, calls the Sub,
   whatever the loop variable's type, and assigning it is an error,
-  wherever it is (recorded). A `For` may loop over it again, in any Sub
-  (recorded); whether a `For Each` without `As` may is *(open)*. A
+  wherever it is (recorded). A `For` may loop over an Int one again: in
+  another Sub, whichever loop of `Process_Globals` declares it, and in
+  the same Sub when a `For` declares it (recorded). Any other loop over
+  it is *(open)*: another `For Each`, with or without `As`, a `For` in the
+  Sub where a `For Each` declares it, or a `For` over one that is not a
+  number. A
   `For Each v As T` of a Sub may have the name of a Sub and of a module
   variable of type `T` (recorded); with another type it is refused as
   for any other name *(open)*. In `Class_Globals`, a `Dim` with a Sub's

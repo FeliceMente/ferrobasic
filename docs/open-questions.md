@@ -210,17 +210,24 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (recordings: `level0/process_globals_loop_named_like_sub_loop_elsewhere`,
       `level0/process_globals_loop_named_like_sub_args`,
       `level0/process_globals_loop_named_like_sub_assign_inside`).
-- [x] A `For` may loop over that name again: in `Process_Globals`, in
-      another Sub over a `For Each` variable of `Process_Globals`, or in a
-      Sub over its own loop variable (recordings:
+- [x] A `For` may loop over an Int variable with that name again: in
+      `Process_Globals` over a `For` counter, in another Sub over a `For`
+      or `For Each` variable of `Process_Globals`, or in a Sub over its own
+      `For` counter (recordings:
       `level0/process_globals_loop_named_like_sub_loop_again`,
       `level0/process_globals_for_each_named_like_sub_loop_elsewhere`,
       `level0/local_counter_named_like_sub_loop_again`).
-- [ ] A `For Each` without `As` over that name again: in another Sub over
-      a loop variable of `Process_Globals`, or in a Sub over its own loop
-      variable. FerroBASIC refuses it (tests:
+- [ ] Another `For Each` over that name, with or without `As`: in another
+      Sub over a loop variable of `Process_Globals`, or in a Sub over its
+      own loop variable. FerroBASIC refuses it (tests, without `As`:
       `level0/process_globals_loop_named_like_sub_for_each_elsewhere`,
       `level0/local_for_each_named_like_sub_loop_again`).
+- [ ] A `For` over that name where a `For Each` declares it, in the same
+      Sub or in `Process_Globals`, and a `For` over a loop variable of that
+      name that is not a number (a `String` one). FerroBASIC refuses them
+      (tests: `level0/local_counter_after_for_each_named_like_sub`,
+      `level0/process_globals_counter_after_for_each_named_like_sub`,
+      `level0/process_globals_string_loop_named_like_sub_counter_elsewhere`).
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:
