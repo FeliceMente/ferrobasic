@@ -60,17 +60,15 @@ End Sub
   `Dim`, a counter or a `For Each`, declares the same module variable, and
   must agree on its type, in source order: B4J refuses a later one that
   does not ("Current declaration does not match previous one", recorded).
-  A `Dim` after a loop that declared its name, with the same type, is that
-  variable. A counter over a
-  name that a `Dim` or another counter declared is that variable. With the
-  same type, a `For Each` over a name an undeclared counter or another
-  `For Each` declared, and a counter over a `For Each` variable, are
-  *(open)*, so compile errors. A loop variable there may have a Sub's
-  name: a statement `Bump` still calls the Sub (recorded). Any other use
-  of a module variable with a Sub's name, declared by a loop or a `Dim`
-  (read, assigned or looped over), is *(open)*, so a compile error, in
-  `Process_Globals` too, except where it is declared; a statement `Bump`
-  calls the Sub. A loop variable named like a `Type`, `Bit` or a
+  With the same type, declarations of a name there are one variable,
+  whichever kinds and in any order (recorded). A counter over a name that
+  a `Dim` declared is that variable, whatever its type. A `Dim` there
+  cannot have a Sub's name (B4J: "Variable name cannot be the same as a
+  sub name", recorded), but a loop variable there may (recorded): in
+  other Subs, a statement `Bump` or a read of `Bump` calls the Sub
+  (recorded). Assigning or looping over the name elsewhere, and any use of
+  it in `Process_Globals` but the loop that declares it, is *(open)*, so a
+  compile error. A loop variable named like a `Type`, `Bit` or a
   keyword is *(open)* too, and so is `For i As T` there: declare `i` with
   `Dim` and loop without `As`. All of this is only for the main module:
   in `Class_Globals` a loop must use a variable declared with `Dim`,
@@ -126,14 +124,15 @@ End Sub
 - `Dim`, `Private` and `Public` in a Sub all declare a local. In
   `Process_Globals` they declare module variables. `Private` and `Public` only
   matter with several modules (Level 1).
-- A local may not take a module variable's name. With another type B4J
-  refuses it ("Current declaration does not match previous one",
-  recorded); with the same type, whether it declares a new local or means
-  the module variable is *(open)*, so it is a compile error too. This holds
-  for a `Dim` and for a `For Each v As T` in a Sub; an undeclared `For`
-  counter of that name is the module variable. A parameter with a module
-  variable's name is accepted and hides it in its Sub, as the generated
-  Java's parameter hides the field; whether B4J accepts it is *(open)*.
+- A local `Dim` with a module variable's name and type is that module
+  variable (recorded), and re-executing it resets it, as a local's `Dim`
+  does (whether B4J resets it is *(open)*). With another type B4J refuses
+  it ("Current declaration does not match previous one", recorded). An
+  undeclared `For` counter of that name is the module variable; a
+  `For Each v As T` of that name in a Sub is *(open)*, so a compile error.
+  A local `Dim` with a Sub's name is *(open)*, so a compile error.
+- A parameter cannot have a module variable's name (B4J: "Parameter name
+  cannot hide global variable name", recorded).
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
   A name without `As` takes the type of the next `As` to its right in the same
   statement.

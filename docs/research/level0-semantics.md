@@ -397,8 +397,14 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `For Each n As String` is refused: "Current declaration does not match
   previous one" (**recorded**: `process_globals_counter_and_for_each`). A
   counter may have a Sub's name, and calling the Sub still works
-  (**recorded**: `process_globals_loop_named_like_sub`); reading the name is
-  **open** (`process_globals_loop_named_like_sub_read`).
+  (**recorded**: `process_globals_loop_named_like_sub`), and so does reading
+  the name in another Sub, which returns the Sub's value (**recorded**:
+  `process_globals_loop_named_like_sub_read`); a `Dim` with a Sub's name is
+  refused: "Variable name cannot be the same as a sub name" (**recorded**:
+  `module_variable_named_like_sub`). With the same type, a counter and a
+  `For Each`, in either order, or two `For Each` loops, are one variable
+  (**recorded**: `process_globals_counter_and_for_each_int`,
+  `process_globals_for_each_then_counter`, `process_globals_for_each_twice`).
   Test is `i <= b` for a
   positive step and `i >= b` for a negative step. **open**: whether `b` and
   `s` are evaluated once (expected, as in VB), and the value of `i` after the loop.
@@ -437,8 +443,12 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
 - A local `Dim i As String` where a module variable `i` is an `Int` is
   refused: "Current declaration does not match previous one. Previous:
   {Type=Int...}, Current: {Type=String...}" (**recorded**:
-  `process_globals_counter_hidden`). With the same type it is **open**
-  (`local_dim_like_module_variable`).
+  `process_globals_counter_hidden`). With the same type it is the module
+  variable (**recorded**: `local_dim_like_module_variable`); whether it
+  resets it is **open** (`local_dim_resets_module_variable`).
+- A parameter with a module variable's name is refused: "Parameter name
+  cannot hide global variable name" (**recorded**:
+  `parameter_like_module_variable`).
 - Primitives (numbers, `Boolean`, `Char`) are passed by value; everything else,
   including `String` and arrays, by reference copy (**docs**, booklet §2.1).
 - Local variables get their default value on every call (**docs**, booklet §2.6.3).

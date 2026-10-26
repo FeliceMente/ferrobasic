@@ -1,11 +1,11 @@
 # Conformance test metadata. See docs/compatibility-testing.md.
-status = "pending-recording"   # pending-recording | recorded | deviation | negative
+status = "negative"   # pending-recording | recorded | deviation | negative
 level = 0
 features = ["sub-parameters", "scope"]
 
-# No .provisional: whether B4J accepts it is open (docs/open-questions.md).
-# FerroBASIC accepts it, the parameter hiding the module variable in its
-# Sub as in the generated Java, and prints 3, then 5.
+# B4J 10.70 refused it on 2026-10-26 ("Parameter name cannot hide global
+# variable name", at Sub Show): a parameter cannot have a module
+# variable's name.
 
 # Filled in by tools/recorder when the expected output is recorded:
 # [recording]
