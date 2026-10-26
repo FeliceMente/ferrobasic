@@ -1,7 +1,6 @@
 Sub Process_Globals
     ' A loop variable of Process_Globals named like a Sub, assigned in
-    ' another Sub: accepted, writing the variable, or refused? FerroBASIC
-    ' rejects it until a recording shows.
+    ' another Sub: B4J reads the name as the Sub, and refuses the `=`.
     For Bump = 1 To 2
     Next
 End Sub
