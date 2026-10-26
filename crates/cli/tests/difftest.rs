@@ -61,3 +61,21 @@ fn a_refused_program_reports_the_diagnostic() {
         "rejected, but must build:\n`Missing` is not declared"
     );
 }
+
+/// A `--work` given as a relative path: the binary still runs from inside
+/// its own folder.
+#[test]
+fn a_relative_work_folder_works() {
+    let work = std::path::PathBuf::from(format!("difftest-relative-{}", std::process::id()));
+    let target = Target::Standalone {
+        ferro: env!("CARGO_BIN_EXE_ferro").into(),
+        work: work.clone(),
+    };
+    let programs: Vec<_> = ferro_corpus::programs()
+        .into_iter()
+        .filter(|p| p.name == "level0/prices_map")
+        .collect();
+    let report = Report::run(&programs, &target, DEFAULT_TIMEOUT);
+    let _ = std::fs::remove_dir_all(&work);
+    assert_eq!(report.failed(), 0, "\n{}", report.render(false, false));
+}

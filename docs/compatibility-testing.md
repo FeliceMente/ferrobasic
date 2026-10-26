@@ -63,6 +63,8 @@ A test whose program must stop on an uncaught error names its kind in
 with code 1. A test whose program ends with `ExitApplication2(n)` gives the
 code as `exit_code = n` (0 to 255; not with `uncaught_error`, and not for a
 program FerroBASIC rejects). Otherwise the program must exit with code 0.
+For a `deviation` test, they give FerroBASIC's documented ending: B4X's is
+described in the comments, with its output.
 
 Two more keys describe what FerroBASIC does, for the tests it handles
 differently from B4X:
@@ -155,7 +157,9 @@ cargo run -p ferro-difftest -- --verbose --by-feature --filter sort
   diagnostic.
 - A `deviation` test is reported as one when it runs, or when it is rejected
   with `ferro_rejects`. Its reference output is described in its `.meta.toml`
-  in prose, so it is not compared yet.
+  in prose, so it is not compared yet; its `uncaught_error` and `exit_code`
+  are FerroBASIC's documented ones, and are checked. So are a pending
+  test's.
 - A `pending-recording` test is pending; it fails if FerroBASIC accepts what
   it marks `ferro_rejects`, or rejects what it does not.
 - The report lists the failures with the first differing line, then counts
