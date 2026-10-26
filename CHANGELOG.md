@@ -7,6 +7,10 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- `ferro-difftest` runs the conformance corpus in the interpreter
+  (`--target interp`) or as `ferro bundle` binaries (`--target standalone`)
+  and prints the compatibility report: pass, fail, deviation and pending, by
+  level and, with `--by-feature`, by feature.
 - `SortType` on a list of plain values, by the name of a field their JDK
   class declares, raises `NoSuchFieldException`, where B4J sorts by a
   public one (`"MAX_VALUE"` on `Int`s) and raises

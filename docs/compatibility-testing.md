@@ -63,6 +63,8 @@ A test whose program must stop on an uncaught error names its kind in
 with code 1. A test whose program ends with `ExitApplication2(n)` gives the
 code as `exit_code = n` (0 to 255; not with `uncaught_error`, and not for a
 program FerroBASIC rejects). Otherwise the program must exit with code 0.
+For a `deviation` test, they give FerroBASIC's documented ending: B4X's is
+described in the comments, with its output.
 
 Two more keys describe what FerroBASIC does, for the tests it handles
 differently from B4X:
@@ -114,7 +116,8 @@ file: its expected stdout, derived by hand from the sources in
 
 ## Normalization
 
-- Line endings, temporary paths and timestamps are normalized.
+- Line endings, temporary paths and timestamps are normalized (Level 0 output
+  has only line endings to normalize).
 - Number-to-string formatting is visible behaviour, so it must match B4X, not
   be normalized away.
 - `Map` iteration order must match B4X too (insertion order, to verify).
@@ -127,6 +130,44 @@ pass, fail, documented deviation, pending. Accepted deviations live in
 
 The headline number, per target, is the share of corpus projects that build
 without changes and behave identically to the original.
+
+`ferro-difftest` prints it for the conformance corpus:
+
+```sh
+cargo run -p ferro-difftest                     # target interp
+cargo build -p ferro-cli
+cargo run -p ferro-difftest -- --target standalone
+cargo run -p ferro-difftest -- --verbose --by-feature --filter sort
+```
+
+- `interp` runs each program the way `ferro run` does, in process: the module
+  header checked, then parsed, type-checked and interpreted on `ferro`'s
+  stack, with the exit code's low 8 bits. `standalone` builds it with
+  `ferro bundle` (the `ferro` next to `ferro-difftest`, or `--ferro <path>`)
+  in a folder of its own under the system's temporary folder (or under
+  `--work`), removed after, and runs the binary, reading the uncaught error's
+  kind from its stderr.
+- Tests run several at a time, each for at most 60 seconds (`--timeout`): a
+  program still running then fails, so a loop that never ends cannot hang
+  the report.
+- A test passes when its normalized stdout, uncaught error kind and exit code
+  are the recorded ones; a `negative` test passes when it is rejected. Passes
+  against a `.provisional` output are counted apart; a `recorded` test with
+  no `.expected` fails. A test refused that must build fails with the first
+  diagnostic.
+- A `deviation` test is reported as one when it runs, or when it is rejected
+  with `ferro_rejects`. Its reference output is described in its `.meta.toml`
+  in prose, so it is not compared yet; its `uncaught_error` and `exit_code`
+  are FerroBASIC's documented ones, and are checked. So are a pending
+  test's.
+- A `pending-recording` test is pending; it fails if FerroBASIC accepts what
+  it marks `ferro_rejects`, or rejects what it does not.
+- The report lists the failures with the first differing line, then counts
+  each state by level, and by feature with `--by-feature`. The exit code is 0
+  when nothing fails, 1 otherwise, 2 on a usage error.
+
+The two targets also run as tests: `crates/difftest` on the interpreter, and
+`crates/cli/tests/difftest.rs` as standalone binaries.
 
 ## CI
 
