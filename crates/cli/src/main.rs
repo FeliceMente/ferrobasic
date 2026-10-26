@@ -11,6 +11,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use ferro_cli::{EXIT_COMPILE_ERRORS, STACK_SIZE, exit_status};
+
 /// Everything after the header of `ferro help`.
 const COMMANDS: &str = "\
 Usage: ferro <command> [args]
@@ -66,7 +68,6 @@ const LICENSES: &str = concat!(
 
 /// Exit codes from `docs/spec/cli.md`.
 const EXIT_USAGE: u8 = 2;
-const EXIT_COMPILE_ERRORS: u8 = 3;
 
 /// Name of the program inside a standalone binary's payload.
 const MAIN_ENTRY: &str = "main.bas";
@@ -92,12 +93,6 @@ fn program_args(args: &[OsString]) -> Vec<String> {
         .map(|a| a.to_string_lossy().into_owned())
         .collect()
 }
-
-/// Stack for all of `ferro`'s work. The parser limits nesting
-/// (`MAX_NESTING` in `ferro-syntax`), but the later stages and the
-/// interpreter still recurse over trees and values; a large stack keeps any
-/// remaining deep recursion from crashing. Only touched pages use memory.
-const STACK_SIZE: usize = 256 * 1024 * 1024;
 
 fn main() -> ExitCode {
     let worker = std::thread::Builder::new()
@@ -283,20 +278,7 @@ fn read_source(path: &Path) -> Result<String, ExitCode> {
 /// exit code to stop with.
 fn compile(path: &Path) -> Result<(String, ferro_hir::Module), ExitCode> {
     let text = read_source(path)?;
-    // What Level 0 cannot honour in the header: a project's type, libraries,
-    // modules and files, or a module's type.
-    let problems = if is_project(path) {
-        ferro_project::check_project(&text)
-    } else {
-        ferro_project::check_module(&text)
-    };
-    let header_errors = problems
-        .into_iter()
-        .map(|p| {
-            let at = ferro_syntax::TextSize::try_from(p.offset).unwrap_or_default();
-            (ferro_syntax::TextRange::empty(at), p.message)
-        })
-        .collect();
+    let header_errors = ferro_cli::header_errors(&text, is_project(path));
     let module = compile_text(path, &text, header_errors)?;
     Ok((text, module))
 }
@@ -308,18 +290,7 @@ fn compile_text(
     text: &str,
     header_errors: Vec<(ferro_syntax::TextRange, String)>,
 ) -> Result<ferro_hir::Module, ExitCode> {
-    let parse = ferro_syntax::parse(text);
-    // Type checking runs only on a tree without syntax errors.
-    let mut errors = header_errors;
-    let module = if parse.errors().is_empty() {
-        let (module, diags) = ferro_hir::check(&parse.syntax());
-        errors.extend(diags.into_iter().map(|d| (d.range, d.message)));
-        Some(module)
-    } else {
-        let syntax = parse.errors().iter().map(|e| (e.range, e.message.clone()));
-        errors.extend(syntax);
-        None
-    };
+    let (module, errors) = ferro_cli::check(text, header_errors);
     // One diagnostic at a time: each holds its whole source line, which can
     // be long, so never keep them all in memory.
     let lines = LineIndex::new(text);
@@ -333,8 +304,8 @@ fn compile_text(
         ));
     }
     match module {
-        Some(module) if errors.is_empty() => Ok(module),
-        _ => {
+        Some(module) => Ok(module),
+        None => {
             err(&format!("{} error(s)\n", errors.len()));
             Err(ExitCode::from(EXIT_COMPILE_ERRORS))
         }
@@ -360,10 +331,9 @@ fn run(path: &Path, args: &[String]) -> ExitCode {
 /// Lowers and interprets a checked module; shared by `ferro run` and
 /// standalone binaries, so both behave identically.
 fn execute(text: &str, module: &ferro_hir::Module, args: &[String]) -> ExitCode {
-    let program = ferro_mir::lower(module);
     let stdout = std::io::stdout();
     let stderr = std::io::stderr();
-    let outcome = ferro_interp::run(&program, args, &mut stdout.lock(), &mut stderr.lock());
+    let outcome = ferro_cli::run(module, args, &mut stdout.lock(), &mut stderr.lock());
     if let Some(error) = &outcome.error {
         let (line, _) = LineIndex::new(text).locate(text, usize::from(error.range.start()));
         let detail = if error.message.is_empty() {
@@ -539,12 +509,6 @@ fn sign_for_intel_mac(staged: &Path) -> std::io::Result<()> {
 #[cfg(not(all(target_os = "macos", not(target_arch = "aarch64"))))]
 fn sign_for_intel_mac(_staged: &Path) -> std::io::Result<()> {
     Ok(())
-}
-
-/// A process exit status from an `ExitApplication2` code: the low 8 bits,
-/// as POSIX shells see a JVM exit code.
-fn exit_status(code: i32) -> u8 {
-    (code & 0xff) as u8
 }
 
 /// Where each line of a source text starts, computed once so that many

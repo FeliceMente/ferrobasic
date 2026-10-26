@@ -54,7 +54,7 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] `ferro-mir`: typed IR with explicit `Convert`, lowered loops and smart strings.
 - [x] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
 - [x] `ferro check` / `ferro run`: every conformance test with a provisional
-      output matches it (`crates/interp/tests/conformance.rs`).
+      output matches it (now `ferro-difftest`, in `crates/difftest`).
 - [x] `ferro bundle`: standalone executable for the host (payload appended to
       `ferro`; embedded with `libsui` on macOS). Verified on Linux x86_64,
       glibc and musl (fully static), on Windows x64, and on macOS arm64 and
@@ -62,5 +62,6 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] CLI command names settled: `build` renamed `bundle`; `compile`,
       `targets` and project-level `build` reserved, with their plan in
       `docs/spec/cli.md` ("Planned commands").
-- [ ] `ferro-difftest --target interp` and `--target standalone` against
-      `.expected` / `.provisional`.
+- [x] `ferro-difftest --target interp` and `--target standalone` against
+      `.expected` / `.provisional`, with the report by level and feature
+      ([compatibility-testing.md](compatibility-testing.md#the-report)).

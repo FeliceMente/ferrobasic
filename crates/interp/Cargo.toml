@@ -18,4 +18,3 @@ libm = "0.2.16"
 [dev-dependencies]
 ferro-syntax = { path = "../syntax" }
 ferro-hir = { path = "../hir" }
-ferro-corpus = { path = "../corpus" }

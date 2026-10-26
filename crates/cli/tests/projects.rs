@@ -1,9 +1,13 @@
 //! Project files (`.b4j`) and directories as input, and the header checks
 //! (`docs/spec/cli.md`, "Inputs"; `docs/spec/project-files.md`).
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+use common::run_written;
 
 const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
@@ -51,20 +55,6 @@ fn ferro(dir: &Path, args: &[&str]) -> Output {
 
 fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
-}
-
-/// Runs an executable this test process just wrote, retrying on "text file
-/// busy" (see `run_binary` in `tests/bundle.rs`).
-fn run_written(command: &mut Command) -> Output {
-    for _ in 0..200 {
-        match command.output() {
-            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            result => return result.unwrap(),
-        }
-    }
-    panic!("{command:?}: still \"text file busy\" after 2 s");
 }
 
 #[test]
