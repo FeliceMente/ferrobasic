@@ -1,9 +1,9 @@
 # Changelog
 
 FerroBASIC is pre-alpha: every release can change behaviour, and the
-command line may still change. Expected outputs are still derived by hand
-from the original runtime's source and from JDK 21, not yet recorded from
-B4J itself (`docs/compatibility-testing.md`).
+command line may still change. Expected outputs are recorded from B4J
+10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
+yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 

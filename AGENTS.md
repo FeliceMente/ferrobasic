@@ -16,9 +16,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
 - Current milestone: **M0 → M1** — lexer, parser, lossless CST, then the
   Level 0 interpreter, `ferro run` and standalone `ferro bundle` (see
-  `docs/spec/cli.md`). The recorder (`tools/recorder`) exists; the first
-  recordings come from a Windows machine with the original toolchain. See
-  `docs/roadmap.md`.
+  `docs/spec/cli.md`). The Level 0 corpus is recorded with B4J 10.70 on a
+  Windows machine by `tools/recorder`; new pending tests go into the next
+  recording run. See `docs/roadmap.md`.
 
 ## Read before working
 
@@ -39,8 +39,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   from the ORIGINAL B4X toolchain (`*.meta.toml` records the B4X version).
   Expected behaviour is what those files say, not your memory of B4X.
 - Never write or edit a `*.expected` file by hand: only `tools/recorder` does.
-- Until recordings exist, `*.provisional` files hold hand-derived expected
-  output, only for behaviour settled in `docs/research/level0-semantics.md`.
+- Until a test is recorded, a `*.provisional` file may hold hand-derived
+  expected output, only for behaviour settled in
+  `docs/research/level0-semantics.md`.
   Never write one for an open question, never change one to make a test pass,
   and never let it override an `*.expected` file (see
   `docs/compatibility-testing.md`).
