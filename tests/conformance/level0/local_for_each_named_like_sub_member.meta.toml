@@ -1,8 +1,12 @@
 # Conformance test metadata. See docs/compatibility-testing.md.
-status = "pending-recording"   # pending-recording | recorded | deviation | negative
-ferro_rejects = true   # rejected until a recording shows what B4X does
+status = "negative"   # pending-recording | recorded | deviation | negative
 level = 0
 features = ["for-each", "scope"]
+
+# B4J 10.70 refused it on 2026-10-26 ("Object expected", at `.Length`):
+# the name is the Sub, an Int, even where the loop variable is a String.
+
+# The comment in the .bas predates this refusal, which settles it.
 
 # Filled in by tools/recorder when the expected output is recorded:
 # [recording]

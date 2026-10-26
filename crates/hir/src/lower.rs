@@ -41,9 +41,6 @@ struct Lowerer {
     /// that declares each (none for a refused `Dim`): their uses mean the
     /// Sub (recorded).
     sub_named_locals: HashMap<String, Option<TextRange>>,
-    /// The range of the expression a statement consists of, while it is
-    /// lowered: a Sub's name there is a call, whatever its loop variable.
-    statement_at: Option<TextRange>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -820,8 +817,8 @@ impl Lowerer {
     }
 
     /// The counter a `For` of a Sub declares. With a Sub's name an undeclared
-    /// counter is a local whose uses mean the Sub (recorded); a typed one is
-    /// open, so refused once.
+    /// counter is a local whose uses mean the Sub, and a typed one is refused
+    /// (B4J: "Regular variable followed by '=' expected", recorded).
     fn declare_loop_local(&mut self, name: &str, ty: Ty, at: TextRange, typed: bool) {
         let k = key(name);
         if !self.local_names.contains_key(&k) && self.subs.contains_key(&k) {
@@ -830,8 +827,8 @@ impl Lowerer {
                 self.error(
                     at,
                     format!(
-                        "`{name}` is a Sub: whether a `For {name} As <type>` may have its name is \
-                         not known yet, so loop without `As`"
+                        "`{name}` is a Sub: a `For` counter with its name cannot be declared \
+                         with `As`, so loop without `As`"
                     ),
                 );
                 self.push_local(name, ty, at);
@@ -845,20 +842,19 @@ impl Lowerer {
     /// type ("Current declaration does not match previous one", recorded);
     /// a `Dim` or `For Each` of the same type is the module variable
     /// (`declare_dim_local`), and whether a `For i As T` of the same type is
-    /// a new local is open, so it is refused. So is a `For Each` of the same
-    /// type when the name is also a Sub's: not recorded.
+    /// a new local is open, so it is refused. A `For Each` of the same type
+    /// is accepted when the name is also a Sub's (recorded): its uses mean
+    /// the Sub, so which variable it loops with is never observable.
     fn local_like_global(&mut self, name: &str, ty: &Ty, id: GlobalId, at: TextRange) {
         let existing = self.module.global(id).ty.clone();
         if existing == Ty::Error {
             return;
         }
         let shown = self.ty_name(&existing);
-        let message = if existing == *ty && self.subs.contains_key(&key(name)) {
-            format!(
-                "`{name}` is also a module variable ({shown}) and a Sub: whether this loop \
-                 declares a new local is not known yet, so use another name"
-            )
-        } else if existing == *ty {
+        if existing == *ty && self.subs.contains_key(&key(name)) {
+            return;
+        }
+        let message = if existing == *ty {
             format!(
                 "`{name}` is also a module variable ({shown}): whether this loop declares a \
                  new local or means the module variable is not known yet, so loop over it \
@@ -1007,9 +1003,7 @@ impl Lowerer {
                 let Some(e) = exprs(node).into_iter().next() else {
                     return;
                 };
-                self.statement_at = Some(range(&e));
                 let expr = self.expr(&e);
-                self.statement_at = None;
                 match expr.kind {
                     ExprKind::Call { .. } | ExprKind::Builtin { .. } | ExprKind::Error => {
                         push(out, StmtKind::Expr(expr))
@@ -1241,23 +1235,20 @@ impl Lowerer {
     }
 
     /// The variable a `For` / `For Each` loops over, or the loop refused
-    /// (reported and checked here). A loop variable with a Sub's name may
-    /// be looped over again only by a `For` in another Sub over the counter
-    /// of a `For` of `Process_Globals` (recorded); any other loop over it,
-    /// module variable or local, than the one that declares it is open.
+    /// (reported and checked here). A `For` may loop again over a loop
+    /// variable with a Sub's name, module variable or local, in any Sub
+    /// (recorded); whether a `For Each` may is open.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         let k = key(text);
         let at = range(name);
         let what = match found {
-            Some((VarRef::Global(id), _)) if self.subs.contains_key(&k) => {
-                let declarer = self.loop_declared.get(&k).copied();
-                let recorded = !self.in_process_globals
-                    && node.kind() == FOR_STMT
-                    && declarer == Some(FOR_STMT);
-                if declarer.is_none() || self.module.global(id).range == at || recorded {
-                    return LoopVar::Found(found);
-                }
+            _ if node.kind() == FOR_STMT => return LoopVar::Found(found),
+            Some((VarRef::Global(id), _))
+                if self.subs.contains_key(&k)
+                    && self.loop_declared.contains_key(&k)
+                    && self.module.global(id).range != at =>
+            {
                 "a module variable"
             }
             Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
@@ -1269,8 +1260,8 @@ impl Lowerer {
         self.error(
             at,
             format!(
-                "`{text}` is {what} with the name of a Sub: whether this loop may loop over it \
-                 again is not known yet, so use another name"
+                "`{text}` is {what} with the name of a Sub: whether a `For Each` may loop over \
+                 it again is not known yet, so use another name"
             ),
         );
         self.refused_loop(node, text, name);
@@ -1622,22 +1613,6 @@ impl Lowerer {
         (!sub_named).then_some(found)
     }
 
-    /// A loop variable with a Sub's name, used where its type and the Sub's
-    /// return type differ: recorded only as a statement, which calls the
-    /// Sub, so open anywhere else.
-    fn loop_variable_or_sub(&mut self, name: &str, ty: &Ty, id: SubId, at: TextRange) -> Expr {
-        let ret = self.module.sub(id).ret.clone();
-        let (ty, ret) = (self.ty_name(ty), self.ty_name(&ret));
-        self.error(
-            at,
-            format!(
-                "`{name}` is a loop variable of type {ty} and a Sub that returns {ret}: whether \
-                 this use means the Sub is not known yet, so use another name"
-            ),
-        );
-        error_expr(at)
-    }
-
     /// A bare name, or the callee of `name(args)` when `args` is given.
     fn name_ref(&mut self, node: &SyntaxNode, args: Option<&[SyntaxNode]>) -> Expr {
         let at = range(node);
@@ -1655,13 +1630,6 @@ impl Lowerer {
             };
         }
         if let Some(&id) = self.subs.get(&key(&name)) {
-            if let Some((_, ty)) = self.lookup_var(&name)
-                && self.statement_at != Some(full)
-                && ty != Ty::Error
-                && ty != self.module.sub(id).ret
-            {
-                return self.loop_variable_or_sub(&name, &ty, id, full);
-            }
             return self.sub_call(id, args.unwrap_or(&[]), full);
         }
         if name.eq_ignore_ascii_case("IIf") {
