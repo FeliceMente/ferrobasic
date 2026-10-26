@@ -643,6 +643,7 @@ fn loops_in_process_globals() {
     // only the loop declaring it may name it.
     for (body, app) in [
         ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
+        ("    For Bump = 1 To 2\n    Next", "    Log(Bump(1))"),
         (
             "    For Bump = 1 To 2\n    Next",
             "    For Bump = 5 To 6\n    Next",
@@ -670,11 +671,15 @@ fn loops_in_process_globals() {
         diags,
         ["a variable cannot have the name of a Sub: `Bump` is a Sub"]
     );
-    let diags = errors(&sub("", "    Dim Bump As Int"));
-    assert!(
-        has(&diags, "`Bump` is a Sub: whether a local may have its name"),
-        "{diags:?}"
-    );
+    // Reported once, also where a loop variable has that name.
+    for body in ["", "    For Bump = 1 To 2\n    Next"] {
+        let diags = errors(&sub(body, "    Dim Bump As Int"));
+        assert_eq!(diags.len(), 1, "{body}: {diags:?}");
+        assert!(
+            has(&diags, "`Bump` is a Sub: whether a local may have its name"),
+            "{diags:?}"
+        );
+    }
     // A refused loop's bounds are still checked.
     let diags = errors(&sub(
         "    For Bump = 1 To 2\n    Next",
@@ -783,7 +788,7 @@ fn locals_named_like_module_variables() {
         ),
         (
             "    For Each Count As Int In Array As Int(1)\n    Next",
-            "`Count` is also a module variable (Int): whether this loop declares a new local",
+            "`Count` is also a module variable (Int): whether this loop declares a new local or means the module variable is not known yet, so loop over it without `As`",
         ),
     ] {
         let diags = errors(&program(app));

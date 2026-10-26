@@ -34,8 +34,7 @@ struct Lowerer {
     globals: HashMap<String, GlobalId>,
     /// Loop variables of `Process_Globals` already refused with an error.
     refused_loop_names: HashSet<String>,
-    /// Module variables that a loop of `Process_Globals` declares, and which
-    /// kind of loop.
+    /// Module variables that a loop of `Process_Globals` declares.
     loop_declared: HashSet<String>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
@@ -755,15 +754,19 @@ impl Lowerer {
                 {
                     self.local_like_global(name, &ty, id, at);
                 }
-                self.local_names
-                    .insert(key(name), LocalId(self.locals.len() as u32));
-                self.locals.push(Var {
-                    name: name.to_string(),
-                    ty,
-                    range: at,
-                });
+                self.push_local(name, ty, at);
             }
         }
+    }
+
+    fn push_local(&mut self, name: &str, ty: Ty, at: TextRange) {
+        self.local_names
+            .insert(key(name), LocalId(self.locals.len() as u32));
+        self.locals.push(Var {
+            name: name.to_string(),
+            ty,
+            range: at,
+        });
     }
 
     /// The name of a local `Dim`. With a module variable's name and type it
@@ -781,6 +784,9 @@ impl Lowerer {
                          yet, so use another name"
                     ),
                 );
+                // Already reported: no second error for a module variable.
+                self.push_local(name, ty, at);
+                return;
             } else if let Some(&id) = self.globals.get(&k)
                 && self.module.global(id).ty == ty
             {
@@ -804,8 +810,8 @@ impl Lowerer {
         let message = if existing == *ty {
             format!(
                 "`{name}` is also a module variable ({shown}): whether this loop declares a \
-                 new local or means the module variable is not known yet, so declare it \
-                 with `Dim`"
+                 new local or means the module variable is not known yet, so loop over it \
+                 without `As`"
             )
         } else {
             let ty = self.ty_name(ty);
@@ -1511,8 +1517,8 @@ impl Lowerer {
     }
 
     /// A module variable with a Sub's name, found where `name` is looked up.
-    /// A statement calls the Sub (recorded for a loop's variable); whether
-    /// another use means the variable or the Sub is open.
+    /// Outside `Process_Globals`, a statement or a bare read of it calls the
+    /// Sub (recorded); any other use is open (`checked_use`).
     fn is_sub_named_global(&self, name: &str, found: &Option<(VarRef, Ty)>) -> bool {
         matches!(found, Some((VarRef::Global(_), _))) && self.subs.contains_key(&key(name))
     }
@@ -1524,6 +1530,15 @@ impl Lowerer {
     /// type.
     fn lookup_use(&mut self, name: &str, at: TextRange) -> Option<(VarRef, Ty)> {
         let found = self.lookup_var(name);
+        self.checked_use(name, at, found)
+    }
+
+    fn checked_use(
+        &mut self,
+        name: &str,
+        at: TextRange,
+        found: Option<(VarRef, Ty)>,
+    ) -> Option<(VarRef, Ty)> {
         if !self.is_sub_named_global(name, &found) {
             return found;
         }
@@ -1559,14 +1574,15 @@ impl Lowerer {
         let at = range(node);
         let name = name_of(node);
         let full = args.map_or(at, |_| range(&node.parent().unwrap()));
-        // Outside `Process_Globals` the Sub wins over a module variable of
-        // its name (recorded).
+        // Outside `Process_Globals`, a bare read calls the Sub rather than read
+        // a module variable of its name (recorded); with arguments it is open.
+        let found = self.lookup_var(&name);
         let sub_wins =
-            !self.in_process_globals && self.is_sub_named_global(&name, &self.lookup_var(&name));
+            args.is_none() && !self.in_process_globals && self.is_sub_named_global(&name, &found);
         let found = if sub_wins {
             None
         } else {
-            self.lookup_use(&name, at)
+            self.checked_use(&name, at, found)
         };
         if let Some((var, ty)) = found {
             let var_expr = Expr {
