@@ -36,6 +36,9 @@ struct Lowerer {
     refused_loop_names: HashSet<String>,
     /// Module variables that a loop of `Process_Globals` declares.
     loop_declared: HashSet<String>,
+    /// The current Sub's loop variables with a Sub's name: their uses mean
+    /// the Sub (recorded).
+    sub_named_locals: HashSet<String>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -164,27 +167,10 @@ fn typed_loop_variable(name: &str, statement: &str, globals: &str) -> String {
     )
 }
 
-/// A use of a module variable with a Sub's name, other than as a
-/// statement.
-fn sub_named_global(name: &str) -> String {
-    format!(
-        "`{name}` is both a Sub and a module variable: whether `{name}` means the Sub or \
-         the variable here is not known yet, so rename the variable"
-    )
-}
-
 /// A `Dim` with a Sub's name. B4J: "Variable name cannot be the same as a
 /// sub name" (recorded, in `Process_Globals` and in a Sub).
 fn variable_named_like_sub(name: &str) -> String {
     format!("a variable cannot have the name of a Sub: `{name}` is a Sub")
-}
-
-/// A loop variable of a Sub with a Sub's name: unlike a `Dim`, not recorded.
-fn loop_local_named_like_sub(name: &str) -> String {
-    format!(
-        "`{name}` is a Sub: whether a loop variable may have its name is not known yet, so use \
-         another name"
-    )
 }
 
 fn error_expr(range: TextRange) -> Expr {
@@ -619,7 +605,7 @@ impl Lowerer {
     }
 
     /// Whether a loop variable that `Process_Globals` declares may take this
-    /// name. A Sub's may (recorded: `is_sub_named_global`); whether the
+    /// name. A Sub's may (recorded: `is_sub_named`); whether the
     /// module variable hides a
     /// `Type`, `Bit` or a keyword of the same name is not recorded, so it is
     /// refused, once.
@@ -708,6 +694,7 @@ impl Lowerer {
             .map(|(i, v)| (key(&v.name), LocalId(i as u32)))
             .collect();
         self.ret = sub.ret.clone();
+        self.sub_named_locals.clear();
         self.in_class_globals = self.class_globals == Some(id);
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
         self.loops = 0;
@@ -782,19 +769,19 @@ impl Lowerer {
 
     /// The name a local `Dim` or `For Each v As T` declares. With a module
     /// variable's name and type it is that module variable, which a
-    /// re-executed `Dim` resets (recorded). A Sub's name is refused: as B4J
-    /// does for a `Dim` (recorded), and as open for a `For Each`.
+    /// re-executed `Dim` resets (recorded). With a Sub's name a `Dim` is
+    /// refused and a `For Each` accepted, its uses meaning the Sub
+    /// (recorded).
     fn declare_dim_local(&mut self, name: &str, ty: Ty, at: TextRange, is_dim: bool) {
         let k = key(name);
         if !self.local_names.contains_key(&k) {
             if self.subs.contains_key(&k) {
-                let message = if is_dim {
-                    variable_named_like_sub(name)
+                if is_dim {
+                    self.error(at, variable_named_like_sub(name));
                 } else {
-                    loop_local_named_like_sub(name)
-                };
-                self.error(at, message);
-                // Already reported: no second error for a module variable.
+                    self.sub_named_locals.insert(k);
+                }
+                // No second error for a module variable of that name.
                 self.push_local(name, ty, at);
                 return;
             } else if let Some(&id) = self.globals.get(&k)
@@ -806,11 +793,11 @@ impl Lowerer {
         self.declare_local(name, ty, at);
     }
 
-    /// The counter a `For` of a Sub declares. With a Sub's name it is open,
-    /// so refused once (the local is still declared).
+    /// The counter a `For` of a Sub declares. With a Sub's name it is a local
+    /// whose uses mean the Sub (recorded).
     fn declare_loop_local(&mut self, name: &str, ty: Ty, at: TextRange) {
         if !self.local_names.contains_key(&key(name)) && self.subs.contains_key(&key(name)) {
-            self.error(at, loop_local_named_like_sub(name));
+            self.sub_named_locals.insert(key(name));
             self.push_local(name, ty, at);
             return;
         }
@@ -977,10 +964,7 @@ impl Lowerer {
                 let Some(e) = exprs(node).into_iter().next() else {
                     return;
                 };
-                let expr = match self.statement_sub_call(&e) {
-                    Some(call) => call,
-                    None => self.expr(&e),
-                };
+                let expr = self.expr(&e);
                 match expr.kind {
                     ExprKind::Call { .. } | ExprKind::Builtin { .. } | ExprKind::Error => {
                         push(out, StmtKind::Expr(expr))
@@ -1205,18 +1189,10 @@ impl Lowerer {
         self.loop_body(node);
     }
 
-    /// The variable of a `For` / `For Each`. The loop of `Process_Globals`
-    /// that declares it may give it a Sub's name (recorded); any other loop
-    /// over it is a use like any other.
-    fn loop_variable(&mut self, text: &str, name: &SyntaxNode) -> Option<(VarRef, Ty)> {
-        let found = self.lookup_var(text);
-        let declares = matches!(found, Some((VarRef::Global(id), _))
-            if self.in_process_globals && self.module.global(id).range == range(name));
-        if declares {
-            found
-        } else {
-            self.lookup_use(text, range(name))
-        }
+    /// The variable of a `For` / `For Each`. It may have a Sub's name, in
+    /// any Sub (recorded).
+    fn loop_variable(&mut self, text: &str, _name: &SyntaxNode) -> Option<(VarRef, Ty)> {
+        self.lookup_var(text)
     }
 
     fn loop_body(&mut self, node: &SyntaxNode) -> Block {
@@ -1295,14 +1271,11 @@ impl Lowerer {
             NAME_REF => {
                 let name = name_of(node);
                 let found = self.lookup_var(&name);
-                // In another Sub, B4J reads the name of such a module variable
-                // as the Sub: "Syntax error" at the `=` (recorded).
-                let sub_wins = !self.in_process_globals && self.is_sub_named_global(&name, &found);
-                let found = if sub_wins {
-                    None
-                } else {
-                    self.checked_use(&name, range(node), found)
-                };
+                // B4J reads the name of a loop variable with a Sub's name as the
+                // Sub, and refuses the `=` ("Syntax error", or "'next'
+                // expected" inside its loop: recorded).
+                let sub = self.is_sub_named(&name, &found);
+                let found = found.filter(|_| !sub);
                 match found {
                     Some((var, ty)) => Some((Place::Var(var), ty)),
                     None => {
@@ -1546,58 +1519,19 @@ impl Lowerer {
         }
     }
 
-    /// A module variable with a Sub's name, found where `name` is looked up.
-    /// A statement or a bare read of it calls the Sub, and assigning it in
-    /// another Sub is an error (recorded); any other use is open
-    /// (`checked_use`).
-    fn is_sub_named_global(&self, name: &str, found: &Option<(VarRef, Ty)>) -> bool {
-        matches!(found, Some((VarRef::Global(_), _))) && self.subs.contains_key(&key(name))
-    }
-
-    /// `name` used as a variable, read or written. If it is a module variable
-    /// with a Sub's name, a statement calls the Sub (`statement_sub_call`),
-    /// so does a bare read (`name_ref`), and assigning it in another Sub is
-    /// an error (`place`), all recorded; any other use is open, so it is
-    /// reported, here, and given the error type.
-    fn lookup_use(&mut self, name: &str, at: TextRange) -> Option<(VarRef, Ty)> {
-        let found = self.lookup_var(name);
-        self.checked_use(name, at, found)
-    }
-
-    fn checked_use(
-        &mut self,
-        name: &str,
-        at: TextRange,
-        found: Option<(VarRef, Ty)>,
-    ) -> Option<(VarRef, Ty)> {
-        if !self.is_sub_named_global(name, &found) {
-            return found;
-        }
-        self.error(at, sub_named_global(name));
-        found.map(|(var, _)| (var, Ty::Error))
-    }
-
-    /// A statement `Bump` or `Bump(args)` where a loop of `Process_Globals`
-    /// declares a module variable `Bump`: a statement can only call, and it
-    /// calls the Sub (recorded).
-    fn statement_sub_call(&mut self, e: &SyntaxNode) -> Option<Expr> {
-        let (callee, args) = match e.kind() {
-            NAME_REF => (e.clone(), Vec::new()),
-            CALL_EXPR => {
-                let callee = e.children().next().filter(|c| c.kind() == NAME_REF)?;
-                (
-                    callee,
-                    child(e, ARG_LIST).map(|a| exprs(&a)).unwrap_or_default(),
-                )
+    /// A loop variable with a Sub's name, found where `name` is looked up: a
+    /// module variable (only a loop can declare one, a `Dim` cannot) or a
+    /// loop local of the current Sub. Every use of the name in an
+    /// expression, bare, with arguments or as a statement, calls the Sub,
+    /// and assigning it is an error (recorded).
+    fn is_sub_named(&self, name: &str, found: &Option<(VarRef, Ty)>) -> bool {
+        let k = key(name);
+        self.subs.contains_key(&k)
+            && match found {
+                Some((VarRef::Global(_), _)) => true,
+                Some((VarRef::Local(_), _)) => self.sub_named_locals.contains(&k),
+                None => false,
             }
-            _ => return None,
-        };
-        let name = name_of(&callee);
-        let id = *self.subs.get(&key(&name))?;
-        if !self.is_sub_named_global(&name, &self.lookup_var(&name)) {
-            return None;
-        }
-        Some(self.sub_call(id, &args, range(e)))
     }
 
     /// A bare name, or the callee of `name(args)` when `args` is given.
@@ -1605,15 +1539,11 @@ impl Lowerer {
         let at = range(node);
         let name = name_of(node);
         let full = args.map_or(at, |_| range(&node.parent().unwrap()));
-        // A bare read calls the Sub rather than read a module variable of its
-        // name, in `Process_Globals` too (recorded); with arguments it is open.
+        // The name of a loop variable with a Sub's name means the Sub
+        // (recorded).
         let found = self.lookup_var(&name);
-        let sub_wins = args.is_none() && self.is_sub_named_global(&name, &found);
-        let found = if sub_wins {
-            None
-        } else {
-            self.checked_use(&name, at, found)
-        };
+        let sub = self.is_sub_named(&name, &found);
+        let found = found.filter(|_| !sub);
         if let Some((var, ty)) = found {
             let var_expr = Expr {
                 kind: ExprKind::Var(var),

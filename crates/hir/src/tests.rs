@@ -639,27 +639,15 @@ fn loops_in_process_globals() {
         "{:?}",
         app_start(&module).body
     );
-    // A bare read calls the Sub in `Process_Globals` too (recorded), and
-    // assigning it in another Sub is an error (recorded).
-    let module = ok(&sub(
-        "    For Bump = 1 To 2\n        Log(Bump)\n    Next",
-        "",
-    ));
-    let pg = module.sub(module.process_globals.unwrap());
-    assert!(format!("{:?}", pg.body).contains("Call"), "{:?}", pg.body);
-    let diags = errors(&sub("    For Bump = 1 To 2\n    Next", "    Bump = 3"));
-    assert_eq!(
-        diags,
-        ["cannot assign to `Bump`: it is a Sub, not a variable"]
-    );
-    // Every other use is open: reported once, also in `Process_Globals`,
-    // where only the loop declaring it may name it.
+    // Every use of the name in an expression calls the Sub, in
+    // `Process_Globals` too, and a loop over it is accepted anywhere: in
+    // another Sub, again in `Process_Globals`, or as a Sub's own loop
+    // variable (recorded).
     for (body, app) in [
-        ("    For Bump = 1 To 2\n    Next", "    Log(Bump(1))"),
-        ("    For Bump = 1 To 2\n        Bump = 4\n    Next", ""),
+        ("    For Bump = 1 To 2\n        Log(Bump)\n    Next", ""),
         (
             "    For Bump = 1 To 2\n    Next",
-            "    For Bump = 5 To 6\n    Next",
+            "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
         ),
         (
             "    For Bump = 1 To 2\n    Next",
@@ -669,12 +657,40 @@ fn loops_in_process_globals() {
             "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n    Next",
             "",
         ),
+        ("", "    For Bump = 1 To 2\n        Log(Bump)\n    Next"),
+        (
+            "",
+            "    For Bump As Int = 1 To 2\n        Log(Bump)\n    Next",
+        ),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
+        ),
+    ] {
+        let module = ok(&sub(body, app));
+        let all = format!("{:?}", module.subs);
+        assert!(
+            !body.contains("Log")
+                || format!("{:?}", module.sub(module.process_globals.unwrap()).body)
+                    .contains("Call"),
+            "{body}"
+        );
+        assert!(
+            !app.contains("Log") || format!("{:?}", app_start(&module).body).contains("Call"),
+            "{app}: {all}"
+        );
+    }
+    // Assigning it is an error, wherever it is (recorded).
+    for (body, app) in [
+        ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
+        ("    For Bump = 1 To 2\n        Bump = 4\n    Next", ""),
+        ("", "    For Bump = 1 To 2\n        Bump = 4\n    Next"),
     ] {
         let diags = errors(&sub(body, app));
-        assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
-        assert!(
-            has(&diags, "`Bump` is both a Sub and a module variable"),
-            "{app}: {diags:?}"
+        assert_eq!(
+            diags,
+            ["cannot assign to `Bump`: it is a Sub, not a variable"],
+            "{body}{app}"
         );
     }
     // A `Dim` cannot have a Sub's name, module or local (recorded).
@@ -693,27 +709,6 @@ fn loops_in_process_globals() {
             "{body}"
         );
     }
-    // A loop variable of a Sub with a Sub's name is open: refused once.
-    for app in [
-        "    For Bump = 1 To 2\n        Log(Bump)\n    Next",
-        "    For Bump As Int = 1 To 2\n    Next",
-        "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
-    ] {
-        let diags = errors(&sub("", app));
-        assert_eq!(
-            diags,
-            [
-                "`Bump` is a Sub: whether a loop variable may have its name is not known yet, so use another name"
-            ],
-            "{app}"
-        );
-    }
-    // A refused loop's bounds are still checked.
-    let diags = errors(&sub(
-        "    For Bump = 1 To 2\n    Next",
-        "    For Bump = Missing To 3\n    Next",
-    ));
-    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
     // A `Type`, `Bit` or a keyword is refused once, and the loop's body is
     // still checked, without reporting the variable again.
     for (body, what) in [

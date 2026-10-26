@@ -399,7 +399,16 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   counter may have a Sub's name, and calling the Sub still works
   (**recorded**: `process_globals_loop_named_like_sub`), and so does reading
   the name in another Sub, which returns the Sub's value (**recorded**:
-  `process_globals_loop_named_like_sub_read`); a `Dim` with a Sub's name is
+  `process_globals_loop_named_like_sub_read`). In fact every use of such a
+  name in an expression calls the Sub, inside its own loop, with arguments,
+  or for a loop variable of any Sub; a loop over it is accepted anywhere,
+  and assigning it is refused ("Syntax error", or "'next' expected" inside
+  its loop) (**recorded**: `process_globals_loop_named_like_sub_read_inside`,
+  `process_globals_loop_named_like_sub_args`,
+  `process_globals_loop_named_like_sub_loop_elsewhere`,
+  `local_counter_named_like_sub`, `local_for_each_named_like_sub`,
+  `process_globals_loop_named_like_sub_assign`,
+  `process_globals_loop_named_like_sub_assign_inside`); a `Dim` with a Sub's name is
   refused: "Variable name cannot be the same as a sub name" (**recorded**:
   `module_variable_named_like_sub`). With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
