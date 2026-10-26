@@ -558,8 +558,12 @@ fn loops_in_process_globals() {
     let module = ok(&globals(each, "    Log(n)\n    For n = 1 To 2\n    Next"));
     assert_eq!(global(&module, "n"), Some(Ty::Int));
 
-    // A counter or a `For Each` over a declared name is that variable.
+    // A counter over a declared name is that variable; declarations of one
+    // name and type are one variable, in any order (recorded).
     for (body, ty) in [
+        (format!("    For n = 1 To 2\n    Next\n{each}"), Ty::Int),
+        (format!("{each}\n    For n = 1 To 2\n    Next"), Ty::Int),
+        (format!("{each}\n{each}"), Ty::Int),
         (format!("    Dim n As Int\n{each}"), Ty::Int),
         (format!("{each}\n    Dim n As Int"), Ty::Int),
         (
@@ -583,18 +587,6 @@ fn loops_in_process_globals() {
             "    Dim n As String\n    For Each n As Int In Array As Int(1)\n    Next",
             "`n` is already declared as String in `Process_Globals`: this loop cannot declare it again as Int",
         ),
-        (
-            "    For n = 1 To 2\n    Next\n    For Each n As Int In Array As Int(1)\n    Next",
-            "`n` is already an undeclared `For` counter in `Process_Globals`: whether this `For Each` may declare it again is not known yet, so declare it with `Dim`",
-        ),
-        (
-            "    For Each n As Int In Array As Int(1)\n    Next\n    For n = 1 To 2\n        Log(n)\n    Next",
-            "`n` is already a `For Each` variable in `Process_Globals`: whether this `For` counter is that variable is not known yet, so declare it with `Dim`",
-        ),
-        (
-            "    For Each n As Int In Array As Int(1)\n    Next\n    For Each n As Int In Array As Int(2)\n    Next",
-            "`n` is already the variable of another `For Each` in `Process_Globals`: whether this one may declare it again is not known yet, so declare it with `Dim`",
-        ),
         // In source order: a later `Dim` must agree with the loop before it.
         (
             "    For n = 1 To 3\n    Next\n    Dim n As Long",
@@ -612,7 +604,7 @@ fn loops_in_process_globals() {
         ),
         // A loop's own `As` error, after its name was refused.
         (
-            "    For n = 1 To 2\n    Next\n    For Each n As Int In Array As Int(1)\n    Next\n    For n As Int = 1 To 3\n    Next",
+            "    For n = 1 To 2\n    Next\n    For Each n As String In Array As String(\"a\")\n    Next\n    For n As Int = 1 To 3\n    Next",
             "",
         ),
     ] {
@@ -627,23 +619,29 @@ fn loops_in_process_globals() {
         }
     }
 
-    // A Sub's name may be a loop variable there (recorded); a statement
-    // still calls the Sub, any other use is open.
+    // A Sub's name may be a loop variable there (recorded); elsewhere a
+    // statement or a read calls the Sub (recorded), any other use is open.
     let sub = |body: &str, app: &str| {
         format!(
             "{}Sub Bump As Int\n    Return 9\nEnd Sub\n",
             globals(body, app)
         )
     };
-    ok(&sub(
+    let module = ok(&sub(
         "    For Bump = 1 To 2\n    Next",
-        "    Bump\n    Bump()",
+        "    Bump\n    Bump()\n    Log(Bump)",
     ));
+    assert!(
+        format!("{:?}", app_start(&module).body)
+            .matches("Call")
+            .count()
+            >= 3,
+        "{:?}",
+        app_start(&module).body
+    );
     // Every other use is reported once, also in `Process_Globals`, where
     // only the loop declaring it may name it.
     for (body, app) in [
-        ("    For Bump = 1 To 2\n    Next", "    Log(Bump)"),
-        ("    For Bump = 1 To 2\n    Next", "    Log(Bump(1))"),
         ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
         (
             "    For Bump = 1 To 2\n    Next",
@@ -658,7 +656,6 @@ fn loops_in_process_globals() {
             "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n    Next",
             "",
         ),
-        ("    Dim Bump As Int = 4", "    Log(Bump)\n    Bump"),
     ] {
         let diags = errors(&sub(body, app));
         assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
@@ -667,6 +664,17 @@ fn loops_in_process_globals() {
             "{app}: {diags:?}"
         );
     }
+    // A `Dim` cannot have a Sub's name (recorded), and a local one is open.
+    let diags = errors(&sub("    Dim Bump As Int = 4", ""));
+    assert_eq!(
+        diags,
+        ["a variable cannot have the name of a Sub: `Bump` is a Sub"]
+    );
+    let diags = errors(&sub("", "    Dim Bump As Int"));
+    assert!(
+        has(&diags, "`Bump` is a Sub: whether a local may have its name"),
+        "{diags:?}"
+    );
     // A refused loop's bounds are still checked.
     let diags = errors(&sub(
         "    For Bump = 1 To 2\n    Next",
@@ -774,28 +782,40 @@ fn locals_named_like_module_variables() {
             "`Count` is a module variable of type Int: a local cannot declare it again as String",
         ),
         (
-            "    Dim count As Int",
-            "`count` is also a module variable (Int): whether this declares a new local or means the module variable is not known yet, so use another name",
-        ),
-        (
             "    For Each Count As Int In Array As Int(1)\n    Next",
-            "`Count` is also a module variable (Int)",
+            "`Count` is also a module variable (Int): whether this loop declares a new local",
         ),
     ] {
         let diags = errors(&program(app));
         assert_eq!(diags.len(), 1, "{app}: {diags:?}");
         assert!(has(&diags, message), "{app}: {diags:?}");
     }
-    // Its undeclared counter is the module variable, as before.
-    ok(&program("    For Count = 1 To 2\n    Next"));
-    // A parameter may take its name, and hides it in its Sub, as the
-    // generated Java's parameter hides the field (open; chosen to accept).
-    let module = ok(&format!(
-        "{}Sub Show (Count As String)\n    Log(Count.Length)\nEnd Sub\n",
+    // A `Dim` of its name and type is the module variable (recorded), and
+    // so is its undeclared counter.
+    for app in [
+        "    Dim count As Int\n    count = 7",
+        "    For Count = 1 To 2\n    Next",
+    ] {
+        let module = ok(&program(app));
+        assert!(
+            app_start(&module)
+                .locals
+                .iter()
+                .all(|v| v.name.to_lowercase() != "count"),
+            "{app}"
+        );
+    }
+    // A parameter cannot have its name (recorded).
+    let diags = errors(&format!(
+        "{}Sub Show (Count As String)\nEnd Sub\n",
         program("")
     ));
-    let show = module.subs.iter().find(|s| s.name == "Show").unwrap();
-    assert_eq!(show.locals[0].ty, Ty::String);
+    assert_eq!(
+        diags,
+        [
+            "the parameter `Count` has the name of a module variable: a parameter cannot hide a module variable"
+        ]
+    );
 }
 
 #[test]
