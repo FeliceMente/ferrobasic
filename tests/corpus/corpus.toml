@@ -1,0 +1,137 @@
+# The real-world corpus: open source B4X-compatible projects, referenced
+# where they were published, never copied into this repository (see
+# README.md). `cargo run -p ferro-corpus --bin ferro-corpus-fetch` downloads
+# the files listed here into target/corpus and checks their SHA-256.
+#
+# [[project]]
+# - name:        the project's folder in target/corpus.
+# - source:      where the project was published, at the commit referenced.
+# - repository:  the repository it comes from.
+# - commit:      the commit referenced.
+# - path:        the project's folder in the repository ("" for its root).
+# - license:     the licence the repository publishes it under, and
+#   license_url: its text, at the same commit.
+# - product, app_type: from the project file.
+# [[project.file]], one per file fetched: its name in `path`, and its SHA-256.
+
+[[project]]
+name = "juros"
+source = "https://github.com/jacknpoe/todos_juros/blob/faab25b73070d2d11c4c9b7ca9332e9b037feba0/Juros.b4j"
+repository = "https://github.com/jacknpoe/todos_juros"
+commit = "faab25b73070d2d11c4c9b7ca9332e9b037feba0"
+path = ""
+license = "GPL-3.0"
+license_url = "https://github.com/jacknpoe/todos_juros/blob/faab25b73070d2d11c4c9b7ca9332e9b037feba0/LICENSE"
+product = "b4j"
+app_type = "StandardJava"
+
+[[project.file]]
+name = "Juros.b4j"
+sha256 = "6965b1e5642c9adb285738b456bbfbc0c0a6162162f84e67105b933e2e954dda"
+
+[[project]]
+name = "helloworld"
+source = "https://github.com/rwbl/b4j-howtos/blob/9c2ea987e2c0ffd33327e870f49204ae0db52d5b/helloworld.b4j"
+repository = "https://github.com/rwbl/b4j-howtos"
+commit = "9c2ea987e2c0ffd33327e870f49204ae0db52d5b"
+path = ""
+license = "GPL-3.0"
+license_url = "https://github.com/rwbl/b4j-howtos/blob/9c2ea987e2c0ffd33327e870f49204ae0db52d5b/LICENSE"
+product = "b4j"
+app_type = "StandardJava"
+
+[[project.file]]
+name = "helloworld.b4j"
+sha256 = "48e6dace4b5adaa53e7f9325c988c98c8678ec430f7fcc4f4e1556a6c1b9149b"
+
+[[project]]
+name = "console-read-input"
+source = "https://github.com/pyhoon/console-read-input-b4j/tree/a63fee52a100e922d8808d895df85dc54c90480c"
+repository = "https://github.com/pyhoon/console-read-input-b4j"
+commit = "a63fee52a100e922d8808d895df85dc54c90480c"
+path = ""
+license = "MIT"
+license_url = "https://github.com/pyhoon/console-read-input-b4j/blob/a63fee52a100e922d8808d895df85dc54c90480c/LICENSE"
+product = "b4j"
+app_type = "StandardJava"
+
+[[project.file]]
+name = "ConsoleReadInput.b4j"
+sha256 = "1267eeb12a54e9cd927a0eff3635420093777bb0644262c18b267425838d37c9"
+
+[[project]]
+name = "vcardsplitter"
+source = "https://github.com/axtens/vcardsplitter/tree/f75bc56c620e59ba9c69469f3cf16dbbf103b52b"
+repository = "https://github.com/axtens/vcardsplitter"
+commit = "f75bc56c620e59ba9c69469f3cf16dbbf103b52b"
+path = ""
+license = "MIT"
+license_url = "https://github.com/axtens/vcardsplitter/blob/f75bc56c620e59ba9c69469f3cf16dbbf103b52b/LICENSE"
+product = "b4j"
+app_type = "StandardJava"
+
+[[project.file]]
+name = "VCardSplitter.b4j"
+sha256 = "b90a6b7996ff676a4d83b1bed30df8a710d007954e6d579258670622acc51e46"
+
+[[project.file]]
+name = "VCardSplitter.b4j.meta"
+sha256 = "a85a82b8519c88a7856dc925c6025f7033ea32e9980f3b29a809e7e12e2c2d5c"
+
+[[project.file]]
+name = "Tools.bas"
+sha256 = "630c2a58c4b295ae1b43eba2ff537f63fc91797042d69c365b6c4138298a3ed5"
+
+[[project]]
+name = "mteeval-buildlib"
+source = "https://github.com/macthomasengineering/MteEVAL-b4x-library/tree/4a2a7cebc6771b0465761df9473e70b8121be735/Java"
+repository = "https://github.com/macthomasengineering/MteEVAL-b4x-library"
+commit = "4a2a7cebc6771b0465761df9473e70b8121be735"
+path = "Java"
+license = "BSD-3-Clause"
+license_url = "https://github.com/macthomasengineering/MteEVAL-b4x-library/blob/4a2a7cebc6771b0465761df9473e70b8121be735/Java/LICENSE.txt"
+product = "b4j"
+app_type = "StandardJava"
+
+[[project.file]]
+name = "MteBuildLib.b4j"
+sha256 = "d23063bc57255a904f545f77e836bc4f4c15220899e2dbe57ae7e7cf10f5d6cf"
+
+[[project.file]]
+name = "Codeblock.bas"
+sha256 = "a118d91a4d267b226eac3a11a9496f843b8054046050557502ed2d46f56a63a0"
+
+[[project.file]]
+name = "Codegen.bas"
+sha256 = "9ac9accd8eccc926c9fb5c75084ccf89d5d42a483a03f8a1b5a92baf393ce5c4"
+
+[[project.file]]
+name = "PCODE.bas"
+sha256 = "fef99b51a3eb6be3cbb8c9adb6a9a288e3259562720b96c36611d90d2347da6d"
+
+[[project.file]]
+name = "Run.bas"
+sha256 = "1c3287b5caa0ce0e5d029a2fcebe22e8a7dd54a4ff1ccfdab1c45e038cad47bc"
+
+[[project]]
+name = "jsonwebtoken"
+source = "https://github.com/pyhoon/jsonwebtoken-b4j/tree/6af3505402e6d25897874f2e39fa8de396661dad/source"
+repository = "https://github.com/pyhoon/jsonwebtoken-b4j"
+commit = "6af3505402e6d25897874f2e39fa8de396661dad"
+path = "source"
+license = "MIT"
+license_url = "https://github.com/pyhoon/jsonwebtoken-b4j/blob/6af3505402e6d25897874f2e39fa8de396661dad/LICENSE"
+product = "b4j"
+app_type = "StandardJava"
+
+[[project.file]]
+name = "JsonWebToken.b4j"
+sha256 = "50f2a61e898bfb3348bbd184b7c895a329008bebcf5d15dec5947af374ce6d6d"
+
+[[project.file]]
+name = "JsonWebToken.b4j.meta"
+sha256 = "4426c957c6b8c4ce0e016d9e9ebfab94286d7e357f13bcf2640a0e78c3ca455e"
+
+[[project.file]]
+name = "JSONWebToken.bas"
+sha256 = "0b0f93eaad003eb708c757a9da2968b8d974efabc0ec455aa5129bd1bcc997af"
