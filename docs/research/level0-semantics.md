@@ -401,7 +401,10 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   the name in another Sub, which returns the Sub's value (**recorded**:
   `process_globals_loop_named_like_sub_read`). In fact every use of such a
   name in an expression calls the Sub, inside its own loop, with arguments,
-  or for an undeclared counter or a `For Each v As T` of any Sub; a `For`
+  or for an undeclared counter or a `For Each v As T` of any Sub, all
+  recorded with the loop variable of the Sub's return type (only the
+  statement with another: *open* otherwise,
+  `local_for_each_named_like_sub_member`); a `For`
   in another Sub may loop over
   such a counter, and assigning it is refused ("Syntax error", or "'next' expected" inside
   its loop) (**recorded**: `process_globals_loop_named_like_sub_read_inside`,
