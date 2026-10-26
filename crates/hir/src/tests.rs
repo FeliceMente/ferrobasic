@@ -693,6 +693,21 @@ fn loops_in_process_globals() {
             "{body}"
         );
     }
+    // A loop variable of a Sub with a Sub's name is open: refused once.
+    for app in [
+        "    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        "    For Bump As Int = 1 To 2\n    Next",
+        "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
+    ] {
+        let diags = errors(&sub("", app));
+        assert_eq!(
+            diags,
+            [
+                "`Bump` is a Sub: whether a loop variable may have its name is not known yet, so use another name"
+            ],
+            "{app}"
+        );
+    }
     // A refused loop's bounds are still checked.
     let diags = errors(&sub(
         "    For Bump = 1 To 2\n    Next",

@@ -131,7 +131,8 @@ End Sub
   not match previous one", recorded). An undeclared `For` counter of that
   name is the module variable; a `For i As T` of that name in a Sub is
   *(open)*, so a compile error. A local `Dim` cannot have a Sub's name
-  (B4J: "Variable name cannot be the same as a sub name", recorded).
+  (B4J: "Variable name cannot be the same as a sub name", recorded); a loop
+  variable of a Sub with a Sub's name is *(open)*, so a compile error.
 - A parameter cannot have a module variable's name (B4J: "Parameter name
   cannot hide global variable name", recorded).
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
