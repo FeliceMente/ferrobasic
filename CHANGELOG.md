@@ -7,6 +7,11 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- A real literal may start with its decimal point (`.08`), as in
+  `MteBuildLib.b4j` of the real-world corpus, which B4J builds. Before, it
+  was a syntax error. After an operand the dot is still a member access's
+  (`a.5` is an error about the member name). Its recording is pending
+  (tests `real_leading_point`, `real_leading_point_exponent`).
 - `ferro-project` reads a whole project: its project file, its `.b4j.meta`
   file and the modules it names, local or `|relative|`, also when a
   module's file is named in another letter case than in the project file,

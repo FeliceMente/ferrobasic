@@ -75,6 +75,7 @@ The "not yet" rows come from the
 | `IIf(condition, a, b)` | ✅ | test `iif_branches` |
 | `Is` (`If v Is Button`) | ❌ | not assigned to a level yet; a precise diagnostic |
 | Number literals: decimal, `0x` hexadecimal, exponent (`1e3`) | ✅ | test `number_parsing` |
+| Real literal with a leading point (`.08`, `.5e2`) | ✅ | provisionally `Double` *(open)*: tests `real_leading_point`, `real_leading_point_exponent`, [open-questions.md](open-questions.md) |
 | Line continuation ` _`, `:` between statements | ✅ | a comment may follow ` _`, with or without a space before it (tests `continuation_comment`, `continuation_comment_tight`); test `colon_separator` |
 
 ## Statements

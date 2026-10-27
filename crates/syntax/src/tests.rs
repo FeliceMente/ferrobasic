@@ -210,6 +210,24 @@ fn assigning_a_comparison() {
 }
 
 #[test]
+fn reals_with_a_leading_point() {
+    parse_ok(&in_sub(
+        "Log(.08)\nx = Array(320000,.08, .05)\ny = -.25 + .5e2",
+    ));
+    // After an operand the dot is a member access's, and a digit is not a
+    // member name.
+    for text in ["Log(a.5)", "x = f(1).5", "x = 1.2.3"] {
+        let errors = parse_errors(&in_sub(text));
+        assert!(
+            errors
+                .iter()
+                .any(|e| e == "expected a member name after `.`"),
+            "{text}: {errors:?}"
+        );
+    }
+}
+
+#[test]
 fn rejected_vb_forms() {
     let errors = parse_errors(&in_sub(
         "Dim n As Int = 0\nDo\n  n = n + 1\nLoop While n < 3",
