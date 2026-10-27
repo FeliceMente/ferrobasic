@@ -270,6 +270,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       a typed `For Each` of `Process_Globals`, whose variable is a module
       variable (`level0/process_globals_typed_for_each_named_like_sub_nested`).
       FerroBASIC refuses them as open.
+- [ ] A `For` over that name after a `For Each v As T` of another number
+      type than `Int` declared it, before it, inside it or after it, in a
+      Sub or from another Sub: does it count as that type? FerroBASIC
+      refuses it as open
+      (`level0/local_counter_after_double_for_each_named_like_sub`).
 - [x] A `For Each v As T` in another Sub over a loop variable of
       `Process_Globals` is a `For Each` over a module variable of type
       `T`, accepted as recorded below.

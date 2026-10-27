@@ -459,7 +459,9 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   (`local_typed_for_each_other_type_after_counter_named_like_sub`) or
   inside a `For` over it (`local_typed_for_each_in_counter_named_like_sub`),
   or nested in `Process_Globals`
-  (`process_globals_typed_for_each_named_like_sub_nested`);
+  (`process_globals_typed_for_each_named_like_sub_nested`); a `For` over
+  a loop variable that a `For Each v As T` of another number type than
+  `Int` declared (`local_counter_after_double_for_each_named_like_sub`);
   and a `Dim` of
   `Class_Globals` with a Sub's name.
   With the same type, a counter and a

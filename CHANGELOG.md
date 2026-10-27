@@ -27,7 +27,8 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   pending tests): one without `As` as the first loop over the name or
   nested in a loop of `Process_Globals`, and one with `As` of another
   type after a counter, inside a `For` over the name, or nested in
-  `Process_Globals`.
+  `Process_Globals`, and a `For` over one that a `For Each` of another
+  number type declared.
 - Recording runs 12 and 13: the leading-point reals are recorded as
   FerroBASIC runs them, and are `Double`s.
 - A real literal may start with its decimal point (`.08`), as in
