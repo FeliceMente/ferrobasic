@@ -247,10 +247,6 @@ fn later_constructs_get_one_precise_error() {
         assert_eq!(d, [message], "{text}");
     };
     only(
-        "Sub Process_Globals\n\tPrivate Const Size As Int = 10\nEnd Sub\nSub AppStart (Args() As String)\n\tLog(Size)\nEnd Sub\n",
-        "`Const` declarations are not supported yet: planned for Level 0",
-    );
-    only(
         &program("Dim o As Object = 1\nIf o Is Int Then Log(1)"),
         "type tests (`Is`) are not supported yet",
     );
@@ -262,6 +258,111 @@ fn later_constructs_get_one_precise_error() {
         "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n#If Java\npublic static void x() { }\n#End If\n",
         "inline Java (`#If Java`) is not supported at Level 0: it needs Java interop (Level 3)",
     );
+}
+
+/// `Const` declares a variable that cannot be assigned (#33).
+#[test]
+fn constants() {
+    let module = |globals: &str, body: &str| {
+        format!(
+            "Sub Process_Globals\n    Type Point (X As Int)\n{globals}\nEnd Sub\nSub AppStart (Args() As String)\n{body}\nEnd Sub\nSub NewPoint As Point\n    Dim q As Point\n    q.Initialize\n    Return q\nEnd Sub\n"
+        )
+    };
+    // Every form and type, with any value, in `Process_Globals` or a Sub;
+    // the contents of a `List` or `Map` may change (recorded).
+    for (globals, body) in [
+        ("    Private Const Size As Int = 10", "    Log(Size)"),
+        ("    Public const Size = 3 As Int", "    Log(Size)"),
+        (
+            "    Dim Const First = 1, Second = 2 As Int",
+            "    Log(First + Second)",
+        ),
+        ("    Private Const Size = 10", "    Log(GetType(Size))"),
+        ("    Private Const Pick As Int = Rnd(1, 2)", "    Log(Pick)"),
+        (
+            "    Private Const Names As List = Array(\"a\")",
+            "    Names.Set(0, \"z\")",
+        ),
+        (
+            "    Private Const Push As Int = 1",
+            "    Select 1\n        Case Push\n            Log(1)\n    End Select",
+        ),
+        ("", "    Dim Const Size As Int = 5\n    Log(Size * 2)"),
+    ] {
+        ok(&module(globals, body));
+    }
+    // Refused (B4J: "Cannot modify Const variable.", "Const variable must
+    // be set in the declaration line.", recorded).
+    for (globals, body, message) in [
+        (
+            "    Private Const Size As Int = 10",
+            "    Size = 11",
+            "`Size` is a `Const`: it cannot be assigned",
+        ),
+        (
+            "",
+            "    Dim Const Size As Int = 5\n    Size = 6",
+            "`Size` is a `Const`: it cannot be assigned",
+        ),
+        (
+            "    Private Const Days() As String = Array As String(\"Mon\")",
+            "    Days(0) = \"Sun\"",
+            "`Days` is a `Const`: its items cannot be assigned",
+        ),
+        (
+            "    Private Const Size As Int",
+            "",
+            "`Size` is a `Const`: give it its value where it is declared",
+        ),
+        (
+            "    Dim Const First = 1, Second As Int",
+            "",
+            "`Second` is a `Const`: give it its value where it is declared",
+        ),
+    ] {
+        assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
+    }
+    // Not recorded: a loop over it, another declaration of its name, a
+    // `Const` of a name declared before, a field of a `Const` record.
+    let open_loop = "`Size` is a `Const`: whether a loop may loop over it is not known yet, so \
+                     use another name";
+    let open_again = "`Size` is a `Const`: whether another declaration may declare it again is \
+                      not known yet, so use another name";
+    for (globals, body, message) in [
+        (
+            "    Private Const Size As Int = 10",
+            "    For Size = 1 To 2\n    Next",
+            open_loop,
+        ),
+        (
+            "    Private Const Size As Int = 10",
+            "    For Each Size As Int In Array As Int(1)\n    Next",
+            open_loop,
+        ),
+        (
+            "    Private Const Size As Int = 10\n    Private Size As Int = 3",
+            "",
+            open_again,
+        ),
+        (
+            "    Private Const Size As Int = 10",
+            "    Dim Size As Int = 4",
+            open_again,
+        ),
+        (
+            "    Private Size As Int = 3\n    Private Const Size As Int = 10",
+            "",
+            "`Size` is already declared: whether a `Const` may declare it again is not known \
+             yet, so use another name",
+        ),
+        (
+            "    Private Const P As Point = NewPoint",
+            "    P.X = 4",
+            "`P` is a `Const`: whether this part of it may be assigned is not known yet",
+        ),
+    ] {
+        assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
+    }
     // A variable named `Const` is still a variable.
     ok(&program("Dim Const As Int = 1\nLog(Const)"));
 }

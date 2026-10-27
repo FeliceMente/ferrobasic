@@ -512,10 +512,11 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   ([forum](https://www.b4x.com/android/forum/threads/can-you-use-a-variable-without-declaring.27855/)).
   **open**; current compilers may reject them.
 
-### Constants (docs, forum, open)
+### Constants (docs, forum, recorded)
 
-Not implemented yet ([#33](https://github.com/FeliceMente/ferrobasic/issues/33),
-see [language-support.md](../language-support.md)).
+Implemented as recorded with B4J 10.70 (run 12,
+[#33](https://github.com/FeliceMente/ferrobasic/issues/33)); the rules are in
+[level0.md](../spec/level0.md#declarations-and-scope).
 
 - `Private Const Size As Int = 10` and `Public Const ItemNumber As Int =
   100` declare constants, "which cannot be changed anywhere in the code"
@@ -539,9 +540,19 @@ see [language-support.md](../language-support.md)).
   `As`), also `Private const` in lower case, of types `Int`, `String` and
   `Boolean`, in `Process_Globals` and `Class_Globals` (`mteeval-buildlib`
   in the real-world corpus, about 100 constants).
-- **open**: everything else, one pending test per question so that one
-  refusal cannot hide another answer; the questions and their tests are
-  listed in [open-questions.md](../open-questions.md).
+- **recorded**: every form above, of any type (`List`, `Map` and arrays
+  included), with any expression as its value, in `Process_Globals` and in
+  a Sub (`const_*`). Without `As` it is a `String` (`const_no_as`). It is
+  set in declaration order, not inlined: a variable declared before it
+  and initialised from it reads `0` (`const_used_before`). B4J refuses
+  assigning one or an item of an array constant ("Cannot modify Const
+  variable.": `const_assign`, `const_array_mutate`) and one without a
+  value ("Const variable must be set in the declaration line.":
+  `const_no_value`); `List.Set` and `Map.Put` on one are accepted
+  (`const_list_mutate`, `const_map_mutate`).
+- **open**: loops over a constant, other declarations of its name, and
+  assigning a field of a constant record, each with a pending test
+  ([open-questions.md](../open-questions.md)).
 
 ### Keywords used as names (generated)
 
