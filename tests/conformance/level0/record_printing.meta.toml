@@ -1,0 +1,17 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "recorded"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["record-tostring"]
+
+# The recording settled an open question (docs/open-questions.md): jCore's
+# BA.TypeToString prints records, with a line break after every third field.
+
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+machine_locale_output = "same"
+date = "2026-10-25"

@@ -8,6 +8,10 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
+[lib]
+name = "ferro_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ferro"
 path = "src/main.rs"
@@ -35,3 +39,4 @@ same-file = "1.0.6"
 
 [dev-dependencies]
 ferro-corpus = { path = "../corpus" }
+ferro-difftest = { path = "../difftest" }

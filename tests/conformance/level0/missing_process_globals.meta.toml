@@ -1,0 +1,18 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "negative"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["process-globals"]
+
+# B4J 10.70 refused four tests without it on 2026-10-25 ("Error parsing
+# program. Error description: Sub process_globals is missing."); this test
+# is that case alone.
+
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+rejected = true   # the original toolchain refused to build it
+date = "2026-10-25"

@@ -35,7 +35,7 @@ The "not yet" rows come from the
 | --- | --- | --- |
 | A single code module (`.bas`) | ✅ | the main module of a B4J non-UI app; [cli.md](spec/cli.md#inputs) |
 | A B4J console project (`.b4j`), or the folder holding it | 🟡 | only a console app with the `jcore` library and no other modules or files; each line that stands in the way is an error ([project-files.md](spec/project-files.md)). `ferro bundle` writes its program into the project's folder ([cli.md](spec/cli.md#commands)). |
-| `Sub Process_Globals`, `Sub AppStart (Args() As String)` | ✅ | [level0.md](spec/level0.md#program-structure); tests `process_globals_for`, `exit_code` |
+| `Sub Process_Globals`, `Sub AppStart (Args() As String)` | ✅ | both required, as in B4J; [level0.md](spec/level0.md#program-structure); tests `process_globals_for`, `exit_code`, `missing_process_globals` |
 | Several modules, calling another module's Subs | ❌ | Level 1. Today a call such as `Module2.F` is reported as an undeclared name. |
 | Class modules (`Class_Globals`, `Initialize`, `Me`) | ❌ | Level 1 |
 | UI apps (`AppType=JavaFX`, `Form`, layouts), B4XPages | ❌ | Level 4 |
@@ -49,7 +49,7 @@ The "not yet" rows come from the
 | `Boolean`, `Byte`, `Short`, `Int`, `Long`, `Float`, `Double`, `Char` | ✅ | [level0.md](spec/level0.md#types); tests `chars_and_ints`, `number_parsing` |
 | `String`, `Object`, `Null` | ✅ | |
 | Arrays of any rank: `Dim a(10) As Int`, `Dim m(3, 4) As Double` | ⚠️ | memory use differs (D2); tests `array_row_order`, `deep_equals` |
-| `Type` records, also with array fields | ✅ | test `self_printing_record` |
+| `Type` records, also with array fields | ⚠️ | a record nested in Lists about 49 levels deep, or holding itself, prints differently (D6); tests `record_printing`, `self_printing_record` |
 | `List`, `Map`, `StringBuilder`, `Exception` | ✅ | see "Built-in objects" below |
 | Library types: `Timer`, `JavaObject`, `B4XView`… | ❌ | Level 1 (`Timer`) and Level 3 (libraries) |
 
@@ -57,10 +57,10 @@ The "not yet" rows come from the
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `Dim`, `Private`, `Public`, several names in one statement, initialisers | ✅ | [level0.md](spec/level0.md#declarations-and-scope); test `dim_scope` |
+| `Dim`, `Private`, `Public`, several names in one statement, initialisers | ✅ | [level0.md](spec/level0.md#declarations-and-scope); test `dim_scope`; a local `Dim` or `For Each` named like a module variable is that variable with the same type, and the `Dim` resets it (tests `local_dim_like_module_variable`, `local_dim_resets_module_variable`, `local_for_each_like_module_variable`), an error with another type (test `process_globals_counter_hidden`); a parameter cannot take its name (test `parameter_like_module_variable`); a `Dim` cannot take a Sub's name (tests `module_variable_named_like_sub`, `local_dim_named_like_sub`); a loop variable of a Sub may take a Sub's name, its uses meaning the Sub whatever its type, a `For` may loop over it again, and a `For Each v As T` may also have the name of a module variable of type `T` (tests `local_counter_named_like_sub`, `local_for_each_named_like_sub`, `local_counter_named_like_sub_loop_again`, `local_counter_after_for_each_named_like_sub`, `local_for_each_named_like_sub_over_module_variable`, `local_for_each_named_like_sub_member`), but not a typed `For v As T` (test `local_typed_counter_named_like_sub`), another `For Each` without `As` over a `For Each` one, nor a module variable of another type with that name (tests `local_for_each_named_like_sub_loop_again`, `local_for_each_named_like_sub_other_type`); refused *(open)*: another `For Each` with `As`, or without `As` over a `For` counter (tests `local_typed_for_each_named_like_sub_loop_again`, `local_for_each_after_counter_named_like_sub`) |
 | `Dim` with no `As` | 🟡 | provisionally `String` *(open)* |
-| `Const` (`Private Const Size As Int = 10`) | ❌ | not assigned to a level yet. Today it is a syntax error ("expected end of statement") rather than a precise diagnostic. |
-| Implicit `Int` counter of `For i = …` | ✅ | test `for_implicit_continue`; not in `Process_Globals` *(open)* |
+| `Const` (`Private Const Size As Int = 10`) | ❌ | not assigned to a level yet ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)); a precise diagnostic |
+| Implicit `Int` counter of `For i = …` | ✅ | test `for_implicit_continue`; in `Process_Globals` a module variable that other Subs share (tests `process_globals_for`, `process_globals_counter_visible`, `process_globals_counter_shared`); a `For Each v As T` variable there is one too (tests `process_globals_for_each`, `process_globals_for_each_visible`, `process_globals_for_each_shared`, `process_globals_for_each_declared`); declarations there are one variable with the same type, an error with another (tests `process_globals_counter_and_for_each`, `process_globals_counter_and_for_each_int`, `process_globals_for_each_then_counter`, `process_globals_for_each_twice`); a Sub's name may be one: every use in an expression calls the Sub, assigning it is an error, a `For` may loop over it again anywhere, over a number (tests `process_globals_loop_named_like_sub`, `process_globals_loop_named_like_sub_read`, `process_globals_loop_named_like_sub_read_inside`, `process_globals_loop_named_like_sub_args`, `process_globals_loop_named_like_sub_assign`, `process_globals_loop_named_like_sub_assign_inside`, `process_globals_loop_named_like_sub_loop_elsewhere`, `process_globals_loop_named_like_sub_loop_again`, `process_globals_for_each_named_like_sub_loop_elsewhere`, `process_globals_counter_after_for_each_named_like_sub`, `process_globals_string_loop_named_like_sub_counter_elsewhere`), another `For Each` without `As` in another Sub over a counter of that name may not (test `process_globals_loop_named_like_sub_for_each_elsewhere`); refused *(open)*: one in `Process_Globals`, or over a `For Each` variable (tests `process_globals_loop_named_like_sub_for_each_again`, `process_globals_for_each_named_like_sub_for_each_elsewhere`) |
 | `For Each x In …` with no `As` and `x` undeclared | ❌ | the type is *(open)*: today it is an error asking for `As <type>` |
 
 ## Operators and expressions
@@ -68,14 +68,14 @@ The "not yet" rows come from the
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `+ - * /`, `Mod`, unary `-` | ✅ | `/` always gives `Double`; [level0.md](spec/level0.md#operators); test `division_and_mod` |
-| `&` string concatenation | ✅ | its precedence is *(open)* |
+| `&` string concatenation | ✅ | an arithmetic operator or a negation next to it needs parentheses, as in B4J; tests `concat_*` |
 | `= <> < > <= >=` | ✅ | `<` and `>` on Strings, and String-number comparisons, are *(open)* |
-| `And`, `Or` (short-circuit), `Not(x)` | ✅ | their relative precedence is *(open)*; test `precedence_open` |
+| `And`, `Or` (short-circuit), `Not(x)` | ✅ | `And` binds tighter than `Or`; test `precedence_and_or` |
 | Inline cast `x.As(T)` | ✅ | [level0-builtins.md](spec/level0-builtins.md#keywords-and-constants) |
 | `IIf(condition, a, b)` | ✅ | test `iif_branches` |
-| `Is` (`If v Is Button`) | ❌ | not assigned to a level yet. Today it is a syntax error ("expected `Then`") rather than a precise diagnostic. |
+| `Is` (`If v Is Button`) | ❌ | not assigned to a level yet; a precise diagnostic |
 | Number literals: decimal, `0x` hexadecimal, exponent (`1e3`) | ✅ | test `number_parsing` |
-| Line continuation ` _`, `:` between statements | ✅ | a comment after ` _` is *(open)*; tests `continuation_comment`, `colon_separator` |
+| Line continuation ` _`, `:` between statements | ✅ | a comment may follow ` _`, with or without a space before it (tests `continuation_comment`, `continuation_comment_tight`); test `colon_separator` |
 
 ## Statements
 
@@ -86,9 +86,9 @@ The "not yet" rows come from the
 | `For … To … Step … Next`, `For Each … In … Next` | ✅ | over arrays, `List`, `Map.Keys`, `Map.Values` |
 | `Do While … Loop`, `Do Until … Loop` | ✅ | `Loop While`/`Loop Until` are syntax errors, as in B4X; test `do_loop_while` |
 | `Exit`, `Continue`, `Return` | ✅ | `Exit` also leaves a `Select` |
-| `Try … Catch … End Try`, `LastException` | ✅ | JDK messages are *(open)*; test `uncaught_error` |
+| `Try … Catch … End Try`, `LastException` | ✅ | a `Catch` sees the innermost cause; JDK messages are *(open)*; tests `uncaught_error`, `list_sort_type_errors` |
 | Statements nested more than 1000 deep | ⚠️ | a compile error (D1); test `deep_nesting` |
-| `Sleep`, `Wait For`, resumable subs | ❌ | Level 2. `Sleep` gets a precise diagnostic; `Wait For` is today a syntax error ("expected end of statement"). |
+| `Sleep`, `Wait For`, resumable subs | ❌ | Level 2 |
 | Events (`Sub Name_Event`), `Sender` | ❌ | Level 1 |
 
 ## Subs
@@ -118,11 +118,11 @@ The "not yet" rows come from the
 | --- | --- | --- |
 | `String` | 🟡 | all 18: `CharAt`, `CompareTo`, `Contains`, `EndsWith`, `EqualsIgnoreCase`, `GetBytes`, `IndexOf`, `IndexOf2`, `LastIndexOf`, `LastIndexOf2`, `Length`, `Replace`, `StartsWith`, `SubString`, `SubString2`, `ToLowerCase`, `ToUpperCase`, `Trim`. `GetBytes` only for `"UTF8"`/`"UTF-8"`. Test `string_members`. |
 | `StringBuilder` | ✅ | all 7: `Initialize`, `Append`, `Insert`, `Remove`, `Length`, `ToString`, `IsInitialized`. Test `string_builder`. |
-| `List` | ✅ | all 18: `Initialize`, `Initialize2`, `IsInitialized`, `Add`, `AddAll`, `AddAllAt`, `InsertAt`, `Get`, `Set`, `RemoveAt`, `Clear`, `Size`, `IndexOf`, `SubList`, `Sort`, `SortCaseInsensitive`, `SortType`, `SortTypeCaseInsensitive`. Changes through a stale `SubList` raise the wrong exception ([#21](https://github.com/FeliceMente/ferrobasic/issues/21)). Tests `list_members`, `list_add_all_empty`, `list_from_2d_array`. |
+| `List` | ⚠️ | all 18: `Initialize`, `Initialize2`, `IsInitialized`, `Add`, `AddAll`, `AddAllAt`, `InsertAt`, `Get`, `Set`, `RemoveAt`, `Clear`, `Size`, `IndexOf`, `SubList`, `Sort`, `SortCaseInsensitive`, `SortType`, `SortTypeCaseInsensitive`. `SortType` on a list with several different problems can name another cause (D4), a sort that raises leaves the list as it was, not partly sorted (D5), and a list of plain values sorted by a field their JDK class declares raises `NoSuchFieldException`, where B4J sorts by a public one or raises `InaccessibleObjectException` for a private one (D7). Tests `list_members`, `list_add_all_empty`, `list_from_2d_array`, `list_stale_sublist`, `list_sort_type_errors`, `list_sort_type_class_fields`, `list_sort_type_initialized`, `sort_type_order_d4`, `sort_partial_d5`. |
 | `Map` | ✅ | all 13: `Initialize`, `IsInitialized`, `Put`, `Get`, `GetDefault`, `Remove`, `ContainsKey`, `Clear`, `Size`, `Keys`, `Values`, `GetKeyAt`, `GetValueAt`. Tests `map_members`, `map_order`, `map_get_key_at`. |
 | Arrays | ✅ | `Length` |
 | `Type` records | ✅ | `Initialize`, `IsInitialized`, fields |
-| `Exception` (`LastException`) | ✅ | `Message`, `IsInitialized` |
+| `Exception` (`LastException`) | ✅ | `Message`, `IsInitialized`; the innermost cause of what was caught (test `list_sort_type_errors`) |
 | `Bit` | 🟡 | 11 of the 13 in the reference: `And`, `Or`, `Xor`, `Not`, `ShiftLeft`, `ShiftRight`, `UnsignedShiftRight`, `ToHexString`, `ToBinaryString`, `ToOctalString`, `ParseInt`. Missing: `ArrayCopy`, `InputStreamToBytes`, and the `Long` variants the runtime also has (`AndLong`, `ParseLong`, `ToHexStringLong`…). Test `bit_functions`. |
 | `DateTime` | ❌ | Level 1 |
 | `Regex` | ❌ | Level 1 |
@@ -155,7 +155,7 @@ The "not yet" rows come from the
 | `#Region` / `#End Region` | ✅ | ignored, as in B4X |
 | Project attributes (`#CommandLineArgs:`, `#MergeLibraries:`…) | ✅ | parsed and kept; Level 0 ignores them, except as listed in [cli.md](spec/cli.md) |
 | Conditional compilation `#If` / `#Else` / `#End If` | ❌ | not assigned to a level yet; a precise diagnostic |
-| Inline Java (`#If Java`) | ❌ | Level 3. Today a block after the last Sub is reported as syntax errors rather than with a precise diagnostic. |
+| Inline Java (`#If Java`) | ❌ | Level 3 |
 
 ## Running programs
 

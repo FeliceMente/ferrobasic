@@ -1,0 +1,18 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "negative"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["sub-parameters", "scope"]
+
+# B4J 10.70 refused it on 2026-10-26 ("Parameter name cannot hide global
+# variable name", at Sub Show): a parameter cannot have a module
+# variable's name.
+
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+rejected = true   # the original toolchain refused to build it
+date = "2026-10-26"

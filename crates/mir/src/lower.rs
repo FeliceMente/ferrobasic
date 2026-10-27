@@ -23,30 +23,18 @@ use crate::*;
 ///
 /// If the module has no `AppStart`: such a module always has diagnostics.
 pub fn lower(module: &ferro_hir::Module) -> Program {
-    let subs = module.subs.len() as u32;
     let mut functions: Vec<Function> = module
         .subs
         .iter()
         .map(|sub| lower_sub(module, sub))
         .collect();
 
-    let init = match module.process_globals {
-        Some(id) => FuncId(id.0),
-        None => {
-            functions.push(Function {
-                name: "Process_Globals".into(),
-                params: 0,
-                locals: Vec::new(),
-                ret: Ty::Void,
-                blocks: vec![BasicBlock {
-                    stmts: Vec::new(),
-                    terminator: Terminator::Return(None),
-                    handler: None,
-                }],
-            });
-            FuncId(subs)
-        }
-    };
+    let init = FuncId(
+        module
+            .process_globals
+            .expect("a module without `Process_Globals` has diagnostics")
+            .0,
+    );
     let entry = FuncId(
         module
             .app_start
@@ -742,8 +730,16 @@ impl<'m> Builder<'m> {
             ExprKind::Var(VarRef::Global(g)) => Rvalue::Global(GlobalId(g.0)),
             ExprKind::Convert(inner) => {
                 if inner.ty == Ty::Null {
-                    // A typed `Null`: the constant takes the type it is used as.
-                    return Rvalue::Use(Operand::Const(Constant::Null));
+                    // A typed `Null`: the constant takes the type it is used
+                    // as. As a String it is the text "null": B4J compiles
+                    // `s = Null` to `_s = BA.ObjectToString(Common.Null)`
+                    // (generated code; recording `level0/number_parsing`).
+                    let constant = if e.ty == Ty::String {
+                        Constant::String("null".into())
+                    } else {
+                        Constant::Null
+                    };
+                    return Rvalue::Use(Operand::Const(constant));
                 }
                 let value = self.operand(inner);
                 Rvalue::Convert {

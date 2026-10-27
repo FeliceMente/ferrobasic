@@ -83,19 +83,36 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 | Member | Behaviour |
 | --- | --- |
 | `Initialize` | new empty list |
-| `Initialize2(Array As List)` | shares the given list. An array argument gives a fixed-size list: `Add`/`RemoveAt` then raise `UnsupportedOperationException`. An array of rank 2 or more gives a list of its rows, shared with the array. |
+| `Initialize2(Array As List)` | shares the given list. An array argument gives a fixed-size list: `Add`/`RemoveAt` then raise `UnsupportedOperationException`. An array of rank 2 or more is a compile error, as in B4J (test `list_from_2d_array`); an array of any rank passed through an `Object` variable raises `ClassCastException`, as in B4J (recorded): only an array declared as one is wrapped. |
 | `IsInitialized As Boolean` | |
 | `Add(Item)`, `AddAll(List)`, `AddAllAt(Index, List)`, `InsertAt(Index, Item)` | on a fixed-size list, adding nothing is allowed (after the index check); on a `SubList` view, `AddAll` always raises `UnsupportedOperationException`; `AddAll` of nothing still invalidates the list's views |
 | `Get(Index) As Object`, `Set(Index, Item)`, `RemoveAt(Index)` | out of range → `IndexOutOfBoundsException` |
 | `Clear`, `Size As Int` | |
 | `IndexOf(Item) As Int` | `equals` comparison, so boxed types matter |
-| `SubList(BeginIndex, EndIndex) As List` | a read-only view backed by the list (`Collections.unmodifiableList(subList(...))`, class `java.util.Collections$UnmodifiableRandomAccessList`): `Set` on the parent shows through; after a structural change of the parent (`Add`, `RemoveAt`, `InsertAt`, `Clear`, `AddAll`, `Sort`…) any access through the view raises `java.util.ConcurrentModificationException`; `Clear`, `Sort` and other changes through the view raise `java.lang.UnsupportedOperationException` |
+| `SubList(BeginIndex, EndIndex) As List` | a read-only view backed by the list (`Collections.unmodifiableList(subList(...))`, class `java.util.Collections$UnmodifiableRandomAccessList`): `Set` on the parent shows through; after a structural change of the parent (`Add`, `RemoveAt`, `InsertAt`, `Clear`, `AddAll`, `Sort`…) reading through the view (`Get`, `Size`, `IndexOf`, `SubList`, printing it, `SortType`) raises `java.util.ConcurrentModificationException`; changes through the view (`Add`, `AddAll`, `InsertAt`, `RemoveAt`, `Set`, `Clear`, `Sort`, `SortCaseInsensitive`) raise `java.lang.UnsupportedOperationException`, whether or not the parent changed. `SortType` on a non-empty view first looks up the field on its first item ([research](../research/level0-semantics.md#list-source)) |
 | `Sort(Ascending As Boolean)` | Java `Comparable` order, stable. Items must all have the same boxed type: all `String`s, or all numbers of one type. Mixing types, e.g. `Int` and `Double`, raises `ClassCastException`. |
 | `SortCaseInsensitive(Ascending As Boolean)` | compares the items' `toString()` with `compareToIgnoreCase`, stable. Numbers are therefore sorted as text: `2, 10` → `10, 2`, and a boxed Double `1` compares as `"1.0"`. |
 
 `SortType(FieldName, Ascending)` and `SortTypeCaseInsensitive(FieldName, Ascending)`
 apply the same two rules to the named field of `Type` records (the field name
-is case-sensitive).
+is case-sensitive, and can be `IsInitialized`, recorded: test `list_sort_type_initialized`). As in jCore, the field is
+that of the first item's type:
+
+- an empty list is left as it is;
+- a `Null` first item raises `java.lang.NullPointerException`, and a first item
+  without that field `java.lang.NoSuchFieldException`; a first item that is not
+  a record raises it for every name, where B4J finds the fields its JDK class
+  declares, public or private (deviation D7);
+- while sorting a list of two items or more, every error is wrapped in a
+  `java.lang.RuntimeException`: an item of another type or not a record
+  (`IllegalArgumentException`), a `Null` item or, case-sensitively, a `Null`
+  field value (`NullPointerException`), and field values that do not compare
+  (`ClassCastException`). Case-insensitively a `Null` field value is `"null"`.
+  Errors such as `StackOverflowError` are not wrapped. A `Catch` sees the
+  cause itself: `LastException` is always the innermost cause.
+
+A sort that raises leaves the list as it was; B4J leaves it partly sorted
+(deviation D5).
 
 ## Map
 

@@ -1,0 +1,16 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "negative"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["for-in-process-globals"]
+
+# B4J 10.70 refused it on 2026-10-26 ("Current declaration does not match
+# previous one", at the `For Each`): it cannot loop over it again.
+
+# The comment in the .bas predates this refusal, which settles it.
+
+# Filled in by tools/recorder when the expected output is recorded:
+# [recording]
+# product = "B4J"
+# version = ""
+# platform = ""
+# date = ""

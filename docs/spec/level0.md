@@ -49,27 +49,63 @@ End Sub
 
 - A program is one code module: the members of the main module of a B4J
   non-UI project.
-- `Sub Process_Globals` (optional) declares module variables. It runs once,
-  before anything else. Statements there run too, but a `For` or `For Each`
-  variable must be declared first (`Dim i As Int`): the implicit `Int`
-  counter of other Subs is *(open)* there, so it is a compile error.
+- `Sub Process_Globals` declares module variables. The main module must have
+  one, even an empty one: B4J refuses to build it otherwise ("Sub
+  process_globals is missing", recorded). It runs once,
+  before anything else. Statements there run too. An undeclared `For`
+  counter there is a module variable, an `Int`: other Subs read it, and
+  their own undeclared counters of that name are the same variable
+  (recorded). A `For Each v As T` variable there is a module variable of
+  type `T` the same way (recorded). Every declaration of a name there, a
+  `Dim`, a counter or a `For Each`, declares the same module variable, and
+  must agree on its type, in source order: B4J refuses a later one that
+  does not ("Current declaration does not match previous one", recorded).
+  With the same type, declarations of a name there are one variable,
+  whichever kinds and in any order (recorded). A counter over a name that
+  a `Dim` declared is that variable, whatever its type. A `Dim` there
+  cannot have a Sub's name (B4J: "Variable name cannot be the same as a
+  sub name", recorded), but a loop variable may, there or in any Sub
+  (recorded): an undeclared counter or a `For Each v As T`, as a typed
+  `For v As T` with a Sub's name is an error (B4J: "Regular variable
+  followed by '=' expected", recorded). Every use of such a name in an
+  expression, bare, with arguments or as a statement, calls the Sub,
+  whatever the loop variable's type, and assigning it is an error,
+  wherever it is (recorded). A `For` may loop over it again anywhere,
+  whichever loop declares it, and counts with a number as any `For` does
+  (B4J: "Loop iterator should be a numeric variable", recorded). Another
+  `For Each` without `As` over it is an error in a Sub over its own
+  `For Each` variable, and in another Sub over a counter of
+  `Process_Globals` (B4J: "Current declaration does not match previous
+  one", recorded); anywhere else, and with `As` in the same Sub, it is
+  *(open)*. A
+  `For Each v As T` of a Sub may have the name of a Sub and of a module
+  variable of type `T`, and with another type it is an error as for any
+  other name (recorded). In `Class_Globals`, a `Dim` with a Sub's
+  name is *(open)*. A loop variable of `Process_Globals` named like a `Type`, `Bit`
+  or a keyword is *(open)* too, and so is `For i As T` there: declare `i`
+  with `Dim` and loop without `As`. All of this is only for the main module:
+  in `Class_Globals` a loop must use a variable declared with `Dim`,
+  without `As`.
 - `Sub AppStart (Args() As String)` is the entry point. It is called after
   `Process_Globals` with the command-line arguments. The program ends when
   `AppStart` returns, with exit code 0.
-- A program without `AppStart` is rejected with a diagnostic.
+- A program without `Process_Globals` or `AppStart` is rejected with a
+  diagnostic.
 - `ExitApplication` / `ExitApplication2(code)` end the program at once.
 - **Nesting limit:** statements and expressions may nest at most 1000 levels
   deep in a Sub, counting each operator of a chain such as `1 + 1 + ...` and
   each member access of `s.Trim.Trim...` as a level; smart strings may nest
   100 deep. Deeper code is a compile error, one per Sub, instead of a crash.
   B4J's own limit (javac's) is *(open)*.
-- A line continuation ` _` must end its line: whether a comment may follow it
-  is *(open)*, so ` _ ' comment` is a compile error.
+- A line continuation ` _` may be followed by a comment, with or without a
+  space before the `'` (` _ ' comment`, ` _' comment`, recorded).
 - `#Region` / `#End Region` lines are trivia. Project attributes (`#Name: value`)
   are parsed and kept. Level 0 ignores them, except as listed in [cli.md](cli.md).
 - Unsupported constructs get a diagnostic naming the construct and the level
-  that adds it. Examples are `Class_Globals`, `Wait For`, `Sleep`, `#If`, and a
-  library other than the core one.
+  that adds it. Examples are `Class_Globals`, `Wait For`, `Sleep`, `#If`,
+  inline Java (`#If Java`), and a library other than the core one. A
+  construct no level adds yet says so: `Const` declarations and type tests
+  (`x Is T`). Each gets one error, without follow-on errors.
 
 ## Types
 
@@ -101,6 +137,17 @@ End Sub
 - `Dim`, `Private` and `Public` in a Sub all declare a local. In
   `Process_Globals` they declare module variables. `Private` and `Public` only
   matter with several modules (Level 1).
+- A local `Dim` or `For Each v As T` with a module variable's name and
+  type is that module variable, and re-executing the `Dim` resets it
+  (recorded). With another type B4J refuses it ("Current declaration does
+  not match previous one", recorded). An undeclared `For` counter of that
+  name is the module variable; a `For i As T` of that name in a Sub is
+  *(open)*, so a compile error. A local `Dim` cannot have a Sub's name
+  (B4J: "Variable name cannot be the same as a sub name", recorded); a loop
+  variable may, and its uses mean the Sub (recorded, see "Program
+  structure").
+- A parameter cannot have a module variable's name (B4J: "Parameter name
+  cannot hide global variable name", recorded).
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
   A name without `As` takes the type of the next `As` to its right in the same
   statement.
@@ -133,7 +180,7 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 | String → Boolean | only `"true"` / `"false"` (case-sensitive), else a runtime error |
 | String → Char | first character, or `Chr(0)` for an empty string |
 | Object → T | unbox. A number box converts to any numeric type; a String converts as above; otherwise a runtime `ClassCastException`. |
-| Null → String | `"null"` when converted for output |
+| Null → String | the text `"null"`, also when assigned, passed or returned as a String: B4J compiles `s = Null` to `_s = BA.ObjectToString(Common.Null)` (generated code, recorded). A String that is null (an unset record field) stays null. |
 | any other value → String | `BA.ObjectToString` (Java `String.valueOf`): B4X compiles `Log(LastException)` and `"e: " & LastException` this way (generated code) |
 
 ### Number to string
@@ -156,10 +203,10 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 
 | Level | Operators | Notes |
 | --- | --- | --- |
-| 1 | `Or` | short-circuit; *(open)* relative to `And` |
+| 1 | `Or` | short-circuit (recorded: `And` binds tighter) |
 | 2 | `And` | short-circuit |
 | 3 | `=` `<>` `<` `>` `<=` `>=` | left-associative; whether B4X accepts a chain like `a < b < c` is *(open)*, so the parser accepts it |
-| 4 | `&` | *(open)* position |
+| 4 | `&` | binds tighter than comparisons; an operand holding an arithmetic operator (`+ - * / Mod`) or a negation needs parentheses (a syntax error otherwise, as in B4J) |
 | 5 | `+` `-` | |
 | 6 | `*` `/` `Mod` | |
 | 7 | unary `-` | |
@@ -174,7 +221,9 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - `Mod` is the Java remainder: its sign follows the dividend (`-1 Mod 24` is `-1`).
 - Integer division by zero (`Mod`) raises `ArithmeticException`. Double
   division by zero gives `Infinity` or `NaN`.
-- `&` converts both sides to String and concatenates.
+- `&` converts both sides to String and concatenates. `"x" & 1 + 2`,
+  `1 + 2 & "x"`, `"x" & 6 / 2` and `"x" & -1` are errors: write
+  `"x" & (1 + 2)`.
 - Comparisons:
   - two numbers compare numerically, as Double;
   - two Strings compare by value, case-sensitive; `<` and `>` on Strings are

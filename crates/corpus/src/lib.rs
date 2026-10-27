@@ -1,7 +1,8 @@
 //! The conformance corpus in `tests/conformance` (see
 //! `docs/compatibility-testing.md`), read the same way by every crate's test
 //! harness: every program under it, at any depth, with its status and its
-//! expected output.
+//! expected output. Also the real-world corpus that `tests/corpus/corpus.toml`
+//! references ([`projects`]).
 //!
 //! The metadata is checked strictly, so that a typo cannot quietly turn a
 //! test into one that is skipped: every `.bas` needs a `.meta.toml` with a
@@ -9,6 +10,11 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+
+mod projects;
+mod sha256;
+
+pub use projects::{Project, ProjectFile, fetched_root, projects};
 
 /// `status` in a `.meta.toml`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +50,10 @@ pub struct Program {
     /// The exit code the program ends with: `exit_code` (a program that calls
     /// `ExitApplication2`), else 1 with an uncaught error, else 0.
     pub exit_code: i32,
+    /// The language level it belongs to, from `level`.
+    pub level: Option<u8>,
+    /// What it tests, from `features`: the rows of the compatibility report.
+    pub features: Vec<String>,
 }
 
 impl Program {
@@ -79,9 +89,14 @@ pub fn root() -> PathBuf {
 /// Every program in the corpus, sorted by name. Panics on an empty corpus or
 /// on metadata it cannot read.
 pub fn programs() -> Vec<Program> {
-    let root = root();
+    programs_in(&root())
+}
+
+/// Every program under `root`, the `tests/conformance` folder of a copy of
+/// this repository (its `docs/deviations.md` is read too), as [`programs`].
+pub fn programs_in(root: &Path) -> Vec<Program> {
     let mut files = Vec::new();
-    bas_files(&root, &mut files);
+    bas_files(root, &mut files);
     files.sort();
     assert!(
         !files.is_empty(),
@@ -95,7 +110,7 @@ pub fn programs() -> Vec<Program> {
         .into_iter()
         .map(|path| {
             let name = path
-                .strip_prefix(&root)
+                .strip_prefix(root)
                 .unwrap()
                 .with_extension("")
                 .components()
@@ -178,7 +193,22 @@ fn from_meta(path: PathBuf, name: String, meta: &str) -> Result<Program, String>
             _ => return Err(format!("exit_code must be a number from 0 to 255, not {v}")),
         },
     };
+    let level = match value(meta, "level")? {
+        None => None,
+        Some(v) => Some(
+            v.parse::<u8>()
+                .map_err(|_| format!("level must be a number, not {v}"))?,
+        ),
+    };
+    let features = match value(meta, "features")? {
+        None => Vec::new(),
+        Some(v) => {
+            strings(&v).ok_or_else(|| format!("features must be a list of strings, not {v}"))?
+        }
+    };
     let program = Program {
+        level,
+        features,
         rejected,
         uncaught_error,
         exit_code,
@@ -225,6 +255,31 @@ fn string(meta: &str, key: &str) -> Result<Option<String>, String> {
             _ => Err(format!("{key} must be a string, not {v}")),
         },
     }
+}
+
+/// The strings of a one-line TOML array of basic strings without escapes:
+/// `["a", "b, c"]`. A comma inside quotes belongs to its string.
+fn strings(value: &str) -> Option<Vec<String>> {
+    let mut rest = value.strip_prefix('[')?.strip_suffix(']')?.trim();
+    let mut items = Vec::new();
+    while !rest.is_empty() {
+        let after = rest.strip_prefix('"')?;
+        let end = after.find('"')?;
+        items.push(after[..end].to_string());
+        rest = after[end + 1..].trim_start();
+        match rest.strip_prefix(',') {
+            // A trailing comma is not accepted: one more string must follow.
+            Some(next) => {
+                rest = next.trim_start();
+                if rest.is_empty() {
+                    return None;
+                }
+            }
+            None if rest.is_empty() => {}
+            None => return None,
+        }
+    }
+    Some(items)
 }
 
 /// Cuts a `#` comment, outside quotes.
@@ -304,6 +359,29 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_level_and_features() {
+        let p = meta("status = \"recorded\"\nlevel = 0\nfeatures = [\"for\", \"scope\"]  # x\n")
+            .unwrap();
+        assert_eq!(p.level, Some(0));
+        assert_eq!(p.features, ["for", "scope"]);
+        let p = meta("status = \"recorded\"\nfeatures = [\"a, b\",\"c\"]\n").unwrap();
+        assert_eq!(p.features, ["a, b", "c"]);
+        let p = meta("status = \"recorded\"\nfeatures = []\n").unwrap();
+        assert_eq!(p.level, None);
+        assert!(p.features.is_empty());
+        for bad in [
+            "status = \"recorded\"\nlevel = one\n",
+            "status = \"recorded\"\nfeatures = for\n",
+            "status = \"recorded\"\nfeatures = [for]\n",
+            "status = \"recorded\"\nfeatures = [\"for\",]\n",
+            "status = \"recorded\"\nfeatures = [\"for\" \"scope\"]\n",
+            "status = \"recorded\"\nfeatures = [\"for]\n",
+        ] {
+            assert!(meta(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
     fn deviation_ids_come_from_the_id_column() {
         let table = "| ID | Area | Target(s) |\n| --- | --- | --- |\n| D1 | Syntax | all |\n| D12 | Runtime | all |\n";
         assert_eq!(deviation_ids(table), ["D1", "D12"]);
@@ -312,6 +390,11 @@ mod tests {
     #[test]
     fn the_corpus_is_found() {
         let programs = programs();
+        assert!(
+            programs
+                .iter()
+                .all(|p| p.level.is_some() && !p.features.is_empty())
+        );
         assert!(programs.iter().any(|p| p.name == "level0/prices_map"));
         assert!(programs.iter().any(|p| p.expected_output().is_some()));
     }

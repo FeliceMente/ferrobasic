@@ -29,6 +29,7 @@ pub fn lex(text: &str) -> (Vec<Token>, Vec<LexError>) {
         line_start: true,
         smart_depth: 0,
         reported_too_deep: false,
+        continued_comment: false,
     };
     lexer.prologue();
     while !lexer.at_end() {
@@ -49,6 +50,9 @@ struct Lexer<'a> {
     smart_depth: u32,
     /// The too-deep error is reported once per file.
     reported_too_deep: bool,
+    /// A comment follows a line continuation: the line break after it is
+    /// part of the continuation.
+    continued_comment: bool,
 }
 
 /// Deepest nesting of smart strings (`$"${$"..."$}"$`). Smart strings are
@@ -119,29 +123,45 @@ impl Lexer<'_> {
             }
             '\r' | '\n' => {
                 let len = if rest.starts_with("\r\n") { 2 } else { 1 };
-                self.push(NEWLINE, len);
+                let kind = if std::mem::take(&mut self.continued_comment) {
+                    LINE_CONTINUATION
+                } else {
+                    NEWLINE
+                };
+                self.push(kind, len);
             }
             '\'' => {
                 let len = line_len(rest);
                 self.push(COMMENT, len);
             }
             '#' if self.line_start && !in_placeholder => {
-                let len = line_len(rest);
-                self.push(DIRECTIVE, len);
+                if let Some((len, closed)) = inline_java_len(rest) {
+                    if !closed {
+                        self.error(
+                            self.pos,
+                            "missing `#End If` for this `#If Java` block: the rest of the file \
+                             is read as part of it",
+                        );
+                    }
+                    self.push(INLINE_JAVA, len);
+                } else {
+                    let len = line_len(rest);
+                    self.push(DIRECTIVE, len);
+                }
             }
             '_' if self.continuation_len().is_some() => {
                 let len = self.continuation_len().unwrap();
                 self.push(LINE_CONTINUATION, len);
             }
             '_' if self.continuation_before_comment() => {
-                // Whether a comment may follow a line continuation is open
-                // (`docs/open-questions.md`): say so instead of reading `_`
-                // as a name.
-                self.error(
-                    self.pos,
-                    "a line continuation `_` must end its line: move the comment to another line",
-                );
-                self.push(ERROR_TOKEN, 1);
+                // ` _ ' comment` and ` _' comment` (recorded): the comment
+                // keeps its own token.
+                let spaces = self.rest()[1..]
+                    .bytes()
+                    .take_while(|b| matches!(b, b' ' | b'\t'))
+                    .count();
+                self.push(LINE_CONTINUATION, 1 + spaces);
+                self.continued_comment = true;
             }
             c if c.is_alphabetic() || c == '_' => {
                 let len = self.take_while(|c| c.is_alphanumeric() || c == '_');
@@ -312,6 +332,43 @@ impl Lexer<'_> {
 /// Length up to (not including) the end of the line.
 fn line_len(text: &str) -> usize {
     text.find(['\r', '\n']).unwrap_or(text.len())
+}
+
+/// The words of a directive line after its `#`, in lower case, up to a
+/// trailing comment: `#End If ' native code` gives `end`, `if`.
+fn directive_words(line: &str) -> Vec<String> {
+    let line = line.split('\'').next().unwrap_or("");
+    line.trim_start()
+        .strip_prefix('#')
+        .unwrap_or("")
+        .split_whitespace()
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+/// For a `#If Java` line: the length of the block up to the end of its
+/// `#End If` line (not including the line break), and whether that line was
+/// found; without it the block runs to the end of the text.
+fn inline_java_len(text: &str) -> Option<(usize, bool)> {
+    if directive_words(&text[..line_len(text)]) != ["if", "java"] {
+        return None;
+    }
+    let mut start = 0;
+    loop {
+        let end = start + line_len(&text[start..]);
+        if start > 0 && directive_words(&text[start..end]) == ["end", "if"] {
+            return Some((end, true));
+        }
+        let rest = &text[end..];
+        let newline = if rest.starts_with("\r\n") {
+            2
+        } else if rest.is_empty() {
+            return Some((text.len(), false));
+        } else {
+            1
+        };
+        start = end + newline;
+    }
 }
 
 /// Length of `$`, an optional formatter (`2`, `1.2`, `xml`…) and `{`.
@@ -541,6 +598,45 @@ mod tests {
         );
         let (_, errors) = lex("a #");
         assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn inline_java_is_one_token() {
+        let text = "#If Java\r\npublic static int x() { return '#'; }\r\n  #End If\r\nSub X\r\n";
+        assert_eq!(
+            significant(text)[..2],
+            [
+                (
+                    INLINE_JAVA,
+                    "#If Java\r\npublic static int x() { return '#'; }\r\n  #End If"
+                ),
+                (NEWLINE, "\r\n"),
+            ]
+        );
+        assert!(lex(text).1.is_empty());
+        // Any case; other `#If` lines stay directives.
+        assert_eq!(significant("#IF JAVA\n#end if")[0].0, INLINE_JAVA);
+        assert_eq!(significant("#If B4J\n#End If")[0], (DIRECTIVE, "#If B4J"));
+        let (tokens, errors) = lex("#If Java\nint x;\n");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(errors.len(), 1, "missing `#End If`");
+        // A trailing comment on either line does not hide it.
+        let text = "#If Java ' native code\nint x;\n#End If 'end\nSub X\n";
+        assert_eq!(
+            significant(text)[0],
+            (INLINE_JAVA, "#If Java ' native code\nint x;\n#End If 'end")
+        );
+        assert!(lex(text).1.is_empty());
+        // The block ends at the first `#End If`: an `#If` inside it does not
+        // nest.
+        assert_eq!(
+            significant("#If Java\n#If B4J\n#End If\n#End If\n")[..3],
+            [
+                (INLINE_JAVA, "#If Java\n#If B4J\n#End If"),
+                (NEWLINE, "\n"),
+                (DIRECTIVE, "#End If"),
+            ]
+        );
     }
 
     #[test]
