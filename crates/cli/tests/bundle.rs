@@ -3,9 +3,13 @@
 //! copied away from the build tree, must print exactly what `ferro run`
 //! prints and exit with the same code.
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+use common::run_written as run_binary;
 
 const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
@@ -45,23 +49,6 @@ fn exe(name: &str) -> String {
 
 fn ferro(args: &[&str]) -> Output {
     Command::new(FERRO).args(args).output().unwrap()
-}
-
-/// Runs an executable that was just written. Linux refuses to run a file
-/// that some process still has open for writing (`ETXTBSY`). Tests run on
-/// several threads, and a child process another test is starting can hold a
-/// copy of this test's write descriptor for a moment, between its `fork` and
-/// its `exec`. So retry briefly instead of failing at random.
-fn run_binary(command: &mut Command) -> Output {
-    for _ in 0..200 {
-        match command.output() {
-            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            result => return result.unwrap(),
-        }
-    }
-    panic!("{command:?}: still \"text file busy\" after 2 s");
 }
 
 fn conformance_dir() -> PathBuf {
@@ -133,7 +120,7 @@ fn arguments_go_to_app_start() {
     let source = dir.join("echo.bas");
     fs::write(
         &source,
-        "Sub AppStart (Args() As String)\n    Log(Args.Length)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Log(Args.Length)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n",
     )
     .unwrap();
     let binary = build_and_move(&source, &dir);
@@ -152,7 +139,7 @@ fn exit_codes_and_corrupt_binaries() {
     let source = dir.join("exit.bas");
     fs::write(
         &source,
-        "Sub AppStart (Args() As String)\n    Log(\"bye\")\n    ExitApplication2(7)\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Log(\"bye\")\n    ExitApplication2(7)\nEnd Sub\n",
     )
     .unwrap();
     let binary = build_and_move(&source, &dir);

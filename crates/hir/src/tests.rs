@@ -239,6 +239,120 @@ fn later_level_features_have_precise_messages() {
     assert!(has(&d, "#If"), "{d:?}");
 }
 
+/// Each gets one precise error, and nothing after it (#32).
+#[test]
+fn later_constructs_get_one_precise_error() {
+    let only = |text: &str, message: &str| {
+        let d = errors(text);
+        assert_eq!(d, [message], "{text}");
+    };
+    only(
+        "Sub Process_Globals\n\tPrivate Const Size As Int = 10\nEnd Sub\nSub AppStart (Args() As String)\n\tLog(Size)\nEnd Sub\n",
+        "`Const` declarations are not supported yet",
+    );
+    only(
+        &program("Dim o As Object = 1\nIf o Is Int Then Log(1)"),
+        "type tests (`Is`) are not supported yet",
+    );
+    only(
+        &program("Wait For (rs) Complete (Success As Boolean)"),
+        "`Wait For` is not supported at Level 0: it needs resumable subs (Level 2)",
+    );
+    only(
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n#If Java\npublic static void x() { }\n#End If\n",
+        "inline Java (`#If Java`) is not supported at Level 0: it needs Java interop (Level 3)",
+    );
+    // A variable named `Const` is still a variable.
+    ok(&program("Dim Const As Int = 1\nLog(Const)"));
+}
+
+/// The error covers `#If Java` alone, not a trailing comment or spaces.
+#[test]
+fn inline_java_error_covers_its_directive() {
+    let text = "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n  #If JAVA   ' native\nint x;\n#End If 'end\n";
+    let parse = ferro_syntax::parse(text);
+    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+    let (_, diags) = check(&parse.syntax());
+    assert_eq!(diags.len(), 1);
+    assert_eq!(&text[diags[0].range], "#If JAVA");
+}
+
+#[test]
+fn only_one_dimensional_arrays_convert_to_a_list() {
+    ok(&program(
+        "Dim a(3) As Int\nDim l As List\nl.Initialize2(a)\nl.AddAll(a)",
+    ));
+    let d = errors(&program(
+        "Dim g(2, 3) As Int\nDim l As List\nl.Initialize2(g)",
+    ));
+    assert_eq!(
+        d,
+        [
+            "an array of 2 dimensions cannot be used as a List: only a one-dimensional array converts to one"
+        ]
+    );
+}
+
+#[test]
+fn arithmetic_next_to_concat_needs_parentheses() {
+    for expr in [
+        "\"x\" & 1 + 2",
+        "1 + 2 & \"x\"",
+        "\"x\" & 2 * 3",
+        "\"x\" & 3 - 1",
+        "\"x\" & -1",
+        "\"x\" & 6 / 2",
+        "\"x\" & 7 Mod 2",
+        // Deeper in the operand.
+        "\"x\" & -6 / 2",
+        "\"x\" & 2 * 6 / 3",
+        "2 * 3 Mod 4 & \"x\"",
+        "\"x\" & (1 + 2) / 3",
+        "\"a\" & 1 + 2 & \"b\"",
+    ] {
+        let d = errors(&program(&format!("Dim r As String = {expr}")));
+        assert_eq!(d.len(), 1, "{expr}: {d:?}");
+        assert!(
+            d[0].contains("next to `&` needs parentheses"),
+            "{expr}: {d:?}"
+        );
+    }
+    // Parentheses, calls and comparisons are fine.
+    for expr in [
+        "\"x\" & (1 + 2)",
+        "\"x\" & (-1)",
+        "\"a\" & \"b\" = \"ab\"",
+        "\"x\" & (6 / 2)",
+        "\"x\" & (7 Mod 2)",
+        "\"x\" & Abs(1 - 2)",
+        "\"a\" & \"b\" & \"c\"",
+    ] {
+        ok(&program(&format!("Dim r As String = {expr}")));
+    }
+    // An operand over two lines gets no one-line fix to copy.
+    let d = errors(&program("Dim r As String = \"x\" & 1 + _\n    2"));
+    assert_eq!(d, ["`+` next to `&` needs parentheses around its operand"]);
+    let d = errors(&program("Dim r As String = \"x\" & 1 + 2"));
+    assert_eq!(d, ["`+` next to `&` needs parentheses: write `(1 + 2)`"]);
+}
+
+#[test]
+fn missing_process_globals() {
+    let d = errors("Sub AppStart (Args() As String)\nEnd Sub\n");
+    assert_eq!(
+        d,
+        ["missing `Sub Process_Globals`: the main module needs one, even an empty one"]
+    );
+    let d = errors("");
+    assert!(
+        has(&d, "missing `Sub Process_Globals`") && has(&d, "missing `Sub AppStart"),
+        "{d:?}"
+    );
+    // A class gets its own error, not this one.
+    let d = errors("Sub Class_Globals\nEnd Sub\nPublic Sub Initialize\nEnd Sub\n");
+    assert!(!has(&d, "missing `Sub Process_Globals`"), "{d:?}");
+}
+
 #[test]
 fn missing_entry_point() {
     let d = errors("Sub Process_Globals\nEnd Sub\n");
@@ -267,16 +381,19 @@ fn members_and_builtins() {
 #[test]
 fn subs_calls_and_returns() {
     ok(
-        "Sub AppStart (Args() As String)\n  Log(Square(12))\n  Hello\nEnd Sub\n\
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Log(Square(12))\n  Hello\nEnd Sub\n\
         Sub Square (x As Int) As Int\n  Return x * x\nEnd Sub\nSub Hello\n  Log(\"hi\")\nEnd Sub\n",
     );
-    let d = errors("Sub AppStart (Args() As String)\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n");
+    let d = errors(
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n",
+    );
     assert!(has(&d, "no return type"), "{d:?}");
-    let d =
-        errors("Sub AppStart (Args() As String)\n  Dim x As Int = F\nEnd Sub\nSub F\nEnd Sub\n");
+    let d = errors(
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Dim x As Int = F\nEnd Sub\nSub F\nEnd Sub\n",
+    );
     assert!(has(&d, "does not return a value"), "{d:?}");
     let d = errors(
-        "Sub AppStart (Args() As String)\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n",
     );
     assert!(has(&d, "defined twice"), "{d:?}");
 }
@@ -412,18 +529,423 @@ fn inline_cast_to_array_type() {
     ok(&program("Dim o As Object\nLog(o.As(String()).Length)"));
 }
 
-/// A `For` in `Process_Globals` with an implicit counter used to vanish
-/// silently; it is rejected until B4X's behaviour is known.
+/// The loop variables of `Process_Globals` are module variables every Sub
+/// sees and shares (recorded): an undeclared `For` counter is an Int, a
+/// `For Each v As T` variable a `T`, and every declaration of a name there
+/// agrees on its type.
 #[test]
-fn loops_in_process_globals_need_a_declared_variable() {
-    let globals = |body: &str| {
+fn loops_in_process_globals() {
+    let globals = |body: &str, app: &str| {
         format!(
-            "Sub Process_Globals\n    Private Total As Int\n{body}\nEnd Sub\n\nSub AppStart (Args() As String)\n    Log(Total)\nEnd Sub\n"
+            "Sub Process_Globals\n    Private Total As Int\n{body}\nEnd Sub\n\nSub AppStart (Args() As String)\n{app}\nEnd Sub\n"
         )
     };
-    let diags = errors(&globals(
-        "    For i = 1 To 3\n        Total = Total + i\n    Next",
+    let global = |module: &Module, name: &str| {
+        module
+            .globals
+            .iter()
+            .find(|v| v.name == name)
+            .map(|v| v.ty.clone())
+    };
+    let counted = "    For i = 1 To 3\n        Total = Total + i\n    Next";
+    let module = ok(&globals(
+        counted,
+        "    Log(i)\n    For I = 1 To 2\n    Next",
     ));
+    assert_eq!(global(&module, "i"), Some(Ty::Int));
+    assert!(app_start(&module).locals.iter().all(|v| v.name != "I"));
+    let each = "    For Each n As Int In Array As Int(1, 2)\n        Total = Total + n\n    Next";
+    let module = ok(&globals(each, "    Log(n)\n    For n = 1 To 2\n    Next"));
+    assert_eq!(global(&module, "n"), Some(Ty::Int));
+
+    // A counter over a declared name is that variable; declarations of one
+    // name and type are one variable, in any order (recorded).
+    for (body, ty) in [
+        (format!("    For n = 1 To 2\n    Next\n{each}"), Ty::Int),
+        (format!("{each}\n    For n = 1 To 2\n    Next"), Ty::Int),
+        (format!("{each}\n{each}"), Ty::Int),
+        (format!("    Dim n As Int\n{each}"), Ty::Int),
+        (format!("{each}\n    Dim n As Int"), Ty::Int),
+        (
+            "    Dim n As Double\n    For n = 1 To 2\n    Next".to_string(),
+            Ty::Double,
+        ),
+        (
+            "    For n = 1 To 3\n    Next\n    Dim n As Int".to_string(),
+            Ty::Int,
+        ),
+    ] {
+        let module = ok(&globals(&body, "    Log(n)"));
+        assert_eq!(global(&module, "n"), Some(ty), "{body}");
+    }
+    for (body, message) in [
+        (
+            "    For n = 1 To 2\n    Next\n    For Each n As String In Array As String(\"a\")\n    Next",
+            "`n` is already declared as Int in `Process_Globals`: this loop cannot declare it again as String",
+        ),
+        (
+            "    Dim n As String\n    For Each n As Int In Array As Int(1)\n    Next",
+            "`n` is already declared as String in `Process_Globals`: this loop cannot declare it again as Int",
+        ),
+        // In source order: a later `Dim` must agree with the loop before it.
+        (
+            "    For n = 1 To 3\n    Next\n    Dim n As Long",
+            "`n` is already declared as Int by a loop of `Process_Globals`: this `Dim` cannot declare it again as Long",
+        ),
+        (
+            "    For Each n As String In Array As String(\"a\")\n    Next\n    Dim n As Int",
+            "`n` is already declared as String by a loop of `Process_Globals`: this `Dim` cannot declare it again as Int",
+        ),
+        // A counter over another type's `For Each` variable: the mismatch,
+        // not the open question.
+        (
+            "    For Each n As String In Array As String(\"a\")\n    Next\n    For n = 1 To 2\n    Next",
+            "`n` is already declared as String in `Process_Globals`: this loop cannot declare it again as Int",
+        ),
+        // A loop's own `As` error, after its name was refused.
+        (
+            "    For n = 1 To 2\n    Next\n    For Each n As String In Array As String(\"a\")\n    Next\n    For n As Int = 1 To 3\n    Next",
+            "",
+        ),
+    ] {
+        let diags = errors(&globals(body, ""));
+        if message.is_empty() {
+            assert!(
+                has(&diags, "write the loop without `As`"),
+                "{body}: {diags:?}"
+            );
+        } else {
+            assert_eq!(diags, [message], "{body}");
+        }
+    }
+
+    // A Sub's name may be a loop variable there (recorded); elsewhere a
+    // statement or a read calls the Sub (recorded), any other use is open.
+    let sub = |body: &str, app: &str| {
+        format!(
+            "{}Sub Bump As Int\n    Return 9\nEnd Sub\n",
+            globals(body, app)
+        )
+    };
+    let module = ok(&sub(
+        "    For Bump = 1 To 2\n    Next",
+        "    Bump\n    Bump()\n    Log(Bump)",
+    ));
+    assert!(
+        format!("{:?}", app_start(&module).body)
+            .matches("Call")
+            .count()
+            >= 3,
+        "{:?}",
+        app_start(&module).body
+    );
+    // Every use of the name in an expression calls the Sub, in
+    // `Process_Globals` too; a `For` may loop over it again anywhere, and a
+    // Sub's own loop variable may have the name, also with a module variable
+    // of that name and type (recorded).
+    for (body, app) in [
+        ("    For Bump = 1 To 2\n        Log(Bump)\n    Next", ""),
+        (
+            "    For Bump = 1 To 2\n    Next",
+            "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
+        ),
+        (
+            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+            "",
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n    Next",
+            "    For Bump = 5 To 6\n        Log(Bump)\n    Next",
+        ),
+        ("", "    For Bump = 1 To 2\n        Log(Bump)\n    Next"),
+        (
+            "",
+            "    For Bump = 1 To 2\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        ),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
+        ),
+        (
+            "    For Bump = 1 To 2\n    Next",
+            "    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
+        ),
+    ] {
+        let module = ok(&sub(body, app));
+        let all = format!("{:?}", module.subs);
+        assert!(
+            !body.contains("Log")
+                || format!("{:?}", module.sub(module.process_globals.unwrap()).body)
+                    .contains("Call"),
+            "{body}"
+        );
+        assert!(
+            !app.contains("Log") || format!("{:?}", app_start(&module).body).contains("Call"),
+            "{app}: {all}"
+        );
+    }
+    // The name is the Sub whatever the loop variable's type (recorded):
+    // as a statement and when read, it is a call; `.Length` is the Int's.
+    let each = "    For Each Bump As String In Array As String(\"x\")\n";
+    let module = ok(&sub(
+        "",
+        &format!("{each}        Bump\n        Log(Bump)\n    Next"),
+    ));
+    assert!(
+        format!("{:?}", app_start(&module).body)
+            .matches("Call")
+            .count()
+            >= 2,
+        "{:?}",
+        app_start(&module).body
+    );
+    let diags = errors(&sub(
+        "",
+        &format!("{each}        Log(Bump.Length)\n    Next"),
+    ));
+    assert_eq!(diags, ["Int has no member `Length` at Level 0"]);
+    // A `For` may loop over it wherever a `For Each` declares it, in either
+    // order (recorded).
+    for (body, app) in [
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+            "",
+        ),
+    ] {
+        let module = ok(&sub(body, app));
+        let all = format!("{:?}", module.subs);
+        assert!(all.contains("Call"), "{body}{app}: {all}");
+    }
+    // It counts with a number, as any `For` (B4J: "Loop iterator should be a
+    // numeric variable", recorded).
+    let diags = errors(&sub(
+        "    For Each Bump As String In Array As String(\"x\")\n    Next",
+        "    For Bump = 1 To 2\n    Next",
+    ));
+    assert_eq!(diags, ["a `For` counter must be a number, not String"]);
+    // Another `For Each` without `As` over it is refused (B4J: "Current
+    // declaration does not match previous one", recorded); with `As` it is
+    // open.
+    for (body, app, what) in [
+        (
+            "    For Bump = 1 To 2\n    Next",
+            "    For Each Bump In Array As Int(1)\n    Next",
+            "a module variable",
+        ),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+            "a loop variable of this Sub",
+        ),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(
+            diags,
+            [format!(
+                "`Bump` is {what} with the name of a Sub: a `For Each` without `As` cannot loop \
+                 over it again"
+            )],
+            "{body}{app}"
+        );
+    }
+    // Where B4J's refusal is not recorded, another `For Each` is open: with
+    // `As`, without `As` over a `For` counter of the same Sub, and over a
+    // loop variable of `Process_Globals` in it or over its `For Each` one.
+    for (body, app, what) in [
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump As Int In Array As Int(2)\n    Next",
+            "a loop variable of this Sub",
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+            "a loop variable of this Sub",
+        ),
+        (
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+            "",
+            "a module variable",
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n    Next",
+            "    For Each Bump In Array As Int(2)\n    Next",
+            "a module variable",
+        ),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(
+            diags,
+            [format!(
+                "`Bump` is {what} with the name of a Sub: whether another `For Each` may loop \
+                 over it here is not known yet, so use another name"
+            )],
+            "{body}{app}"
+        );
+    }
+    // A `For Each v As T` in another Sub over a module variable of type `T`
+    // is the recorded `local_for_each_named_like_sub_over_module_variable`,
+    // whichever loop of `Process_Globals` declares it.
+    ok(&sub(
+        "    For Each Bump As Int In Array As Int(1)\n    Next",
+        "    For Each Bump As Int In Array As Int(5)\n        Log(Bump)\n    Next",
+    ));
+    // A refused loop's bounds and body are still checked.
+    let diags = errors(&sub(
+        "    For Bump = 1 To 2\n    Next",
+        "    For Each Bump In Array As Int(Missing)\n        Log(Other)\n    Next",
+    ));
+    assert_eq!(diags.len(), 3, "{diags:?}");
+    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
+    assert!(has(&diags, "`Other` is not declared"), "{diags:?}");
+    // A typed `For` cannot have the name (recorded), with a module variable
+    // of that name too, or after a `For Each` of that name.
+    for (body, before) in [
+        ("", ""),
+        ("    For Bump = 1 To 2\n    Next", ""),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n",
+        ),
+    ] {
+        let diags = errors(&sub(
+            body,
+            &format!("{before}    For Bump As Int = 1 To 2\n        Log(Bump)\n    Next"),
+        ));
+        assert_eq!(
+            diags,
+            [
+                "`Bump` is a Sub: a `For` counter with its name cannot be declared with `As`, \
+                 so loop without `As`"
+            ],
+            "{body}"
+        );
+    }
+    // A loop local of another type than such a module variable is refused
+    // as for any other name (recorded).
+    let diags = errors(&sub(
+        "    For Bump = 1 To 2\n    Next",
+        "    For Each Bump As String In Array As String()\n    Next",
+    ));
+    assert_eq!(
+        diags,
+        ["`Bump` is a module variable of type Int: a local cannot declare it again as String"]
+    );
+    // Assigning it is an error, wherever it is (recorded).
+    for (body, app) in [
+        ("    For Bump = 1 To 2\n    Next", "    Bump = 3"),
+        ("    For Bump = 1 To 2\n        Bump = 4\n    Next", ""),
+        ("", "    For Bump = 1 To 2\n        Bump = 4\n    Next"),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(
+            diags,
+            ["cannot assign to `Bump`: it is a Sub, not a variable"],
+            "{body}{app}"
+        );
+    }
+    // A `Dim` cannot have a Sub's name, module or local (recorded).
+    let diags = errors(&sub("    Dim Bump As Int = 4", ""));
+    assert_eq!(
+        diags,
+        ["a variable cannot have the name of a Sub: `Bump` is a Sub"]
+    );
+    // Reported once, also where a loop variable has that name, even a
+    // loop of the same Sub before the `Dim`.
+    for (body, app) in [
+        ("", "    Dim Bump As Int"),
+        ("    For Bump = 1 To 2\n    Next", "    Dim Bump As Int"),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    Dim Bump As Int = 5",
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n        Log(Bump)\n    Next\n    Dim Bump As Int",
+        ),
+        (
+            "",
+            "    Dim Bump As Int\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
+        ),
+        ("", "    Dim Bump As Int\n    Bump = 3"),
+    ] {
+        let diags = errors(&sub(body, app));
+        assert_eq!(diags.len(), 1, "{body}{app}: {diags:?}");
+        assert_eq!(
+            diags,
+            ["a variable cannot have the name of a Sub: `Bump` is a Sub"],
+            "{body}{app}"
+        );
+        // The loop's reads still call the Sub.
+        let (lowered, _) = self::module(&sub(body, app));
+        assert!(
+            !app.contains("Log") || format!("{:?}", app_start(&lowered).body).contains("Call"),
+            "{app}"
+        );
+    }
+    // A `Dim` of `Class_Globals` with a Sub's name is not recorded.
+    let diags = errors(
+        "Sub Class_Globals\n    Dim Bump As Int\nEnd Sub\n\nSub Initialize\n    Log(Bump)\n    \
+         Bump = 1\n    Bump\nEnd Sub\n\nSub Bump As Int\n    Return 9\nEnd Sub\n",
+    );
+    assert!(!has(&diags, "not a statement"), "{diags:?}");
+    // Classes are Level 1: only the errors about `Bump` matter here.
+    let diags: Vec<&String> = diags.iter().filter(|d| d.contains("`Bump`")).collect();
+    assert_eq!(
+        diags,
+        [
+            "`Bump` is a Sub: whether a variable of `Class_Globals` may have its name is not \
+             known yet, so use another name"
+        ]
+    );
+    // A `Type`, `Bit` or a keyword is refused once, and the loop's body is
+    // still checked, without reporting the variable again.
+    for (body, what) in [
+        (
+            "    For Bit = 1 To 2\n        Log(Bit)\n    Next\n    For Bit = 1 To 2\n    Next",
+            "the `Bit` object",
+        ),
+        (
+            "    For Each Abs As Int In Array As Int(1)\n    Next",
+            "a keyword",
+        ),
+        (
+            "    Type Point (X As Int)\n    For Point = 1 To 2\n    Next",
+            "a `Type`",
+        ),
+    ] {
+        let diags = errors(&globals(body, "    Log(Abs(-1))"));
+        assert_eq!(diags.len(), 1, "{body}: {diags:?}");
+        assert!(
+            has(&diags, &format!("has the name of {what}")),
+            "{body}: {diags:?}"
+        );
+    }
+    let diags = errors(&globals(
+        "    For Bit = Unknown To 2\n        Log(Missing)\n    Next\n    For Each Bit As Int In Other\n    Next",
+        "",
+    ));
+    for name in ["Unknown", "Missing", "Other"] {
+        assert!(
+            has(&diags, &format!("`{name}` is not declared")),
+            "{diags:?}"
+        );
+    }
+
+    // `For ... As` there is still refused.
+    let diags = errors(&globals(
+        "    For i As Double = 0 To 1 Step 0.5\n        Log(i)\n    Next",
+        "",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
     assert!(
         has(
             &diags,
@@ -431,26 +953,98 @@ fn loops_in_process_globals_need_a_declared_variable() {
         ),
         "{diags:?}"
     );
-    let diags = errors(&globals("    For i As Int = 1 To 3\n    Next"));
-    assert!(
-        has(&diags, "the `For` variable `i` must be declared first"),
-        "{diags:?}"
-    );
     let diags = errors(&globals(
-        "    For Each v As Int In Array As Int(1, 2)\n    Next",
+        "    For i = 1 To 2\n    Next\n    For i As Double = 0 To 1 Step 0.5\n    Next",
+        "",
     ));
     assert!(
-        has(&diags, "the `For Each` variable `v` must be declared first"),
+        has(
+            &diags,
+            "`i` is already declared, so write the loop without `As`"
+        ),
         "{diags:?}"
     );
-    // A declared variable works, as before.
-    let module = ok(&globals(
-        "    Dim i As Int\n    For i = 1 To 3\n        Total = Total + i\n    Next",
-    ));
-    let pg = module.sub(module.process_globals.unwrap());
+    // In `Class_Globals` (not recorded) a loop must use a declared variable,
+    // without `As`.
+    let class = |body: &str| {
+        errors(&format!(
+            "Sub Class_Globals\n{body}\nEnd Sub\n\nSub Initialize\nEnd Sub\n"
+        ))
+    };
+    let diags = class("    For i = 1 To 3\n    Next");
     assert!(
-        format!("{:?}", pg.body).contains("For"),
-        "the loop must be kept"
+        has(&diags, "must be declared first in `Class_Globals`"),
+        "{diags:?}"
+    );
+    let diags = class("    Dim v As Int\n    For Each v As Int In Array As Int(1)\n    Next");
+    assert!(
+        has(
+            &diags,
+            "not supported in `Class_Globals` yet: `v` is already declared"
+        ),
+        "{diags:?}"
+    );
+    // An undeclared `For Each` variable elsewhere is reported once.
+    let diags = errors(&globals(
+        "",
+        "    For Each x In Array As Int(1)\n        Log(x)\n    Next",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+}
+
+/// A local may not take a module variable's name: B4J refuses another type
+/// (recorded), and whether the same type is a new local is open.
+#[test]
+fn locals_named_like_module_variables() {
+    let program = |app: &str| {
+        format!(
+            "Sub Process_Globals\n    Dim Count As Int\nEnd Sub\n\nSub AppStart (Args() As String)\n{app}\nEnd Sub\n"
+        )
+    };
+    for (app, message) in [
+        (
+            "    Dim Count As String",
+            "`Count` is a module variable of type Int: a local cannot declare it again as String",
+        ),
+        (
+            "    For Each Count As String In Array As String(\"a\")\n    Next",
+            "`Count` is a module variable of type Int: a local cannot declare it again as String",
+        ),
+        (
+            "    For Count As Int = 1 To 2\n    Next",
+            "`Count` is also a module variable (Int): whether this loop declares a new local or means the module variable is not known yet, so loop over it without `As`",
+        ),
+    ] {
+        let diags = errors(&program(app));
+        assert_eq!(diags.len(), 1, "{app}: {diags:?}");
+        assert!(has(&diags, message), "{app}: {diags:?}");
+    }
+    // A `Dim` or `For Each` of its name and type is the module variable
+    // (recorded), and so is its undeclared counter.
+    for app in [
+        "    Dim count As Int\n    count = 7",
+        "    For Each Count As Int In Array As Int(1)\n    Next",
+        "    For Count = 1 To 2\n    Next",
+    ] {
+        let module = ok(&program(app));
+        assert!(
+            app_start(&module)
+                .locals
+                .iter()
+                .all(|v| v.name.to_lowercase() != "count"),
+            "{app}"
+        );
+    }
+    // A parameter cannot have its name (recorded).
+    let diags = errors(&format!(
+        "{}Sub Show (Count As String)\nEnd Sub\n",
+        program("")
+    ));
+    assert_eq!(
+        diags,
+        [
+            "the parameter `Count` has the name of a module variable: a parameter cannot hide a module variable"
+        ]
     );
 }
 

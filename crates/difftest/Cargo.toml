@@ -8,7 +8,14 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
+[[bin]]
+name = "ferro-difftest"
+path = "src/main.rs"
+
 [lints]
 workspace = true
 
 [dependencies]
+ferro-corpus = { path = "../corpus" }
+# The steps `ferro run` takes, so that the interp target is `ferro run`.
+ferro-cli = { path = "../cli" }

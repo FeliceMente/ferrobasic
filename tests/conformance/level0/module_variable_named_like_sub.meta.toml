@@ -1,0 +1,18 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "negative"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["scope", "sub-call"]
+
+# B4J 10.70 refused it on 2026-10-26 ("Variable name cannot be the same as
+# a sub name (bump)", at the Dim): a module variable cannot have a Sub's
+# name, although a loop variable of Process_Globals can.
+
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+rejected = true   # the original toolchain refused to build it
+date = "2026-10-26"

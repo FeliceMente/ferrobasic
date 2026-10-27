@@ -105,9 +105,10 @@ pub fn can_convert(from: &Ty, to: &Ty) -> bool {
         // B4X compiles `Log(LastException)` and `"e: " & LastException`).
         (_, String) => true,
         (String, t) => t.is_numeric() || matches!(t, Boolean | Char),
-        // An array passed where a List is expected is wrapped (`List.AddAll`,
-        // `Initialize2`).
-        (Array(..), List) => true,
+        // A one-dimensional array passed where a List is expected is wrapped
+        // (`List.AddAll`, `Initialize2`). The original toolchain casts an
+        // array of rank 2 or more instead, which its Java compiler rejects.
+        (Array(_, 1), List) => true,
         _ => false,
     }
 }
@@ -188,6 +189,7 @@ mod tests {
         assert!(can_convert(&Ty::Int, &Ty::String));
         assert!(can_convert(&Ty::String, &Ty::Int));
         assert!(can_convert(&Ty::Object, &Ty::Map));
+        assert!(!can_convert(&Ty::Array(Box::new(Ty::Int), 2), &Ty::List));
         assert!(can_convert(&Ty::Null, &Ty::List));
         assert!(can_convert(&Ty::Array(Box::new(Ty::Int), 1), &Ty::List));
         assert!(!can_convert(&Ty::Null, &Ty::Int));

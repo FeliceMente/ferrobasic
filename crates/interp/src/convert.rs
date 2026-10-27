@@ -188,8 +188,10 @@ pub fn to_string_from(v: &Value, from: &Ty, program: &Program) -> Result<Value, 
     }
     let mut out = Vec::new();
     match (from, v) {
-        // A Null String or the Null literal stays a null String.
-        (Ty::String | Ty::Null, Value::Null) => return Ok(Value::Null),
+        // A null String stays one: Java converts nothing. The `Null`
+        // literal goes through `BA.ObjectToString`, so it is the text
+        // "null" (the MIR also folds it into that constant).
+        (Ty::String, Value::Null) => return Ok(Value::Null),
         (t, _) if is_wrapper_type(t) => wrapper_to_string(v, program, &mut out)?,
         _ => raw_to_string(v, program, &mut out)?,
     }
@@ -279,6 +281,15 @@ pub fn convert(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value,
         },
         Ty::String => to_string_from(&v, from, program),
         Ty::Object => Ok(unwrap(v)),
+        // An array declared as one (only rank 1 converts: `hir`) is wrapped,
+        // as B4J's compiler does with `ArrayToList`.
+        // A null one raises, as `ArrayToList` does (`Arrays.asList(null)`,
+        // or `Array.length` for a primitive array).
+        Ty::List if matches!(from, Ty::Array(..)) => match &v {
+            Value::Array(a) => Ok(array_to_list(a)),
+            Value::Null => Err(Exc::bare(NULL_POINTER)),
+            _ => rewrap(v, to, program),
+        },
         Ty::List | Ty::Map | Ty::StringBuilder | Ty::Exception => rewrap(v, to, program),
         Ty::Array(elem, rank) => match &v {
             Value::Null => Ok(v),
@@ -355,7 +366,9 @@ fn rewrap(v: Value, to: &Ty, program: &Program) -> Result<Value, Exc> {
             Value::Null => fresh_wrapper(to),
             w => w,
         }),
-        (Ty::List, Value::Array(a)) => Ok(array_to_list(a)),
+        // An array held in an `Object` is not wrapped: B4J casts it, which
+        // raises whatever its rank (recordings
+        // `level0/list_from_1d_array_object`, `list_from_2d_array_object`).
         (Ty::List, _) => Err(class_cast(&v, "java.util.List", program)),
         (Ty::Map, _) => Err(class_cast(&v, "java.util.Map", program)),
         (Ty::StringBuilder, _) => Err(class_cast(&v, "java.lang.StringBuilder", program)),
@@ -370,8 +383,8 @@ pub fn array_to_list(a: &Rc<ArrayObj>) -> Value {
     let list = if a.elem.is_primitive() && a.rank == 1 {
         ListObj::new(a.items.borrow().clone(), ListKind::FixedSize)
     } else {
-        // `Arrays.asList` of an `Object[]` (an array of rows, for a higher
-        // rank): stores through the list are checked against its type.
+        // `Arrays.asList` of an array of references: stores through the
+        // list are checked against its type.
         ListObj::shared(a.items.clone(), ListKind::FixedSize, Some(a.item_ty()))
     };
     Value::List(Rc::new(RefCell::new(Some(Rc::new(list)))))
@@ -455,6 +468,10 @@ mod tests {
             Value::Char(0)
         ));
         assert_eq!(text(conv(Value::Double(3.0), Ty::Double, Ty::String)), "3");
+        // The `Null` literal is the text "null", not a null String.
+        let null = conv(Value::Null, Ty::Null, Ty::String).unwrap();
+        assert!(matches!(null, Value::Str(_)), "{null:?}");
+        assert_eq!(text(Ok(null)), "null");
         assert_eq!(
             text(conv(Value::Float(1.1), Ty::Float, Ty::String)),
             "1.100000023841858"

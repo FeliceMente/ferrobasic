@@ -116,7 +116,8 @@ ferro version | help
 - Output that cannot be written (stdout or stderr closed, or a pipe whose
   reader has gone, as in `ferro help | head -1`) is dropped silently: it
   never crashes `ferro` or changes its exit code.
-- `ferro-difftest` drives the conformance tests.
+- `ferro-difftest` drives the conformance tests and prints the compatibility
+  report ([../compatibility-testing.md](../compatibility-testing.md#the-report)).
 
 ### Planned commands
 
@@ -234,8 +235,10 @@ it arrives.
   `ExitApplication`, and before a runtime error is printed.
 - Recursion depth is limited. Overflowing it is a runtime error of kind
   `java.lang.StackOverflowError`, not a crash of `ferro`. So is comparing
-  (`=`, `IndexOf`) or printing collections and records nested more than 1000
-  deep, where Java's `equals` and `toString` recurse too.
+  (`=`, `IndexOf`) collections nested more than 3000 deep, or printing
+  collections and records nested more than 7000 deep, where Java's `equals`
+  and `toString` recurse too (deviation D2: Java's limit depends on its
+  stack).
 - Data may nest to any depth: a linked list of 100,000 records is freed
   without recursion.
 - Memory is limited. When an allocation fails, or a String or
@@ -324,7 +327,7 @@ The first implementation is done when, on Linux x86_64 and in CI:
    recorded, a `.provisional` file produces identical stdout, and the uncaught
    error named in `uncaught_error` when there is one
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
-   Tests with neither file, such as `precedence_open`, are only checked.
+   Tests with neither file, such as `precedence_and_or`, are only checked.
 5. For every test in point 4, `ferro bundle` produces a binary whose stdout and
    exit code are identical to `ferro run`'s. The binary must also keep working
    after the build tree and `ferro` itself are removed.

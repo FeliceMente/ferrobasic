@@ -2,6 +2,8 @@
 //! would overwrite the input or `ferro` itself, non-UTF-8 arguments, closed
 //! pipes, files with many errors (`docs/spec/cli.md`).
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -9,9 +11,11 @@ use std::process::{Command, Output, Stdio};
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 
+use common::run_written;
+
 const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
-const PROGRAM: &str = "Sub AppStart (Args() As String)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n";
+const PROGRAM: &str = "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    For Each a As String In Args\n        Log(a)\n    Next\nEnd Sub\n";
 
 /// A fresh directory under Cargo's per-target scratch area, removed when
 /// dropped, also when the test fails.
@@ -45,21 +49,6 @@ fn ferro_in(dir: &Path, args: &[&std::ffi::OsStr]) -> Output {
         .current_dir(dir)
         .output()
         .unwrap()
-}
-
-/// Runs an executable this test process just wrote, retrying on "text file
-/// busy": another test thread starting a process may briefly hold a copy of
-/// our write descriptor (see `run_binary` in `tests/bundle.rs`).
-fn run_written(command: &mut Command) -> Output {
-    for _ in 0..200 {
-        match command.output() {
-            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            result => return result.unwrap(),
-        }
-    }
-    panic!("{command:?}: still \"text file busy\" after 2 s");
 }
 
 fn os(s: &str) -> &std::ffi::OsStr {
@@ -355,13 +344,13 @@ fn closed_pipes_do_not_change_the_exit_code() {
     let dir = Scratch::new("pipes");
     let bad = dir.file(
         "bad.bas",
-        "Sub AppStart (Args() As String)\n    x = = 1\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    x = = 1\nEnd Sub\n",
     );
     let out = with_closed_pipe(&["check", bad.to_str().unwrap()], false);
     assert_eq!(out.status.code(), Some(3));
     let crash = dir.file(
         "crash.bas",
-        "Sub AppStart (Args() As String)\n    Dim l As List\n    l.Add(1)\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Dim l As List\n    l.Add(1)\nEnd Sub\n",
     );
     let out = with_closed_pipe(&["run", crash.to_str().unwrap()], false);
     assert_eq!(out.status.code(), Some(1));
@@ -370,7 +359,8 @@ fn closed_pipes_do_not_change_the_exit_code() {
 #[test]
 fn many_errors_are_counted_but_not_all_printed() {
     let dir = Scratch::new("errors");
-    let mut text = String::from("Sub AppStart (Args() As String)\n");
+    let mut text =
+        String::from("Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n");
     for _ in 0..150 {
         text.push_str("    Log(undeclared)\n");
     }
@@ -387,7 +377,7 @@ fn many_errors_are_counted_but_not_all_printed() {
 }
 
 fn in_app_start(body: &str) -> String {
-    format!("Sub AppStart (Args() As String)\n{body}\nEnd Sub\n")
+    format!("Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n{body}\nEnd Sub\n")
 }
 
 /// Deeply nested programs are rejected with one error instead of crashing

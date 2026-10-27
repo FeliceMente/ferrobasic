@@ -1,6 +1,6 @@
 [package]
 name = "ferro-corpus"
-description = "The conformance test corpus, as every crate's test harness reads it."
+description = "The conformance test corpus and the real-world corpus it references, as every crate's test harness reads them."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

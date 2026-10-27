@@ -163,10 +163,13 @@ impl ListObj {
         Ok((i < len).then(|| items[from + i].clone()))
     }
 
-    /// The own storage, for changes; only lists that are not views (callers
-    /// reject `ReadOnly` lists first).
-    pub fn storage(&self) -> &Shared<Vec<Value>> {
-        &self.items
+    /// The own storage, for changes. A view has none: callers refuse
+    /// changes through a view first, so reaching here is a bug.
+    pub fn storage(&self) -> Result<&Shared<Vec<Value>>, Exc> {
+        match self.view {
+            None => Ok(&self.items),
+            Some(_) => Err(Exc::internal("change through a read-only view")),
+        }
     }
 
     /// Records a structural modification (it invalidates sub-list views).
@@ -218,6 +221,8 @@ pub struct Exc {
     /// `None` for an exception without a message (`toString` is then the
     /// kind alone).
     pub message: Option<String>,
+    /// The exception this one wraps (Java `getCause`).
+    pub cause: Option<Box<Exc>>,
 }
 
 pub const RUNTIME: &str = "java.lang.RuntimeException";
@@ -245,6 +250,7 @@ impl Exc {
         Exc {
             kind,
             message: Some(message.into()),
+            cause: None,
         }
     }
 
@@ -252,7 +258,29 @@ impl Exc {
         Exc {
             kind,
             message: None,
+            cause: None,
         }
+    }
+
+    /// Java `new X(cause)`: its message is the cause's `toString`. Only
+    /// for exceptions the runtime caught as `Exception`, so never an
+    /// `Error` (which `Catch` would then catch, through its wrapper).
+    pub fn caused_by(kind: &'static str, cause: Exc) -> Exc {
+        debug_assert!(!cause.is_error(), "wrapping {}", cause.kind);
+        Exc {
+            kind,
+            message: Some(cause.to_java_string()),
+            cause: Some(Box::new(cause)),
+        }
+    }
+
+    /// What a `Catch` sees in `LastException`: jCore's `BA.setLastException`
+    /// keeps the innermost cause.
+    pub fn innermost(mut self) -> Exc {
+        while let Some(cause) = self.cause.take() {
+            self = *cause;
+        }
+        self
     }
 
     /// `Object should first be initialized (List).`
@@ -273,6 +301,12 @@ impl Exc {
 
     pub fn internal(message: impl Into<String>) -> Exc {
         Exc::new(INTERNAL, message)
+    }
+
+    /// Whether this is a Java `Error` (or an interpreter bug) rather than an
+    /// `Exception`: a `catch (Exception e)` in the runtime lets it through.
+    pub fn is_error(&self) -> bool {
+        matches!(self.kind, STACK_OVERFLOW | OUT_OF_MEMORY | INTERNAL)
     }
 
     /// Java `Throwable.toString`: what `LastException.Message` returns.
@@ -819,8 +853,10 @@ impl HKey {
 
 /// How deep `equals` may go into nested collections before raising
 /// `StackOverflowError`, as Java's recursive `ArrayList.equals` does on
-/// self-containing lists (`a.Add(a)`, `b.Add(b)`, `a = b`).
-const MAX_EQUALS_DEPTH: usize = 1000;
+/// deep or self-containing lists (`a.Add(a)`, `b.Add(b)`, `a = b`). Java's
+/// limit depends on the JVM's stack; the recording machine compares 2000
+/// levels and overflows by 5000 (`level0/deep_equals`, deviation D2).
+const MAX_EQUALS_DEPTH: usize = 3000;
 
 /// Java `equals` on boxed values. Lists and maps compare by content, as
 /// `ArrayList.equals` and `AbstractMap.equals` do; other objects by identity.
@@ -840,7 +876,8 @@ pub fn java_equals(a: &Value, b: &Value) -> Result<bool, Exc> {
             Work::Pair(a, b, depth) => (a, b, depth),
             Work::Unequal => return Ok(false),
         };
-        if depth > MAX_EQUALS_DEPTH {
+        // The outermost pair is at depth 0: `MAX_EQUALS_DEPTH` levels compare.
+        if depth >= MAX_EQUALS_DEPTH {
             return Err(Exc::bare(STACK_OVERFLOW));
         }
         match (&a, &b) {
@@ -964,8 +1001,9 @@ fn array_descriptor(elem: &Ty) -> String {
 
 /// How many collections and records may be nested in one another while
 /// printing, before `StackOverflowError`: Java's `toString` recurses, like
-/// `equals` (see [`MAX_EQUALS_DEPTH`]).
-const MAX_PRINT_DEPTH: usize = MAX_EQUALS_DEPTH;
+/// `equals` (see [`MAX_EQUALS_DEPTH`]). The recording machine prints 5000
+/// levels and overflows by 10000 (`level0/deep_printing`, deviation D2).
+const MAX_PRINT_DEPTH: usize = 7000;
 
 /// Java `String.valueOf(object)` of a value held in an `Object` (so a
 /// collection prints without its wrapper's prefix and a Double keeps its
@@ -1086,6 +1124,12 @@ impl<'p, 'o> Printer<'p, 'o> {
                     mut values,
                     next,
                 } => {
+                    // `IsInitialized` is field 1; `next` is field `next + 2`.
+                    // A line break follows every third field, before the
+                    // separator (and before `]` after the last one).
+                    if (next + 1) % 3 == 0 {
+                        self.put("\n")?;
+                    }
                     let Some(field) = fields.get(next).filter(|_| next < values.len()) else {
                         self.put("]")?;
                         self.leave();
@@ -1213,8 +1257,9 @@ impl<'p, 'o> Printer<'p, 'o> {
         Ok(())
     }
 
-    /// The `toString` B4X generates for a `Type`:
-    /// `[IsInitialized=true, Name=abc, Price=1.5]`.
+    /// The `toString` B4X generates for a `Type`, jCore's `BA.TypeToString`:
+    /// `[IsInitialized=true, Name=abc, Price=1.5\n, Tags=null]`, with a line
+    /// break after every third field (recording `level0/record_printing`).
     fn record(&mut self, r: &Rc<RecordObj>) -> Result<(), Exc> {
         let Some(rec) = self.program.records.get(r.id.0 as usize) else {
             return self.put("[]");

@@ -17,12 +17,14 @@ B4X; M3 is the first milestone where real B4J projects build unchanged.
 
 ## M0 task breakdown
 
-Order changed: the interpreter comes right after the parser, and recording is
-deferred, with `.provisional` outputs standing in
+Order changed: the interpreter comes right after the parser, and recording
+came later, with `.provisional` outputs standing in
 (see [compatibility-testing.md](compatibility-testing.md#provisional-outputs)).
 
-- [ ] Collect 5–10 small B4J console projects and document the project-file
-      format in `docs/spec/project-files.md`.
+- [x] Collect 5–10 small B4J console projects and document the project-file
+      format in `docs/spec/project-files.md`: six projects, saved by B4J 2.18
+      to 10.5, referenced in `tests/corpus/corpus.toml` (original URL,
+      commit, licence, SHA-256) and fetched for the tests.
 - [ ] `ferro-project`: read `.b4j` headers and modules; round-trip tests.
 - [x] `ferro-syntax`: token kinds, lexer (case-insensitive keywords, smart
       strings, line continuation, comments as trivia).
@@ -33,8 +35,11 @@ deferred, with `.provisional` outputs standing in
 - [x] Level 0 semantics researched from public sources
       ([research/level0-semantics.md](research/level0-semantics.md)); specs
       updated; pending tests with provisional outputs added.
-- [ ] `tools/recorder`: wrap a `.bas` in a B4J console project, build and run it
-      with the original toolchain, write `.expected` and `.meta.toml`. *Deferred.*
+- [x] `tools/recorder`: wrap a `.bas` in a B4J console project, build and run it
+      with the original toolchain, write `.expected` and `.meta.toml`.
+- [x] First recordings of the Level 0 corpus (B4J 10.70 on Windows 10,
+      OpenJDK 19): 24 tests recorded and matching. The other recordings land
+      with the fixes they call for.
 - [x] CI green on Linux, macOS and Windows (`.github/workflows/ci.yml`;
       runs on release pull requests and on demand).
 
@@ -51,7 +56,7 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] `ferro-mir`: typed IR with explicit `Convert`, lowered loops and smart strings.
 - [x] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
 - [x] `ferro check` / `ferro run`: every conformance test with a provisional
-      output matches it (`crates/interp/tests/conformance.rs`).
+      output matches it (now `ferro-difftest`, in `crates/difftest`).
 - [x] `ferro bundle`: standalone executable for the host (payload appended to
       `ferro`; embedded with `libsui` on macOS). Verified on Linux x86_64,
       glibc and musl (fully static), on Windows x64, and on macOS arm64 and
@@ -59,5 +64,6 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] CLI command names settled: `build` renamed `bundle`; `compile`,
       `targets` and project-level `build` reserved, with their plan in
       `docs/spec/cli.md` ("Planned commands").
-- [ ] `ferro-difftest --target interp` and `--target standalone` against
-      `.expected` / `.provisional`.
+- [x] `ferro-difftest --target interp` and `--target standalone` against
+      `.expected` / `.provisional`, with the report by level and feature
+      ([compatibility-testing.md](compatibility-testing.md#the-report)).

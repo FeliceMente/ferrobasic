@@ -2,23 +2,9 @@
 //! the Java error B4J raises, never crash the process. These run on a test
 //! thread (2 MB stack), smaller than `ferro`'s own.
 
-use ferro_interp::Outcome;
+mod common;
 
-/// Parses, checks, lowers and runs `source`; returns stdout and the outcome.
-fn run(source: &str) -> (String, Outcome) {
-    let parse = ferro_syntax::parse(source);
-    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
-    let (module, diags) = ferro_hir::check(&parse.syntax());
-    assert!(diags.is_empty(), "{diags:?}");
-    let program = ferro_mir::lower(&module);
-    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-    let outcome = ferro_interp::run(&program, &[], &mut stdout, &mut stderr);
-    (String::from_utf8(stdout).unwrap(), outcome)
-}
-
-fn app_start(body: &str) -> String {
-    format!("Sub AppStart (Args() As String)\n{body}\nEnd Sub\n")
-}
+use common::{app_start, run};
 
 /// Runs `body` in `AppStart` and expects it to print `expected` and end
 /// normally.
@@ -126,7 +112,8 @@ fn sub_lists_of_sub_lists_do_not_chain() {
     );
 }
 
-/// Printing recurses in Java too: past 1000 levels it raises
+/// Printing recurses in Java too: past 7000 levels (FerroBASIC's limit,
+/// deviation D2) it raises
 /// `StackOverflowError`, which `Try` does not catch.
 #[test]
 fn printing_deep_structures_overflows_like_java() {
@@ -144,17 +131,17 @@ fn printing_deep_structures_overflows_like_java() {
 {tail}"
         ))
     };
-    let (stdout, outcome) = run(&nested(1000, "    Log(Head)"));
+    let (stdout, outcome) = run(&nested(7000, "    Log(Head)"));
     assert_eq!(outcome.error, None);
     let expected = format!(
         "built\n(ArrayList) {}{}\n",
-        "[".repeat(1000),
-        "]".repeat(1000)
+        "[".repeat(7000),
+        "]".repeat(7000)
     );
     assert_eq!(stdout, expected);
 
     stops(
-        &nested(1001, "    Log(Head)"),
+        &nested(7001, "    Log(Head)"),
         "built\n",
         "java.lang.StackOverflowError",
     );
@@ -169,6 +156,36 @@ fn printing_deep_structures_overflows_like_java() {
         "built\n",
         "java.lang.StackOverflowError",
     );
+}
+
+/// Comparing recurses in Java: past 3000 levels (FerroBASIC's limit,
+/// deviation D2) it raises `StackOverflowError`.
+#[test]
+fn comparing_deep_structures_overflows_like_java() {
+    let nested = |depth: usize| {
+        app_start(&format!(
+            "    Dim A, B As List
+    A.Initialize
+    B.Initialize
+    For i = 2 To {depth}
+        Dim NextA, NextB As List
+        NextA.Initialize
+        NextA.Add(A)
+        A = NextA
+        NextB.Initialize
+        NextB.Add(B)
+        B = NextB
+    Next
+    Log(\"built\")
+    Dim OA As Object = A
+    Dim OB As Object = B
+    Log(OA = OB)"
+        ))
+    };
+    let (stdout, outcome) = run(&nested(3000));
+    assert_eq!(outcome.error, None);
+    assert_eq!(stdout, "built\ntrue\n");
+    stops(&nested(3001), "built\n", "java.lang.StackOverflowError");
 }
 
 /// A record whose List holds the record itself: Java's `toString` never

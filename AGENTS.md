@@ -16,7 +16,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
 - Current milestone: **M0 → M1** — lexer, parser, lossless CST, then the
   Level 0 interpreter, `ferro run` and standalone `ferro bundle` (see
-  `docs/spec/cli.md`). The recorder is deferred. See `docs/roadmap.md`.
+  `docs/spec/cli.md`). The Level 0 corpus is recorded with B4J 10.70 on a
+  Windows machine by `tools/recorder`; new pending tests go into the next
+  recording run. See `docs/roadmap.md`.
 
 ## Read before working
 
@@ -37,8 +39,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   from the ORIGINAL B4X toolchain (`*.meta.toml` records the B4X version).
   Expected behaviour is what those files say, not your memory of B4X.
 - Never write or edit a `*.expected` file by hand: only `tools/recorder` does.
-- Until recordings exist, `*.provisional` files hold hand-derived expected
-  output, only for behaviour settled in `docs/research/level0-semantics.md`.
+- Until a test is recorded, a `*.provisional` file may hold hand-derived
+  expected output, only for behaviour settled in
+  `docs/research/level0-semantics.md`.
   Never write one for an open question, never change one to make a test pass,
   and never let it override an `*.expected` file (see
   `docs/compatibility-testing.md`).
@@ -50,8 +53,10 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 ## Rules
 
 - Never require changes to B4X sources, project files or layouts. An unsupported
-  construct gets a precise diagnostic (what is missing, on which target) and an
-  entry in `docs/deviations.md`. Never build something that silently behaves differently.
+  construct gets a precise diagnostic (what is missing, on which target) and a
+  ❌ row in `docs/language-support.md`. Behaviour that is supported but knowingly
+  differs from B4X gets an entry in `docs/deviations.md`. Never build something
+  that silently behaves differently.
 - Every language feature lands with at least one conformance test, and
   updates its row in `docs/language-support.md`.
 - If B4X semantics are unclear, do NOT invent them: add a test with
@@ -63,6 +68,10 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   depend on it.
 - Implicit conversions become explicit MIR nodes (`Convert(from, to)`).
 - No target-specific code in `syntax`, `hir` or `mir`.
+- Behaviour follows the project's product (B4J, B4A, B4i, B4R), never the
+  backend. The interpreter implements only the B4J profile for now: keep its
+  Java-specific parts gathered (exception kinds in `value.rs`, number
+  formatting in `number.rs`), and see `docs/architecture.md`, "Target profiles".
 - `crates/runtime` (planned, M4) must stay `no_std`-compatible.
 - No `unsafe` outside crates that explicitly opt in and document why.
 - Keep external dependencies few and justified in the PR description. After
@@ -70,8 +79,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   `tools/licenses/generate.sh` (a test fails until you do).
 - Never use the B4X name in binaries, crate names or user-facing messages;
   "B4X-compatible" in documentation is fine.
-- Never commit third-party B4X libraries, B4X binaries or corpus projects whose
-  licence does not allow redistribution.
+- Never commit third-party B4X libraries, B4X binaries or real-world corpus
+  projects: reference a project in `tests/corpus/corpus.toml` (URL, commit,
+  licence, each file's SHA-256) and fetch it (`tests/corpus/README.md`).
 
 ## Commands
 
@@ -82,7 +92,11 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p ferro-cli -- run tests/conformance/level0/<file>.bas
 cargo run -p ferro-cli -- bundle tests/conformance/level0/<file>.bas -o /tmp/prog
-cargo run -p ferro-difftest -- --target interp   # compare against recordings (once implemented)
+cargo run -p ferro-recorder -- --dry-run          # tests the recorder would record (it runs on Windows)
+cargo run -p ferro-difftest                       # compare against recordings: the report
+cargo build -p ferro-cli && cargo run -p ferro-difftest -- --target standalone
+cargo run -p ferro-corpus --bin ferro-corpus-fetch    # download the real-world corpus
+cargo test -p ferro-syntax --test projects -- --ignored  # tests that need it
 ```
 
 ## Before closing a task

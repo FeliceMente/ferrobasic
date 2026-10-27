@@ -38,12 +38,17 @@ syntax_kinds! {
         COMMENT,
         /// ` _` at the end of a line: the `_`, any spaces after it and the line
         /// break it hides. The whitespace before `_` is a separate token.
+        /// When a comment follows (` _ ' comment`, ` _' comment`), the `_` and its spaces
+        /// are one token and the line break after the comment another.
         LINE_CONTINUATION,
 
         /// Module or project header: `Key=Value` lines up to `@EndOfDesignText@`.
         HEADER,
         /// A whole `#...` line: attribute, region marker or directive.
         DIRECTIVE,
+        /// An inline Java block, from its `#If Java` line to its `#End If`
+        /// line, as one token: its text is Java, not BASIC.
+        INLINE_JAVA,
         NEWLINE,
         COLON,
         IDENT,
@@ -115,6 +120,8 @@ syntax_kinds! {
         ATTRIBUTE,
         REGION,
         DIRECTIVE_LINE,
+        /// `#If Java` … `#End If`, recognised only to be reported.
+        INLINE_JAVA_BLOCK,
         SUB_DECL,
         PARAM_LIST,
         PARAM,
@@ -123,6 +130,9 @@ syntax_kinds! {
         FIELD,
         BLOCK,
         DIM_STMT,
+        /// `Const` after `Dim`, `Private` or `Public`, recognised only to be
+        /// reported.
+        CONST_MODIFIER,
         DECLARATOR,
         ARRAY_BOUNDS,
         IF_STMT,
@@ -138,6 +148,9 @@ syntax_kinds! {
         RETURN_STMT,
         EXIT_STMT,
         CONTINUE_STMT,
+        /// `Wait For …` up to the end of the statement, recognised only to
+        /// be reported.
+        WAIT_FOR_STMT,
         ASSIGN_STMT,
         EXPR_STMT,
         /// A declared name.
@@ -149,6 +162,8 @@ syntax_kinds! {
         PAREN_EXPR,
         PREFIX_EXPR,
         BIN_EXPR,
+        /// `x Is T`, a type test, recognised only to be reported.
+        IS_EXPR,
         /// `f(args)`: a call or an array index, told apart by `hir`.
         CALL_EXPR,
         ARG_LIST,

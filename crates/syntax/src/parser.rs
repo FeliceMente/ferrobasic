@@ -62,9 +62,10 @@ pub fn parse(text: &str) -> Parse {
     }
 }
 
-/// Binding powers of the binary operators, lowest first. The relative order
-/// of `&` and of `And`/`Or` is provisional (see `docs/open-questions.md`):
-/// change it here only, when a recording settles it.
+/// Binding powers of the binary operators, lowest first, as recorded from
+/// B4J (`And` above `Or`, comparisons below `&`). B4J also refuses `+`, `-`,
+/// `*` or a negation next to `&` without parentheses; the parser still
+/// builds those, so that tools see their tree, and `hir` reports them.
 fn infix_binding_power(kind: SyntaxKind) -> Option<(u8, u8)> {
     Some(match kind {
         OR_KW => (1, 2),
@@ -141,6 +142,12 @@ impl Parser<'_> {
             Some(i) => &self.text[self.starts[i] as usize..self.starts[i + 1] as usize],
             None => "",
         }
+    }
+
+    /// Whether the current token is the name `word` (any case): `Const`,
+    /// `Is` and `Wait` are recognised by their place, not as keywords.
+    fn at_word(&self, word: &str) -> bool {
+        self.at(IDENT) && self.current_text().eq_ignore_ascii_case(word)
     }
 
     /// End of a statement: line break, `:` or end of input.
@@ -324,12 +331,19 @@ impl Parser<'_> {
                 None => break,
                 Some(NEWLINE | COLON) => self.bump(),
                 Some(DIRECTIVE) => self.directive_line(),
+                Some(INLINE_JAVA) => self.inline_java(),
                 _ if self.at_sub_start() => self.sub_decl(),
                 _ => self.error_and_recover("expected `Sub` or a `#` attribute"),
             }
         }
         // Trailing trivia, e.g. a final comment without a line break.
         self.eat_trivia();
+        self.finish();
+    }
+
+    fn inline_java(&mut self) {
+        self.start(INLINE_JAVA_BLOCK);
+        self.bump();
         self.finish();
     }
 
@@ -496,6 +510,7 @@ impl Parser<'_> {
             Some(DO_KW) => self.do_stmt(),
             Some(TRY_KW) => self.try_stmt(),
             Some(DIRECTIVE) => self.directive_line(),
+            Some(INLINE_JAVA) => self.inline_java(),
             _ => self.simple_statement(),
         }
     }
@@ -524,6 +539,7 @@ impl Parser<'_> {
             }
             Some(EXIT_KW) => self.keyword_stmt(EXIT_STMT),
             Some(CONTINUE_KW) => self.keyword_stmt(CONTINUE_STMT),
+            _ if self.at_word("wait") && self.nth(1) == Some(FOR_KW) => self.wait_for_stmt(),
             _ if self.at_expr_start() => self.assign_or_call(),
             Some(DO_KW | FOR_KW | SELECT_KW | TRY_KW) => {
                 self.error_and_recover("block statements cannot follow `Then` on the same line")
@@ -538,9 +554,26 @@ impl Parser<'_> {
         self.finish();
     }
 
+    /// `Wait For` and the rest of the statement, whatever its form
+    /// (`Wait For gmap_Ready`, `Wait For (rs) Complete (Success As Boolean)`).
+    fn wait_for_stmt(&mut self) {
+        self.start(WAIT_FOR_STMT);
+        while !self.at_sep() && !self.at(ELSE_KW) {
+            self.bump();
+        }
+        self.finish();
+    }
+
     fn dim_stmt(&mut self) {
         self.start(DIM_STMT);
         self.bump();
+        // `Private Const Size As Int = 10`; in `Dim Const As Int`, `Const`
+        // is the variable.
+        if self.at_word("const") && self.nth(1).is_some_and(is_name_token) {
+            self.start(CONST_MODIFIER);
+            self.bump();
+            self.finish();
+        }
         loop {
             self.declarator();
             if !self.eat(COMMA) {
@@ -817,7 +850,24 @@ impl Parser<'_> {
         } else {
             self.postfix_expr()
         };
-        while let Some((left, right)) = self.current().and_then(infix_binding_power) {
+        loop {
+            // `x Is Button`: after an operand, `Is` can only be the type
+            // test, which binds like a comparison.
+            if self.at_word("is") {
+                let (left, _) = infix_binding_power(EQ).unwrap();
+                if left < min_bp || !self.fits(height + 1) {
+                    break;
+                }
+                self.start_at(checkpoint, IS_EXPR);
+                self.bump();
+                self.type_ref_with(false);
+                self.finish();
+                height += 1;
+                continue;
+            }
+            let Some((left, right)) = self.current().and_then(infix_binding_power) else {
+                break;
+            };
             // Each operator wraps the tree so far: check its height first.
             if left < min_bp || !self.fits(height + 1) {
                 break;

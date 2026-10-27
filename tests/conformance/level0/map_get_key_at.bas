@@ -1,3 +1,6 @@
+Sub Process_Globals
+End Sub
+
 Sub AppStart (Args() As String)
     Dim m As Map = CreateMap("a": 1, "b": 2, "c": 3)
     Log(m.GetKeyAt(0) & m.GetKeyAt(1) & m.GetKeyAt(2))

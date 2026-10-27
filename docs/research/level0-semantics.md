@@ -2,9 +2,11 @@
 
 Research notes answering the Level 0 entries of
 [open-questions.md](../open-questions.md#language) from public sources only.
-**None of this is confirmed by a recording.** Conformance tests stay
-`pending-recording` until `tools/recorder` runs them on the original toolchain;
-a recording always overrides what is written here.
+The first recordings (B4J 10.70, OpenJDK 19, Windows 10) confirm the
+behaviour behind the tests marked `status = "recorded"` in
+`tests/conformance`; everything else here is still unconfirmed. Conformance
+tests stay `pending-recording` until `tools/recorder` runs them on the
+original toolchain; a recording always overrides what is written here.
 
 October 2026.
 
@@ -152,11 +154,15 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
 - An array passed as a `List` goes through `Common.ArrayToList`
   ([`Common.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Common.java#L715-L729)): a primitive
   array is boxed into a copy, any other array is wrapped by `Arrays.asList`.
-  An array of rank 2 or more is an array of arrays (`int[][]` is an
-  `Object[]`), so it gives a fixed-size list of its rows, shared with the
-  array: changing a row through the list changes the array, and `Set`
-  replaces a row (with an array of the row's type, or `Null`; anything else
-  raises `ArrayStoreException`).
+  An array of rank 2 or more does not get there: the compiler casts it to
+  `List` instead, which javac rejects (**recorded**, B4J 10.70: "int[][]
+  cannot be converted to List"), so passing one where a `List` is expected
+  is a compile error. An array of any rank held in an `Object` raises
+  `ClassCastException` instead of being wrapped (**recorded**:
+  `list_from_1d_array_object`, `list_from_2d_array_object`). A declared
+  array that is `Null` raises `NullPointerException`: `ArrayToList` passes it
+  to `Arrays.asList`, or reads its `length` (**source**; test
+  `list_from_null_array`).
 - B4X arrays are Java arrays (jCore takes them as `int[]`, `Object[]`, …), so
   `Grid(i, j)` is Java's `grid[i][j]`, evaluated as the JLS says (§15.10.4,
   §15.26.1): `grid[i]` selects and checks the row before `j` is evaluated,
@@ -172,6 +178,18 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
     `UnsupportedOperationException` only if there is something to add;
   - a `SubList` view (`Collections.unmodifiableList`) always raises
     `UnsupportedOperationException`.
+- The other changes through a `SubList` view (**measured**, JDK 21, test
+  `list_stale_sublist`) are refused the same way, before the view is read:
+  `Add`, `InsertAt`, `RemoveAt`, `Set`, `Clear`, and `Sort` and
+  `SortCaseInsensitive` (`Collections.sort` calls the view's `sort`), even
+  when the parent has changed since. `SortType` and
+  `SortTypeCaseInsensitive` differ, following jCore's `sortList`
+  ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L203-L227)):
+  it reads the size first (so a stale view raises
+  `ConcurrentModificationException`), returns on an empty list, and looks
+  up the field on the first item (`NullPointerException` for `Null`,
+  `NoSuchFieldException` for a missing field) before the view refuses to
+  sort.
 
 ### Built-in members (source, docs)
 
@@ -202,6 +220,39 @@ tests):
   `compareToIgnoreCase`; `SortType` / `SortTypeCaseInsensitive` compare the
   named field the same ways, and return at once on an empty list. Every sort
   is `Collections.sort`, which is stable, also when descending.
+- `SortType` / `SortTypeCaseInsensitive` take the field from the first item
+  (`get(0).getClass().getDeclaredField`, so `Null` raises
+  `NullPointerException` and a missing field `NoSuchFieldException`), then
+  sort with a comparator that reads that field from every item with
+  `Field.get` and wraps any exception in a `RuntimeException`
+  ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L203-L227)).
+  **Measured** (JDK 21, test `list_sort_type_errors`): an item of another
+  type, or a non-record, raises `RuntimeException` caused by
+  `IllegalArgumentException`; a `Null` item or a `Null` field value, by
+  `NullPointerException` (case-insensitively the field is
+  `String.valueOf`'d, so `"null"`); field values that are not mutually
+  `Comparable`, by `ClassCastException`. A list of one item is not compared.
+  Which item raises first depends on the order `TimSort` compares in;
+  FerroBASIC checks the items in list order, so in a list with several kinds
+  of problem the wrapped cause can differ, never the `RuntimeException`
+  (deviation D4). A `Catch` sees the cause, since `LastException` is the
+  innermost cause (below; **recorded**, `list_sort_type_errors`). The
+  comparator catches `Exception`, so an `Error` such as
+  `StackOverflowError` (printing a field nested too deeply) is not wrapped.
+  The class of a `Type` has the field `IsInitialized` too (its `toString`
+  prints it first), and `SortType` sorts by it (**recorded** from B4J 10.70
+  as lines of the deviation test `list_sort_type_class_fields`, whose
+  `.meta.toml` keeps the output; `list_sort_type_initialized` checks them
+  until it is recorded itself). A field a JDK class declares privately,
+  such as `Integer`'s `value`, raises `InaccessibleObjectException` from
+  `setAccessible` on OpenJDK 19 (**recorded**, same test), and a public
+  one such as `MAX_VALUE` is read (**source**); FerroBASIC raises
+  `NoSuchFieldException` for both (deviation D7).
+- A sort that raises (**measured**, JDK 21) leaves the list partly sorted:
+  `ArrayList.sort` runs `TimSort` on the list's own array and stops at the
+  failing comparison, so `[1, 3, 2, "x"]` is `[1, 2, 3, x]` after `Sort`
+  raises. FerroBASIC checks every item first and leaves the list as it was
+  (deviation D5).
 - **Map** ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java)): `Remove`
   returns the removed value or `Null`; `GetDefault` returns the default when
   the key is missing or its value is `Null`; `ContainsKey` is
@@ -280,8 +331,11 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
 - `And`, `Or` are boolean and **short-circuit**, left to right (**docs**,
   booklet §4.3.1.1). `Not` is a function, `Not(x)`, not a prefix operator
   (**docs**). Bitwise operations are `Bit.And`, `Bit.Or`, … functions.
-- `&` concatenates; `+` is arithmetic only (**forum**). Precedence of `&`
-  relative to `+` and to comparisons is **open**: the only evidence is
+- `&` concatenates; `+` is arithmetic only (**forum**). An operand of `&`
+  that holds an arithmetic operator (`+ - * / Mod`) or a negation outside
+  parentheses, on either side and at any depth, is a syntax error, and a
+  comparison binds looser than `&` (**recorded**, B4J 10.70: the
+  `concat_*` tests). Earlier evidence:
   `"This " & 2 + 2 & " is a test"` being rejected in 2011 while
   `"This " & (2 + 2) & ...` works
   ([forum](https://www.b4x.com/android/forum/threads/bug-concatenating-strings.8701/)),
@@ -329,7 +383,69 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   §4.4.3; Erel on the [forum](https://www.b4x.com/android/forum/threads/while-or-until-at-end-of-do-loop-bug-wish.49474/)).
   Infinite loops are written `Do While True`.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
-  is implicitly declared as `Int` (**docs**, coreref). Test is `i <= b` for a
+  is implicitly declared as `Int` (**docs**, coreref), in `Process_Globals`
+  too, where it is a module variable: AppStart reads it (4 after
+  `For i = 1 To 3`), and an undeclared counter of the same name in another
+  Sub is the same variable (**recorded**: `process_globals_for`,
+  `process_globals_counter_visible`, `process_globals_counter_shared`).
+  A `For Each v As T` variable there is a module variable too, which
+  AppStart reads and other Subs' undeclared counters share (**recorded**:
+  `process_globals_for_each`, `process_globals_for_each_visible`,
+  `process_globals_for_each_shared`). A `Dim n As Int` there, then
+  `For Each n As Int`, is one variable (**recorded**:
+  `process_globals_for_each_declared`), but a counter `n` then
+  `For Each n As String` is refused: "Current declaration does not match
+  previous one" (**recorded**: `process_globals_counter_and_for_each`). A
+  counter may have a Sub's name, and calling the Sub still works
+  (**recorded**: `process_globals_loop_named_like_sub`), and so does reading
+  the name in another Sub, which returns the Sub's value (**recorded**:
+  `process_globals_loop_named_like_sub_read`). In fact every use of such a
+  name in an expression calls the Sub, inside its own loop, with arguments,
+  or for an undeclared counter or a `For Each v As T` of any Sub, whatever
+  the loop variable's type (`Bump.Length` on a `String` one, with
+  `Sub Bump As Int`: "Object expected"); a `For` may loop over such a
+  variable again anywhere, whichever loop declares it, but only over a
+  number ("Loop iterator should be a numeric variable"); another
+  `For Each` without `As` over it is refused, in a Sub over its own
+  `For Each` variable and in another Sub over a counter of
+  `Process_Globals`, and so is a `For Each` of
+  another type than a module variable of its name ("Current declaration
+  does not match previous one");
+  and a `For Each v As T` of a Sub may also have the name of a module
+  variable of type `T`; a typed `For v As T` with a Sub's name is
+  refused ("Regular variable followed by '=' expected"); and assigning it
+  is refused ("Syntax error", or "'next' expected" inside
+  its loop) (**recorded**: `process_globals_loop_named_like_sub_read_inside`,
+  `process_globals_loop_named_like_sub_args`,
+  `process_globals_loop_named_like_sub_loop_elsewhere`,
+  `local_counter_named_like_sub`, `local_for_each_named_like_sub`,
+  `process_globals_loop_named_like_sub_assign`,
+  `process_globals_loop_named_like_sub_assign_inside`,
+  `process_globals_loop_named_like_sub_loop_again`,
+  `process_globals_for_each_named_like_sub_loop_elsewhere`,
+  `local_counter_named_like_sub_loop_again`,
+  `local_for_each_named_like_sub_over_module_variable`,
+  `local_for_each_named_like_sub_member`,
+  `local_typed_counter_named_like_sub`,
+  `local_counter_after_for_each_named_like_sub`,
+  `process_globals_counter_after_for_each_named_like_sub`,
+  `process_globals_string_loop_named_like_sub_counter_elsewhere`,
+  `process_globals_loop_named_like_sub_for_each_elsewhere`,
+  `local_for_each_named_like_sub_loop_again`,
+  `local_for_each_named_like_sub_other_type`); a `Dim` with a Sub's name is
+  refused: "Variable name cannot be the same as a sub name" (**recorded**:
+  `module_variable_named_like_sub`). Not recorded: another `For Each`
+  with `As` over such a variable in the same Sub, another without `As`
+  anywhere else, and a `Dim` of `Class_Globals` with a Sub's name (*open*:
+  `local_typed_for_each_named_like_sub_loop_again`,
+  `local_for_each_after_counter_named_like_sub`,
+  `process_globals_loop_named_like_sub_for_each_again`,
+  `process_globals_for_each_named_like_sub_for_each_elsewhere`).
+  With the same type, a counter and a
+  `For Each`, in either order, or two `For Each` loops, are one variable
+  (**recorded**: `process_globals_counter_and_for_each_int`,
+  `process_globals_for_each_then_counter`, `process_globals_for_each_twice`).
+  Test is `i <= b` for a
   positive step and `i >= b` for a negative step. **open**: whether `b` and
   `s` are evaluated once (expected, as in VB), and the value of `i` after the loop.
 - **`If`**: single line `If c Then stmt [Else stmt]`; block form with
@@ -338,6 +454,17 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   branch (**docs**, booklet §4.3.2). Not in the Level 0 grammar yet.
 
 ### Declarations and scope
+
+- `Dim s As String` starts as `""`, and `s = Null` stores the text
+  `"null"`: the generated code is `String _s = "";` and
+  `_s = BA.ObjectToString(Common.Null);`, and `IsNumber(s)` is then `False`
+  (**generated**, **recorded**: `number_parsing`).
+- A comment may follow a line continuation: `1 + _ ' first part` then `2`
+  on the next line is 3, and so is `1 + _' first part` (**recorded**:
+  `continuation_comment`, `continuation_comment_tight`).
+- The main module must have a `Sub Process_Globals`, even an empty one:
+  B4J refuses to build it otherwise, with "Sub process_globals is missing"
+  (**recorded**, B4J 10.70: four tests without it did not build).
 
 - `Dim` is kept for compatibility; `Private` / `Public` are preferred
   (**docs**). In a Sub, all three declare a local.
@@ -353,6 +480,18 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   ([forum](https://www.b4x.com/android/forum/threads/best-coding.108735/),
   [forum](https://www.b4x.com/android/forum/threads/easy-dim.20927/)).
   **forum** level; needs a recorded test.
+- A local `Dim i As String` where a module variable `i` is an `Int` is
+  refused: "Current declaration does not match previous one. Previous:
+  {Type=Int...}, Current: {Type=String...}" (**recorded**:
+  `process_globals_counter_hidden`). With the same type it is the module
+  variable, which the `Dim` resets (**recorded**:
+  `local_dim_like_module_variable`, `local_dim_resets_module_variable`), and
+  so is a `For Each v As T` of that name and type (**recorded**:
+  `local_for_each_like_module_variable`). A local `Dim` with a Sub's name is
+  refused as a module one is (**recorded**: `local_dim_named_like_sub`).
+- A parameter with a module variable's name is refused: "Parameter name
+  cannot hide global variable name" (**recorded**:
+  `parameter_like_module_variable`).
 - Primitives (numbers, `Boolean`, `Char`) are passed by value; everything else,
   including `String` and arrays, by reference copy (**docs**, booklet §2.1).
 - Local variables get their default value on every call (**docs**, booklet §2.6.3).
