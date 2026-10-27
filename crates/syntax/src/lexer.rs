@@ -170,9 +170,14 @@ impl Lexer<'_> {
             }
             '0'..='9' => self.number(),
             // A real may start with its point: `.08` (a real-world project
-            // writes `Array(320000, .08)`). No member name starts with a
-            // digit, so this never takes a member access's dot.
-            '.' if rest.as_bytes().get(1).is_some_and(u8::is_ascii_digit) => self.number(),
+            // writes `Array (320000,.08, .05, .03)`). Not after an operand
+            // or a dot, where the dot is a member access's (`a.5` and
+            // `1.2.3` stay errors about a member name).
+            '.' if rest.as_bytes().get(1).is_some_and(u8::is_ascii_digit)
+                && !self.after_operand() =>
+            {
+                self.number()
+            }
             '"' => self.string(),
             '$' if rest.starts_with("$\"") && self.smart_depth >= MAX_SMART_NESTING => {
                 // Too deep: report it once, then lex the rest of this string
@@ -250,6 +255,31 @@ impl Lexer<'_> {
             return None;
         };
         Some(1 + spaces + newline)
+    }
+
+    /// Whether the last significant token ends an operand (or is a dot),
+    /// so that a `.` here is a member access's.
+    fn after_operand(&self) -> bool {
+        self.tokens
+            .iter()
+            .rev()
+            .find(|t| !matches!(t.kind, WHITESPACE | COMMENT | LINE_CONTINUATION))
+            .is_some_and(|t| {
+                matches!(
+                    t.kind,
+                    IDENT
+                        | INT
+                        | REAL
+                        | STRING
+                        | SMART_STRING_END
+                        | R_PAREN
+                        | DOT
+                        | TRUE_KW
+                        | FALSE_KW
+                        | NULL_KW
+                        | ME_KW
+                )
+            })
     }
 
     fn number(&mut self) {
@@ -461,7 +491,9 @@ mod tests {
     #[test]
     fn numbers() {
         assert_eq!(
-            significant("12 0xFF 1.5 2.5e-3 1e5 3.x .08 .5e2 (1,.5) x.y"),
+            significant(
+                "12 0xFF 1.5 2.5e-3 1e5 3.x\n.08\n.5e2\n(1,.5) x.y\nx.5 1..5 1.2.3 f(a).5 a .5\n= .5"
+            ),
             [
                 (INT, "12"),
                 (INT, "0xFF"),
@@ -471,8 +503,11 @@ mod tests {
                 (INT, "3"),
                 (DOT, "."),
                 (IDENT, "x"),
+                (NEWLINE, "\n"),
                 (REAL, ".08"),
+                (NEWLINE, "\n"),
                 (REAL, ".5e2"),
+                (NEWLINE, "\n"),
                 (L_PAREN, "("),
                 (INT, "1"),
                 (COMMA, ","),
@@ -481,6 +516,30 @@ mod tests {
                 (IDENT, "x"),
                 (DOT, "."),
                 (IDENT, "y"),
+                (NEWLINE, "\n"),
+                // After an operand or a dot, the dot is a member access's.
+                (IDENT, "x"),
+                (DOT, "."),
+                (INT, "5"),
+                (INT, "1"),
+                (DOT, "."),
+                (DOT, "."),
+                (INT, "5"),
+                (REAL, "1.2"),
+                (DOT, "."),
+                (INT, "3"),
+                (IDENT, "f"),
+                (L_PAREN, "("),
+                (IDENT, "a"),
+                (R_PAREN, ")"),
+                (DOT, "."),
+                (INT, "5"),
+                (IDENT, "a"),
+                (DOT, "."),
+                (INT, "5"),
+                (NEWLINE, "\n"),
+                (EQ, "="),
+                (REAL, ".5"),
             ]
         );
     }
