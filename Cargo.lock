@@ -182,6 +182,7 @@ dependencies = [
 name = "ferro-project"
 version = "0.0.5-dev"
 dependencies = [
+ "ferro-corpus",
  "ferro-syntax",
 ]
 
