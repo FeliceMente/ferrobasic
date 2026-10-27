@@ -53,9 +53,10 @@ wait_for_stmt = "Wait" , "For" , REST_OF_STATEMENT ;
 (* A declarator without As takes the type of the next "As" to its right    *)
 (* in the same statement. With no As at all (Dim x, Dim x = 5) the type   *)
 (* is open: String by old docs, maybe inferred from the initializer.       *)
-(* "Const" is recognised only to be reported (not supported yet). It is  *)
-(* a name, not a keyword: it is the modifier only when a name follows,    *)
-(* so "Dim Const As Int" declares a variable named Const.                 *)
+(* "Const" makes every declarator a constant, which must have its value   *)
+(* there and cannot be assigned (level0.md, "Declarations and scope").   *)
+(* It is a name, not a keyword: it is the modifier only when a name       *)
+(* follows, so "Dim Const As Int" declares a variable named Const.        *)
 dim_stmt      = ( "Dim" | "Private" | "Public" ) , [ "Const" ] ,
                 declarator , { "," , declarator } ;
 declarator    = IDENT , [ "(" , [ expr_list ] , ")" ] ,
