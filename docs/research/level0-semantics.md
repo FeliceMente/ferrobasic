@@ -550,8 +550,9 @@ Implemented as recorded with B4J 10.70 (run 12,
   value ("Const variable must be set in the declaration line.":
   `const_no_value`); `List.Set` and `Map.Put` on one are accepted
   (`const_list_mutate`, `const_map_mutate`).
-- **open**: loops over a constant, other declarations of its name, and
-  assigning a field of a constant record, each with a pending test
+- **open**: loops over a constant, other declarations of its name, a
+  `Const` array with bounds and no value, and assigning a field of a
+  constant record, each with a pending test
   ([open-questions.md](../open-questions.md)).
 
 ### Keywords used as names (generated)

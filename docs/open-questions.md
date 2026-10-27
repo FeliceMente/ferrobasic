@@ -317,8 +317,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         `Public Const ItemNumber As Int = 100` (`level0/const_forms`);
   - [x] other types: `Long` (`level0/const_long`), `Double`
         (`level0/const_double`), `String` (`level0/const_string`),
-        `Boolean` (`level0/const_boolean`); with no `As` it is a `String`,
-        as a `Dim` with no `As` is (`level0/const_no_as`);
+        `Boolean` (`level0/const_boolean`); with no `As` it is a `String`
+        (`level0/const_no_as`), as a `Dim` with no `As` provisionally is
+        (open, above);
   - [x] forms from real projects: lower-case `const`
         (`level0/const_lower_case`), the value before `As`
         (`level0/const_value_before_as`);
@@ -353,7 +354,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         (`level0/const_after_dim`), and a `Dim` in a Sub with a module
         constant's name and type (`level0/const_local_dim`);
   - [ ] assigning a field of a constant record
-        (`level0/const_record_field`).
+        (`level0/const_record_field`);
+  - [ ] a `Const` array with bounds and no value: refused as a `Const`
+        without a value is, or an array of default items
+        (`level0/const_array_bounds`).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the

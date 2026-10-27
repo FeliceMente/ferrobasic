@@ -363,6 +363,37 @@ fn constants() {
     ] {
         assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
     }
+    let open_bounds = "`A` is a `Const` array with bounds: whether it may have no value is not \
+                       known yet, so give it its value";
+    assert_eq!(
+        errors(&module("    Private Const A(3) As Int", "")),
+        [open_bounds]
+    );
+    // Another type is the clash already reported, alone.
+    assert_eq!(
+        errors(&module(
+            "    Private Size As Int = 3\n    Private Const Size As String = \"a\"",
+            ""
+        )),
+        ["`Size` is already declared with another type"]
+    );
+    assert_eq!(
+        errors(
+            "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub F (X As Int)\n    Dim Const X As String = \"a\"\nEnd Sub\n"
+        ),
+        ["`X` is already declared as Int in this Sub"]
+    );
+    // The value assigned to a constant is still checked.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10",
+            "    Size = Foo"
+        )),
+        [
+            "`Size` is a `Const`: it cannot be assigned",
+            "`Foo` is not declared",
+        ]
+    );
     // A variable named `Const` is still a variable.
     ok(&program("Dim Const As Int = 1\nLog(Const)"));
 }
