@@ -172,11 +172,13 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] `<` / `>` on Booleans or objects is a compile error.
 - [ ] `Null` compared with a number, Boolean or Char is a compile error.
 - [x] A real literal may start with its decimal point (`.08`), also with
-      an exponent (`.5e2`), and is a `Double` (recordings:
-      `level0/real_leading_point`, `level0/real_leading_point_exponent`;
-      `MteBuildLib.b4j` in the real-world corpus writes
-      `Array (320000,.08, .05, .03)`). After an operand or a dot, a `.`
-      stays a member access's (`a.5` is an error).
+      an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
+      `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the
+      real-world corpus writes `Array (320000,.08, .05, .03)`). After an
+      operand or a dot, a `.` stays a member access's (`a.5` is an error).
+- [ ] Its type: provisionally `Double`, as `0.08`'s. The recordings print
+      its values, which an `Int` or a `Float` would print otherwise, but
+      not its type (`level0/real_leading_point_type`).
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.
@@ -236,8 +238,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_loop_named_like_sub_for_each_elsewhere`,
       `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`,
       `level0/process_globals_loop_named_like_sub_for_each_again`).
-- [ ] The same in `Process_Globals` over its own `For Each` variable.
-      FerroBASIC refuses it as open (no test yet).
+- [ ] The same in `Process_Globals` over a typed `For Each` variable of
+      `Process_Globals`, whichever loop came first. FerroBASIC refuses it
+      as open (`level0/process_globals_for_each_named_like_sub_for_each_again`).
 - [x] Another `For Each v As T` of the same type over a `For Each`
       variable of the same Sub is accepted, and reading it still calls the
       Sub (recording: `level0/local_typed_for_each_named_like_sub_loop_again`).
@@ -245,7 +248,14 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `For Each` over a module variable of type `T`, accepted as recorded
       below.
 - [ ] Another `For Each v As T` in `Process_Globals` over its own loop
-      variable. FerroBASIC refuses it as open (no test yet).
+      variable. FerroBASIC refuses it as open
+      (`level0/process_globals_counter_named_like_sub_typed_for_each_again`,
+      `level0/process_globals_for_each_named_like_sub_typed_for_each_again`).
+- [ ] A `For Each v As T` over a `For` counter of the same Sub, after it.
+      (Before it, the `For` is recorded as accepted:
+      `level0/local_counter_after_for_each_named_like_sub`.) FerroBASIC
+      refuses it as open
+      (`level0/local_typed_for_each_after_counter_named_like_sub`).
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:
