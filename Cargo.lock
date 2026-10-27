@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-cli"
-version = "0.0.4"
+version = "0.0.5-dev"
 dependencies = [
  "ferro-corpus",
  "ferro-difftest",
@@ -141,11 +141,11 @@ dependencies = [
 
 [[package]]
 name = "ferro-corpus"
-version = "0.0.4"
+version = "0.0.5-dev"
 
 [[package]]
 name = "ferro-difftest"
-version = "0.0.4"
+version = "0.0.5-dev"
 dependencies = [
  "ferro-cli",
  "ferro-corpus",
@@ -153,7 +153,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-hir"
-version = "0.0.4"
+version = "0.0.5-dev"
 dependencies = [
  "ferro-corpus",
  "ferro-syntax",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-interp"
-version = "0.0.4"
+version = "0.0.5-dev"
 dependencies = [
  "ferro-hir",
  "ferro-mir",
@@ -171,7 +171,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-mir"
-version = "0.0.4"
+version = "0.0.5-dev"
 dependencies = [
  "ferro-corpus",
  "ferro-hir",
@@ -180,21 +180,21 @@ dependencies = [
 
 [[package]]
 name = "ferro-project"
-version = "0.0.4"
+version = "0.0.5-dev"
 dependencies = [
  "ferro-syntax",
 ]
 
 [[package]]
 name = "ferro-recorder"
-version = "0.0.4"
+version = "0.0.5-dev"
 dependencies = [
  "ferro-corpus",
 ]
 
 [[package]]
 name = "ferro-syntax"
-version = "0.0.4"
+version = "0.0.5-dev"
 dependencies = [
  "ferro-corpus",
  "rowan",
