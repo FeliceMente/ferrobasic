@@ -782,10 +782,23 @@ fn loops_in_process_globals() {
         app_start(&module).body
     );
     // Where B4J's answer is not recorded, another `For Each` is open: with
-    // `As` after a `For` counter of the same Sub; in `Process_Globals`, with
-    // `As` over its counter, and with or without `As` over a variable a
-    // typed `For Each` there loops over, whichever loop came first.
+    // `As` after a `For` counter of the same Sub, also when a `For Each`
+    // declared it first, or inside a loop over it; in `Process_Globals`,
+    // with `As` over its counter, and with or without `As` after a typed
+    // `For Each` there.
     for (body, app, what, count) in [
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(2)\n        Log(Bump)\n    Next",
+            "a loop variable of this Sub",
+            1,
+        ),
+        (
+            "",
+            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n            Log(Bump)\n        Next\n    Next",
+            "a loop variable of this Sub",
+            1,
+        ),
         (
             "",
             "    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
@@ -824,6 +837,22 @@ fn loops_in_process_globals() {
             "{body}{app}"
         );
     }
+    // In `Process_Globals` only the loops before it count: a `For Each`
+    // without `As` right after its counter is the recorded refusal, though a
+    // typed `For Each` comes after it, which is open.
+    let diags = errors(&sub(
+        "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(5)\n    Next\n    For Each Bump As Int In Array As Int(1)\n    Next",
+        "",
+    ));
+    assert_eq!(
+        diags,
+        [
+            "`Bump` is a module variable with the name of a Sub: a `For Each` without `As` \
+             cannot loop over it again",
+            "`Bump` is a module variable with the name of a Sub: whether another `For Each` may \
+             loop over it here is not known yet, so use another name",
+        ]
+    );
     // A `For Each v As T` in another Sub over a module variable of type `T`
     // is the recorded `local_for_each_named_like_sub_over_module_variable`,
     // whichever loop of `Process_Globals` declares it.

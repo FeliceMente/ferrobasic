@@ -255,7 +255,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (Before it, the `For` is recorded as accepted:
       `level0/local_counter_after_for_each_named_like_sub`.) FerroBASIC
       refuses it as open
-      (`level0/local_typed_for_each_after_counter_named_like_sub`).
+      (`level0/local_typed_for_each_after_counter_named_like_sub`), also
+      when a `For Each` declared it before the `For`.
+- [ ] A `For Each v As T` inside a loop over the same variable of the
+      Sub (recorded only one after the other). FerroBASIC refuses it as
+      open (`level0/local_typed_for_each_named_like_sub_nested`).
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:
