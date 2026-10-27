@@ -7,6 +7,14 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- Another `For Each v As T` over a `For Each` variable of the same Sub
+  named like a Sub is accepted, as in B4J, and the name still calls the
+  Sub. Before, it was refused until a recording showed what B4J does.
+  One without `As` is refused over any loop variable of the Sub, and over
+  a module variable from another Sub or from `Process_Globals` over its
+  own counter, with the settled message (recorded).
+- Recording run 12: the leading-point reals are recorded as FerroBASIC
+  runs them.
 - A real literal may start with its decimal point (`.08`), as in
   `MteBuildLib.b4j` of the real-world corpus, which B4J builds. Before, it
   was a syntax error. After an operand the dot is still a member access's

@@ -732,8 +732,10 @@ fn loops_in_process_globals() {
     ));
     assert_eq!(diags, ["a `For` counter must be a number, not String"]);
     // Another `For Each` without `As` over it is refused (B4J: "Current
-    // declaration does not match previous one", recorded); with `As` it is
-    // open.
+    // declaration does not match previous one", recorded): over a loop
+    // variable of the same Sub, a `For Each` or a `For` one, and over one of
+    // `Process_Globals` from another Sub or from `Process_Globals` over its
+    // own counter.
     for (body, app, what) in [
         (
             "    For Bump = 1 To 2\n    Next",
@@ -741,8 +743,23 @@ fn loops_in_process_globals() {
             "a module variable",
         ),
         (
+            "    For Each Bump As Int In Array As Int(1)\n    Next",
+            "    For Each Bump In Array As Int(2)\n    Next",
+            "a module variable",
+        ),
+        (
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+            "",
+            "a module variable",
+        ),
+        (
             "",
             "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+            "a loop variable of this Sub",
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
             "a loop variable of this Sub",
         ),
     ] {
@@ -756,28 +773,30 @@ fn loops_in_process_globals() {
             "{body}{app}"
         );
     }
-    // Where B4J's refusal is not recorded, another `For Each` is open: with
-    // `As`, without `As` over a `For` counter of the same Sub, and over a
-    // loop variable of `Process_Globals` in it or over its `For Each` one.
+    // Another `For Each v As T` over a `For Each` variable of the same Sub is
+    // accepted, and the name still calls the Sub (recorded).
+    let module = ok(&sub(
+        "",
+        "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump As Int In Array As Int(2)\n        Log(Bump)\n    Next",
+    ));
+    assert!(
+        format!("{:?}", app_start(&module).body).contains("Call"),
+        "{:?}",
+        app_start(&module).body
+    );
+    // Where B4J's answer is not recorded, another `For Each` is open: with
+    // `As` in `Process_Globals` over its counter, and without `As` in
+    // `Process_Globals` over its `For Each` variable. (In a Sub, a `For Each
+    // v As T` declares the variable wherever its counter is: recorded above.)
     for (body, app, what) in [
         (
-            "",
-            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump As Int In Array As Int(2)\n    Next",
-            "a loop variable of this Sub",
-        ),
-        (
-            "",
-            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
-            "a loop variable of this Sub",
-        ),
-        (
-            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(2)\n    Next",
             "",
             "a module variable",
         ),
         (
-            "    For Each Bump As Int In Array As Int(1)\n    Next",
-            "    For Each Bump In Array As Int(2)\n    Next",
+            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
+            "",
             "a module variable",
         ),
     ] {

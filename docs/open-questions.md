@@ -171,15 +171,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       compares numerically, String vs number compares as Strings (forum).
 - [ ] `<` / `>` on Booleans or objects is a compile error.
 - [ ] `Null` compared with a number, Boolean or Char is a compile error.
-- [ ] A real literal may start with its decimal point (`.08`), and is a
-      `Double`: `MteBuildLib.b4j` in the real-world corpus writes
-      `Array (320000,.08, .05, .03)`, so B4J accepts it, but no public
-      source says so and its value and type are not recorded. FerroBASIC
-      accepts it meanwhile (test `level0/real_leading_point`, pending).
-      Whether an exponent may follow (`.5e2`) is open too, in a test of its
-      own so that a refusal does not hide the first answer
-      (`level0/real_leading_point_exponent`, pending). After an operand or
-      a dot, a `.` stays a member access's (`a.5` is an error).
+- [x] A real literal may start with its decimal point (`.08`), also with
+      an exponent (`.5e2`), and is a `Double` (recordings:
+      `level0/real_leading_point`, `level0/real_leading_point_exponent`;
+      `MteBuildLib.b4j` in the real-world corpus writes
+      `Array (320000,.08, .05, .03)`). After an operand or a dot, a `.`
+      stays a member access's (`a.5` is an error).
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.
@@ -230,22 +227,25 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       recording:
       `level0/process_globals_string_loop_named_like_sub_counter_elsewhere`).
 - [x] Another `For Each` without `As` over that name is refused ("Current
-      declaration does not match previous one") in another Sub over a
-      counter of `Process_Globals`, and in a Sub over its own `For Each`
-      variable (recordings:
+      declaration does not match previous one"): in a Sub over its own
+      `For Each` variable or `For` counter, in another Sub over a counter
+      or `For Each` variable of `Process_Globals`, and in `Process_Globals`
+      over its own counter (recordings:
+      `level0/local_for_each_named_like_sub_loop_again`,
+      `level0/local_for_each_after_counter_named_like_sub`,
       `level0/process_globals_loop_named_like_sub_for_each_elsewhere`,
-      `level0/local_for_each_named_like_sub_loop_again`).
-- [ ] The same elsewhere: in a Sub over its own `For` counter, in
-      `Process_Globals` over its own loop variable, and in another Sub over
-      a `For Each` variable of `Process_Globals`. FerroBASIC refuses them
-      (tests: `level0/local_for_each_after_counter_named_like_sub`,
-      `level0/process_globals_loop_named_like_sub_for_each_again`,
-      `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`).
-- [ ] Another `For Each v As T` of the same type over that name in the
-      same Sub: accepted, as a `For` is? FerroBASIC refuses it (test:
-      `level0/local_typed_for_each_named_like_sub_loop_again`). In another
-      Sub over a loop variable of `Process_Globals` it is a `For Each` over
-      a module variable of type `T`, accepted as recorded below.
+      `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`,
+      `level0/process_globals_loop_named_like_sub_for_each_again`).
+- [ ] The same in `Process_Globals` over its own `For Each` variable.
+      FerroBASIC refuses it as open (no test yet).
+- [x] Another `For Each v As T` of the same type over a `For Each`
+      variable of the same Sub is accepted, and reading it still calls the
+      Sub (recording: `level0/local_typed_for_each_named_like_sub_loop_again`).
+      In another Sub over a loop variable of `Process_Globals` it is a
+      `For Each` over a module variable of type `T`, accepted as recorded
+      below.
+- [ ] Another `For Each v As T` in `Process_Globals` over its own loop
+      variable. FerroBASIC refuses it as open (no test yet).
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:

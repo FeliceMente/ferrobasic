@@ -1245,10 +1245,12 @@ impl Lowerer {
     /// The variable a `For` / `For Each` loops over, or the loop refused
     /// (reported and checked here). A `For` may loop over a loop variable
     /// with a Sub's name anywhere, and must count with a number like any
-    /// other (recorded). Another `For Each` over it is refused: without
-    /// `As` where B4J's refusal is recorded ("Current declaration does not
-    /// match previous one": over a `For Each` of the same Sub, or in another
-    /// Sub over a counter of `Process_Globals`), as open anywhere else.
+    /// other (recorded). So may a `For Each v As T` over a `For Each`
+    /// variable of the same Sub (recorded). Another `For Each` is refused:
+    /// without `As` where B4J's refusal is recorded ("Current declaration
+    /// does not match previous one": over any loop variable of the same Sub,
+    /// and over a module variable, except one a `For Each` declared when the
+    /// loop is in `Process_Globals` too), as open anywhere else.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         let k = key(text);
@@ -1256,6 +1258,7 @@ impl Lowerer {
             return LoopVar::Found(found);
         }
         let at = range(name);
+        let typed = child(node, TYPE_REF).is_some();
         // What it loops over again, and whether B4J's refusal of a `For Each`
         // without `As` there is recorded.
         let (what, recorded) = match &found {
@@ -1263,20 +1266,23 @@ impl Lowerer {
                 match self.loop_declared.get(&k) {
                     Some(&kind) => (
                         "a module variable",
-                        !self.in_process_globals && kind == FOR_STMT,
+                        !(self.in_process_globals && kind == FOR_EACH_STMT),
                     ),
                     None => return LoopVar::Found(found),
                 }
             }
             Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
                 Some(Some((declared, kind))) if *declared != at => {
-                    ("a loop variable of this Sub", *kind == FOR_EACH_STMT)
+                    if typed && *kind == FOR_EACH_STMT {
+                        return LoopVar::Found(found);
+                    }
+                    ("a loop variable of this Sub", true)
                 }
                 _ => return LoopVar::Found(found),
             },
             _ => return LoopVar::Found(found),
         };
-        let message = if child(node, TYPE_REF).is_some() || !recorded {
+        let message = if typed || !recorded {
             format!(
                 "`{text}` is {what} with the name of a Sub: whether another `For Each` may loop \
                  over it here is not known yet, so use another name"
