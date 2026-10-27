@@ -1308,8 +1308,9 @@ impl Lowerer {
     /// (reported and checked here). Over a loop variable with a Sub's name,
     /// only what B4J's recordings show is accepted or refused as settled;
     /// anything else is refused as open:
-    /// - a `For` may loop anywhere, and must count with a number like any
-    ///   other (recorded);
+    /// - a `For` may loop anywhere over an `Int`, and must count with a
+    ///   number like any other (recorded); over another number type, which
+    ///   a `For Each v As T` declared, it is open;
     /// - a `For Each v As T` may loop after loops over it one after the
     ///   other, typed `For Each` loops or an `Int` counter, and inside a
     ///   typed `For Each` of a Sub over it (recorded);
@@ -1337,9 +1338,23 @@ impl Lowerer {
             return LoopVar::Refused;
         }
         let k = key(text);
-        if !self.subs.contains_key(&k) || node.kind() == FOR_STMT {
+        if !self.subs.contains_key(&k) {
             return LoopVar::Found(found);
         }
+        // A loop variable with a Sub's name: anything else was reported
+        // already, or is not one.
+        let (local, ty) = match &found {
+            Some((VarRef::Global(_), ty)) if self.loop_declared.contains(&k) => (false, ty.clone()),
+            Some((VarRef::Local(_), ty)) if self.sub_named_locals.get(&k) == Some(&true) => {
+                (true, ty.clone())
+            }
+            _ => return LoopVar::Found(found),
+        };
+        let what = if local {
+            "a loop variable of this Sub"
+        } else {
+            "a module variable"
+        };
         let typed = child(node, TYPE_REF).is_some();
         let before = self.sub_named_loops.get(&k).copied().unwrap_or_default();
         // The innermost loop over the same name around this one, and
@@ -1350,49 +1365,34 @@ impl Lowerer {
             over_it.then(|| (a.kind() == FOR_STMT, child(&a, TYPE_REF).is_some()))
         });
         let in_sub = !self.in_process_globals;
-        // What it loops over again, and whether B4J's refusal is recorded
-        // there; none when the loop is accepted.
-        let refused = match &found {
-            _ if typed => {
-                let what = match &found {
-                    Some((VarRef::Global(_), _)) => "a module variable",
-                    _ => "a loop variable of this Sub",
-                };
-                // After a counter of the Sub, only an `Int` one (recorded).
-                let other_counter =
-                    in_sub && before.counter && !matches!(found, Some((_, Ty::Int)));
-                let open = match around {
-                    // Inside a typed `For Each` of a Sub over it (recorded).
-                    Some((false, true)) => !in_sub || other_counter,
-                    Some(_) => true,
-                    None => other_counter,
-                };
-                open.then_some((what, false))
-            }
-            Some((VarRef::Global(id), _)) if self.module.global(*id).range != range(name) => {
-                let recorded = match around {
-                    Some(_) => false,
-                    // In `Process_Globals`, after a loop there.
-                    None => in_sub || before.counter || before.typed_for_each,
-                };
-                self.loop_declared
-                    .contains(&k)
-                    .then_some(("a module variable", recorded && !before.unrecorded))
-            }
-            Some((VarRef::Local(_), _)) if self.sub_named_locals.get(&k) == Some(&true) => {
-                let recorded = match around {
-                    // Inside a `For` over it (recorded).
-                    Some((is_for, _)) => is_for,
-                    None => before.counter || before.typed_for_each,
-                };
-                Some((
-                    "a loop variable of this Sub",
-                    recorded && !before.unrecorded,
-                ))
-            }
-            _ => None,
+        // Whether B4J's refusal is recorded; none when the loop is accepted.
+        let refused = if node.kind() == FOR_STMT {
+            // Over an `Int` (recorded), or anything but a number (refused when
+            // lowered, recorded); a typed `For` was refused already. Over
+            // another number, which a `For Each v As T` declared, it is open.
+            (!typed && ty.is_numeric() && ty != Ty::Int).then_some(false)
+        } else if typed {
+            // After a counter of the Sub, only an `Int` one (recorded).
+            let other_counter = in_sub && before.counter && ty != Ty::Int;
+            let open = match around {
+                // Inside a typed `For Each` of a Sub over it (recorded).
+                Some((false, true)) => !in_sub || other_counter,
+                Some(_) => true,
+                None => other_counter,
+            };
+            // A loop whose answer is not recorded never refuses this one:
+            // only programs refused already get one before it.
+            open.then_some(false)
+        } else {
+            let recorded = match around {
+                // Inside a `For` over a loop variable of the Sub (recorded).
+                Some((is_for, _)) => local && is_for,
+                // Over a module variable from another Sub, or after a loop.
+                None => (in_sub && !local) || before.counter || before.typed_for_each,
+            };
+            Some(recorded && !before.unrecorded)
         };
-        let Some((what, recorded)) = refused else {
+        let Some(recorded) = refused else {
             return LoopVar::Found(found);
         };
         let message = if recorded {
@@ -1401,10 +1401,10 @@ impl Lowerer {
                  loop over it again"
             )
         } else {
-            let form = if typed {
-                "this `For Each`"
-            } else {
-                "a `For Each` without `As`"
+            let form = match (node.kind(), typed) {
+                (FOR_STMT, _) => "a `For` counting another type than `Int`",
+                (_, true) => "this `For Each`",
+                _ => "a `For Each` without `As`",
             };
             format!(
                 "`{text}` is {what} with the name of a Sub: whether {form} may loop over it here \

@@ -1020,20 +1020,73 @@ fn loops_in_process_globals() {
     // `For` over it, which would share its counter.
     let open_typed = "`Bump` is a loop variable of this Sub with the name of a Sub: whether this \
                       `For Each` may loop over it here is not known yet, so use another name";
-    for app in [
-        "    For Bump = 0 To 1 Step 0.5\n    Next\n    For Each Bump As Double In Array As Double(1.5)\n        Log(Bump)\n    Next",
-        "    For Bump = 1 To 3\n        For Each Bump As Int In Array As Int(7, 8)\n            Log(Bump)\n        Next\n    Next",
+    assert_eq!(
+        errors(&sub(
+            "",
+            "    For Bump = 1 To 3\n        For Each Bump As Int In Array As Int(7, 8)\n            Log(Bump)\n        Next\n    Next"
+        )),
+        [open_typed]
+    );
+    // A `For` counting over one that a `For Each v As T` declares of
+    // another number type than `Int`, after it, inside it or before it, is
+    // open; over a module variable of that type from another Sub too.
+    let open_for = |what: &str| {
+        format!(
+            "`Bump` is {what} with the name of a Sub: whether a `For` counting another type than \
+             `Int` may loop over it here is not known yet, so use another name"
+        )
+    };
+    for (body, app, what) in [
+        (
+            "",
+            "    For Bump = 0 To 1 Step 0.5\n    Next\n    For Each Bump As Double In Array As Double(1.5)\n        Log(Bump)\n    Next",
+            "a loop variable of this Sub",
+        ),
+        (
+            "",
+            "    For Each Bump As Double In Array As Double(1.5)\n    Next\n    For Bump = 0 To 1 Step 0.5\n    Next",
+            "a loop variable of this Sub",
+        ),
+        (
+            "",
+            "    For Each Bump As Double In Array As Double(1.5)\n        For Bump = 0 To 1 Step 0.5\n        Next\n    Next",
+            "a loop variable of this Sub",
+        ),
+        (
+            "    For Each Bump As Double In Array As Double(1.5)\n    Next",
+            "    For Bump = 0 To 1 Step 0.5\n    Next",
+            "a module variable",
+        ),
     ] {
-        assert_eq!(errors(&sub("", app)), [open_typed], "{app}");
+        assert_eq!(errors(&sub(body, app)), [open_for(what)], "{body}{app}");
     }
-    // The same inside a typed `For Each` after a counter of another type,
-    // and inside a typed `For Each` of `Process_Globals`.
+    // A `For Each` without `As` inside a `For` of another Sub over a module
+    // variable is open: only a loop variable of the Sub was recorded.
+    assert_eq!(
+        errors(&sub(
+            "    For Bump = 1 To 2\n    Next",
+            "    For Bump = 1 To 2\n        For Each Bump In Array As Int(5)\n        Next\n    Next"
+        )),
+        [open("a module variable")]
+    );
+    // A refused `Dim` with a Sub's name is not a loop variable: a typed
+    // `For Each` over it gets no loop error of its own.
+    assert_eq!(
+        errors(&sub(
+            "",
+            "    Dim Bump As Int\n    For Bump = 1 To 2\n        For Each Bump As Int In Array As Int(5)\n        Next\n    Next"
+        )),
+        ["a variable cannot have the name of a Sub: `Bump` is a Sub"]
+    );
+    // Inside a typed `For Each` after a counter of another type, the
+    // counter asks the open question first; a typed `For Each` inside a
+    // typed `For Each` of `Process_Globals` is open too.
     assert_eq!(
         errors(&sub(
             "",
             "    For Each Bump As Double In Array As Double(1.5)\n        For Bump = 0 To 1 Step 0.5\n        Next\n        For Each Bump As Double In Array As Double(2.5)\n        Next\n    Next"
         )),
-        [open_typed]
+        [open_for("a loop variable of this Sub")]
     );
     assert_eq!(
         errors(&sub(
