@@ -5,22 +5,18 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
-## Unreleased
+## 0.0.4 (pre-alpha)
 
-- A real-world corpus: six open source B4J console projects, referenced in
-  `tests/corpus/corpus.toml` by original URL, commit, licence and each
-  file's SHA-256, not copied. `ferro-corpus-fetch` downloads and checks
-  them; their sources must round-trip through the lossless syntax tree.
-- `ferro-difftest` runs the conformance corpus in the interpreter
-  (`--target interp`) or as `ferro bundle` binaries (`--target standalone`)
-  and prints the compatibility report: pass, fail, deviation and pending, by
-  level and, with `--by-feature`, by feature.
-- `SortType` on a list of plain values, by the name of a field their JDK
-  class declares, raises `NoSuchFieldException`, where B4J sorts by a
-  public one (`"MAX_VALUE"` on `Int`s) and raises
-  `InaccessibleObjectException` for a private one (`"value"`, recorded):
-  deviation D7. Sorting records by `IsInitialized` is confirmed by the same
-  recording (test `list_sort_type_initialized`).
+### Recorded from B4J
+
+- The first conformance tests are recorded from B4J itself (10.70, OpenJDK
+  19, Windows 10), with the new recorder, `tools/recorder`: 24 tests record
+  the same output FerroBASIC gives, and replace their hand-derived outputs.
+  The recordings also found differences, fixed separately.
+- More conformance tests recorded from B4J 10.70.
+
+### Language, as in B4J
+
 - A comment may follow a line continuation (`1 + _ ' first part`, and
   `1 + _' first part`), as in B4J. Before, it was an error.
 - A `For` with an undeclared counter runs in `Process_Globals` too, as in
@@ -42,27 +38,29 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   may loop over it again, another `For Each` without `As` may not where
   B4J refuses it, and assigning it is an error, as in B4J.
   Before, a `Dim`'d one silently meant the variable.
-- `Null` assigned, passed or returned as a `String` is the text `"null"`,
-  as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
-  null, so `IsNumber` or `.Length` on it raised `NullPointerException`.
-- A record prints with a line break after every third field
-  (`IsInitialized` counts), as B4J's `BA.TypeToString` does.
 - An arithmetic operator (`+ - * / Mod`) or a negation in an operand of
   `&` (`"x" & 1 + 2`, `"x" & 6 / 2`) is an error that asks for
   parentheses, as B4J refuses it.
-- An array given to a `List` through an `Object` raises
-  `ClassCastException`, as in B4J, whatever its rank: only an array declared
-  as one is wrapped. Before, it gave a list of the items, or of the rows.
-- More conformance tests recorded from B4J 10.70.
 - A main module without `Sub Process_Globals` is an error, as in B4J, even
   when the program declares no module variables (found by the recordings).
 - An array of 2 dimensions or more where a `List` is expected (for example
   `List.Initialize2(Grid)`) is a compile error, as in B4J. Before, it gave a
   list of the array's rows (since 0.0.2).
-- The first conformance tests are recorded from B4J itself (10.70, OpenJDK
-  19, Windows 10), with the new recorder, `tools/recorder`: 24 tests record
-  the same output FerroBASIC gives, and replace their hand-derived outputs.
-  The recordings also found differences, fixed separately.
+- `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java
+  (`#If Java` … `#End If`) get one precise error each, saying what is
+  missing, instead of generic syntax errors (#32). None of them is supported
+  yet.
+
+### Runtime, as in B4J
+
+- `Null` assigned, passed or returned as a `String` is the text `"null"`,
+  as in B4J, which converts it with `BA.ObjectToString`: before, it stayed
+  null, so `IsNumber` or `.Length` on it raised `NullPointerException`.
+- A record prints with a line break after every third field
+  (`IsInitialized` counts), as B4J's `BA.TypeToString` does.
+- An array given to a `List` through an `Object` raises
+  `ClassCastException`, as in B4J, whatever its rank: only an array declared
+  as one is wrapped. Before, it gave a list of the items, or of the rows.
 - Changes through a `SubList` view whose parent has changed (`Add`,
   `InsertAt`, `RemoveAt`, `Set`, `Clear`, `Sort`, `SortCaseInsensitive`)
   raise `UnsupportedOperationException`, as in B4J, instead of
@@ -77,6 +75,15 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 - `LastException` in a `Catch` is the innermost cause, as in B4J: after a
   failed `SortType` it is the error that `RuntimeException` wraps, not the
   `RuntimeException` (found by the recordings).
+
+### Known deviations
+
+- `SortType` on a list of plain values, by the name of a field their JDK
+  class declares, raises `NoSuchFieldException`, where B4J sorts by a
+  public one (`"MAX_VALUE"` on `Int`s) and raises
+  `InaccessibleObjectException` for a private one (`"value"`, recorded):
+  deviation D7. Sorting records by `IsInitialized` is confirmed by the same
+  recording (test `list_sort_type_initialized`).
 - Lists can be compared 3000 levels deep and printed 7000 levels deep
   before `StackOverflowError`, up from 1000: limits chosen within the depths
   B4J reached and overflowed at on the recording machine (deviation D2).
@@ -85,10 +92,17 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   them there (deviation D6).
 - A sort that raises leaves the list as it was, where B4J leaves it partly
   sorted (deviation D5).
-- `Const` declarations, type tests (`x Is T`), `Wait For` and inline Java
-  (`#If Java` … `#End If`) get one precise error each, saying what is
-  missing, instead of generic syntax errors (#32). None of them is supported
-  yet.
+
+### Testing and tools
+
+- `ferro-difftest` runs the conformance corpus in the interpreter
+  (`--target interp`) or as `ferro bundle` binaries (`--target standalone`)
+  and prints the compatibility report: pass, fail, deviation and pending, by
+  level and, with `--by-feature`, by feature.
+- A real-world corpus: six open source B4J console projects, referenced in
+  `tests/corpus/corpus.toml` by original URL, commit, licence and each
+  file's SHA-256, not copied. `ferro-corpus-fetch` downloads and checks
+  them; their sources must round-trip through the lossless syntax tree.
 
 ## 0.0.3 (pre-alpha)
 
