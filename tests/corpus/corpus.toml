@@ -9,10 +9,13 @@
 # - repository:  the repository it comes from.
 # - commit:      the commit referenced.
 # - path:        the project's folder in the repository ("" for its root).
-# - license:     the licence the repository publishes it under, and
-#   license_url: its text, at the same commit.
-# - product, app_type: from the project file.
+# - license:     the SPDX identifier of the licence the repository publishes
+#                it under, and
+#   license_url: its text, in the repository at the commit.
+# - product, app_type: from the project file (`AppType`).
 # [[project.file]], one per file fetched: its name in `path`, and its SHA-256.
+# The project's own files are listed: its .b4j, .bas and .b4j.meta (the IDE
+# state that docs/spec/project-files.md documents), no libraries.
 
 [[project]]
 name = "juros"
@@ -20,7 +23,9 @@ source = "https://github.com/jacknpoe/todos_juros/blob/faab25b73070d2d11c4c9b7ca
 repository = "https://github.com/jacknpoe/todos_juros"
 commit = "faab25b73070d2d11c4c9b7ca9332e9b037feba0"
 path = ""
-license = "GPL-3.0"
+# Only the GPL v3 text, and "The license is GNU" in READ_ME.md: no later
+# version is granted, so the narrowest reading.
+license = "GPL-3.0-only"
 license_url = "https://github.com/jacknpoe/todos_juros/blob/faab25b73070d2d11c4c9b7ca9332e9b037feba0/LICENSE"
 product = "b4j"
 app_type = "StandardJava"
@@ -35,7 +40,9 @@ source = "https://github.com/rwbl/b4j-howtos/blob/9c2ea987e2c0ffd33327e870f49204
 repository = "https://github.com/rwbl/b4j-howtos"
 commit = "9c2ea987e2c0ffd33327e870f49204ae0db52d5b"
 path = ""
-license = "GPL-3.0"
+# README.md: "either version 3 of the License, or (at your option) any
+# later version".
+license = "GPL-3.0-or-later"
 license_url = "https://github.com/rwbl/b4j-howtos/blob/9c2ea987e2c0ffd33327e870f49204ae0db52d5b/LICENSE"
 product = "b4j"
 app_type = "StandardJava"
