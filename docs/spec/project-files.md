@@ -147,18 +147,24 @@ header are kept. Round-trip tests run on hand-written files and on the
 [real-world corpus](../../tests/corpus/README.md).
 
 A project's modules are found from its `Module<n>` lines, in the order of
-`n`:
+`n`, whatever its number of digits:
 
 - `Module1=Tools` is `Tools.bas` in the project's folder.
 - `Module1=|relative|..\Shared\Tools` is `Tools.bas` at that path from the
   project's folder; `\` and `/` both separate folders. (The B4XPages
-  samples name a shared module this way; the corpus has none yet.)
-- When no file has that exact name, the one file of the folder whose name
-  differs only in letter case is the module: the IDE runs on Windows, and
-  `jsonwebtoken` in the corpus names `JSONWebToken.bas` as
-  `Module1=JsonWebToken`. Two such files, and no exact one, is an error.
+  samples name a shared module this way; the corpus has none yet.) An
+  absolute path (`/…`, `\\server\…`, `C:\…`) or one ending with a
+  separator is an error: what the IDE does with one is not known, so
+  FerroBASIC refuses it rather than guess.
+- Each folder, and the file, is the one with that exact name, or else the
+  one entry of its folder whose name differs only in letter case, of any
+  letter (`Ü` and `ü` too): the IDE runs on Windows, and `jsonwebtoken` in
+  the corpus names `JSONWebToken.bas` as `Module1=JsonWebToken`. Two such
+  entries, and no exact one, is an error.
 - A module that cannot be found or read is an error at its line of the
-  project file; the other modules are still read.
+  project file; the other modules are still read. A `.b4j.meta` file that
+  cannot be read (not UTF-8, for example) is reported and left out, as it
+  only holds the IDE's state.
 
 The `NumberOfFiles`, `NumberOfLibraries` and `NumberOfModules` counts can be
 compared with the numbered keys; every project of the corpus agrees. What

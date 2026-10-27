@@ -11,8 +11,8 @@
 mod file;
 mod project;
 
-pub use file::{HeaderFile, Line, MetaFile};
-pub use project::{Build, FileEntry, Module, ModuleRef, Project, find_file, load};
+pub use file::{HeaderFile, Line, Lines, MetaFile};
+pub use project::{Build, FileEntry, Module, ModuleRef, ModuleText, Project, load};
 
 /// One `Key=Value` line of a header.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,28 +28,22 @@ pub struct Entry<'a> {
 /// header. Uses the lexer's own rule, so that the two always agree on where
 /// the code starts.
 pub fn header(text: &str) -> Option<Vec<Entry<'_>>> {
-    let bom = if text.starts_with('\u{feff}') {
-        '\u{feff}'.len_utf8()
-    } else {
-        0
-    };
-    let len = ferro_syntax::lexer::header_len(&text[bom..])?;
-    let mut entries = Vec::new();
-    // Lines end as the lexer ends them: CRLF, CR or LF.
-    let mut offset = bom;
-    while offset < bom + len {
-        let rest = &text[offset..bom + len];
-        let line = &rest[..rest.find(['\r', '\n']).unwrap_or(rest.len())];
-        if let Some((key, value)) = line.split_once('=') {
-            entries.push(Entry { key, value, offset });
-        }
-        let newline = if rest[line.len()..].starts_with("\r\n") {
-            2
-        } else {
-            1
-        };
-        offset += line.len() + newline;
-    }
+    let file = HeaderFile::parse(text)?;
+    let entries = file
+        .header
+        .lines
+        .iter()
+        .filter_map(|line| {
+            let (key, _) = line.key_value()?;
+            let at = line.offset;
+            let end = at + line.text.len();
+            Some(Entry {
+                key: &text[at..at + key.len()],
+                value: &text[at + key.len() + 1..end],
+                offset: at,
+            })
+        })
+        .collect();
     Some(entries)
 }
 
@@ -259,6 +253,17 @@ mod tests {
         let problems = check_module("B4J=true\rType=Class\r@EndOfDesignText@\rSub X\rEnd Sub\r");
         assert_eq!(problems.len(), 1);
         assert_eq!(problems[0].offset, 9);
+    }
+
+    #[test]
+    fn a_numbered_key_of_any_length_is_checked() {
+        let problems = check_project(
+            "AppType=StandardJava\nLibrary99999999999=jfx\nModule4294967296=Tools\n@EndOfDesignText@\n",
+        );
+        let messages = messages(&problems);
+        assert_eq!(messages.len(), 2, "{messages:?}");
+        assert!(messages[0].contains("library `jfx`"));
+        assert!(messages[1].contains("module `Tools`"));
     }
 
     #[test]

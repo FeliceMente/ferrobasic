@@ -23,17 +23,21 @@ fn real_world_projects_round_trip_and_find_their_modules() {
                 failures.push(format!("{name}: not UTF-8"));
                 continue;
             };
-            let lower = file.name.to_ascii_lowercase();
-            let written = if lower.ends_with(".meta") {
-                MetaFile::parse(&text).to_string()
-            } else {
-                match HeaderFile::parse(&text) {
+            let extension = Path::new(&file.name)
+                .extension()
+                .map(|e| e.to_string_lossy().to_ascii_lowercase());
+            let written = match extension.as_deref() {
+                Some("meta") => MetaFile::parse(&text).to_string(),
+                Some("b4j" | "bas") => match HeaderFile::parse(&text) {
                     Some(header) => header.to_string(),
                     None => {
                         failures.push(format!("{name}: no header"));
                         continue;
                     }
-                }
+                },
+                // Other files of a project (layouts, the Files folder) are
+                // not read by ferro-project yet.
+                _ => continue,
             };
             if written != text {
                 failures.push(format!("{name}: does not write back byte for byte"));
