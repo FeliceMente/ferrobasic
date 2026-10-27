@@ -36,9 +36,6 @@ struct Lowerer {
     refused_loop_names: HashSet<String>,
     /// Module variables that a loop of `Process_Globals` declares.
     loop_declared: HashSet<String>,
-    /// The declarators of every `Const`, by range: a variable first
-    /// declared by one of them is a constant (`Var::is_const`).
-    const_decls: HashSet<TextRange>,
     /// The loops of the Sub being lowered (`Process_Globals` included) over
     /// each name with a Sub's name, in source order, up to the current one.
     sub_named_loops: HashMap<String, LoopsBefore>,
@@ -191,10 +188,16 @@ struct LoopsBefore {
     refused: bool,
 }
 
+/// Whether a declarator belongs to a `Const` statement.
+fn in_const(decl: &SyntaxNode) -> bool {
+    decl.parent()
+        .is_some_and(|dim| child(&dim, CONST_MODIFIER).is_some())
+}
+
 /// Why an assignment's target cannot be assigned, once reported.
 enum Unassignable {
-    /// A constant, or part of one: its value is still checked.
-    Const,
+    /// A constant, or part of one, of this type: its value is still checked.
+    Const(Ty),
     Reported,
 }
 
@@ -254,12 +257,6 @@ impl Lowerer {
             }
         }
         let subs: Vec<SyntaxNode> = root.children().filter(|n| n.kind() == SUB_DECL).collect();
-        self.const_decls = root
-            .descendants()
-            .filter(|n| n.kind() == DIM_STMT && child(n, CONST_MODIFIER).is_some())
-            .flat_map(|dim| dim.children().filter(|n| n.kind() == DECLARATOR))
-            .map(|decl| range(&decl))
-            .collect();
         self.declare_records(root);
         for sub in &subs {
             self.declare_sub(sub);
@@ -533,7 +530,8 @@ impl Lowerer {
                     self.declare_global(name, Ty::Error, range(&decl));
                     continue;
                 }
-                self.declare_global(name, ty, range(&decl));
+                self.declare_global(name.clone(), ty, range(&decl));
+                self.mark_const(&decl, &name);
             }
         }
     }
@@ -552,12 +550,11 @@ impl Lowerer {
             None => {
                 let id = GlobalId(self.module.globals.len() as u32);
                 self.globals.insert(key(&name), id);
-                let is_const = self.const_decls.contains(&at);
                 self.module.globals.push(Var {
                     name,
                     ty,
                     range: at,
-                    is_const,
+                    is_const: false,
                 });
             }
         }
@@ -578,7 +575,8 @@ impl Lowerer {
             if node.kind() == DIM_STMT {
                 for (decl, ty) in self.declarators(&node) {
                     let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
-                    self.declare_dim_global(name, ty, range(&decl));
+                    self.declare_dim_global(name.clone(), ty, range(&decl));
+                    self.mark_const(&decl, &name);
                 }
             } else {
                 self.declare_loop_global(&node);
@@ -818,7 +816,7 @@ impl Lowerer {
             name: name.to_string(),
             ty,
             range: at,
-            is_const: self.const_decls.contains(&at),
+            is_const: false,
         });
     }
 
@@ -920,6 +918,7 @@ impl Lowerer {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                         self.declare_dim_local(&name, ty, range(&decl), true);
+                        self.mark_const(&decl, &name);
                     }
                 }
                 FOR_EACH_STMT => {
@@ -1039,8 +1038,9 @@ impl Lowerer {
                         );
                     }
                     // Its errors are reported along with the constant's.
-                    Err(Unassignable::Const) => {
-                        self.expr(value);
+                    Err(Unassignable::Const(ty)) => {
+                        let value = self.expr(value);
+                        self.coerce(value, &ty);
                     }
                     Err(Unassignable::Reported) => {}
                 }
@@ -1476,14 +1476,14 @@ impl Lowerer {
                     self.lookup_value(&name)
                 };
                 match found {
-                    Some((var, _)) if self.is_const(&var) => {
+                    Some((var, ty)) if !refused_dim && self.is_const(&var) => {
                         // B4J: "Cannot modify Const variable." (recorded).
                         let name = self.var(&var).name.clone();
                         self.error(
                             range(node),
                             format!("`{name}` is a `Const`: it cannot be assigned"),
                         );
-                        Err(Unassignable::Const)
+                        Err(Unassignable::Const(ty))
                     }
                     Some((var, ty)) => Ok((Place::Var(var), ty)),
                     None => {
@@ -1507,7 +1507,7 @@ impl Lowerer {
                 let expr = self.expr(node);
                 if let Some(message) = self.const_place(&expr) {
                     self.error(range(node), message);
-                    return Err(Unassignable::Const);
+                    return Err(Unassignable::Const(expr.ty));
                 }
                 match expr.kind {
                     ExprKind::Index { array, indices } => Ok((
@@ -1552,6 +1552,24 @@ impl Lowerer {
         self.var(var).is_const
     }
 
+    /// Makes the variable a declarator of a `Const` declares a constant,
+    /// when this declarator is its first declaration.
+    fn mark_const(&mut self, decl: &SyntaxNode, name: &str) {
+        if !in_const(decl) {
+            return;
+        }
+        let Some((var, _)) = self.lookup_var(name) else {
+            return;
+        };
+        let declared = match var {
+            VarRef::Global(id) => &mut self.module.globals[id.0 as usize],
+            VarRef::Local(id) => &mut self.locals[id.0 as usize],
+        };
+        if declared.range == range(decl) {
+            declared.is_const = true;
+        }
+    }
+
     /// Checks a declarator of a `Dim` against the constants, and whether
     /// to lower it. A `Const` must be given its value there (B4J: "Const
     /// variable must be set in the declaration line.", recorded). Whether a
@@ -1559,7 +1577,7 @@ impl Lowerer {
     /// a `Const`'s, is not recorded; with another type, the clash is
     /// reported already. Nor is one of an array with bounds and no value.
     fn const_declaration(&mut self, decl: &SyntaxNode, ty: &Ty, var: &VarRef) -> bool {
-        let is_const = self.const_decls.contains(&range(decl));
+        let is_const = in_const(decl);
         let declared = self.var(var);
         let name = child(decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
         let at = child(decl, NAME).map_or_else(|| range(decl), |n| range(&n));
@@ -1580,7 +1598,8 @@ impl Lowerer {
             return false;
         }
         if is_const && exprs(decl).is_empty() {
-            let message = if child(decl, ARRAY_BOUNDS).is_some() {
+            let bounds = child(decl, ARRAY_BOUNDS).filter(|b| !exprs(b).is_empty());
+            let message = if bounds.is_some() {
                 format!(
                     "`{name}` is a `Const` array with bounds: whether it may have no value is not \
                      known yet, so give it its value"
@@ -1599,15 +1618,8 @@ impl Lowerer {
     /// Const variable.", recorded); a field, or an item of an item, is not
     /// recorded.
     fn const_place(&self, expr: &Expr) -> Option<String> {
-        if let ExprKind::Index { array, .. } = &expr.kind
-            && let ExprKind::Var(var) = &array.kind
-            && self.is_const(var)
-        {
-            let name = &self.var(var).name;
-            return Some(format!(
-                "`{name}` is a `Const`: its items cannot be assigned"
-            ));
-        }
+        let item = matches!(&expr.kind, ExprKind::Index { array, .. }
+            if matches!(array.kind, ExprKind::Var(_)));
         let mut root = expr;
         loop {
             match &root.kind {
@@ -1615,10 +1627,14 @@ impl Lowerer {
                 ExprKind::Field { record, .. } => root = record,
                 ExprKind::Var(var) if self.is_const(var) => {
                     let name = &self.var(var).name;
-                    return Some(format!(
-                        "`{name}` is a `Const`: whether this part of it may be assigned is not \
-                         known yet"
-                    ));
+                    return Some(if item {
+                        format!("`{name}` is a `Const`: its items cannot be assigned")
+                    } else {
+                        format!(
+                            "`{name}` is a `Const`: whether this part of it may be assigned is \
+                             not known yet"
+                        )
+                    });
                 }
                 _ => return None,
             }

@@ -394,6 +394,30 @@ fn constants() {
             "`Foo` is not declared",
         ]
     );
+    // Empty parentheses are no bounds: the recorded refusal.
+    assert_eq!(
+        errors(&module("    Dim Const A() As Int", "")),
+        ["`A` is a `Const`: give it its value where it is declared"]
+    );
+    // A `Dim` refused for a Sub's name is not reported again.
+    assert_eq!(
+        errors(&module(
+            "",
+            "    Dim Const NewPoint As Int = 1\n    NewPoint = 2"
+        )),
+        ["a variable cannot have the name of a Sub: `NewPoint` is a Sub"]
+    );
+    // The value is converted to the constant's type, and checked.
+    assert_eq!(
+        errors(&module(
+            "    Private Const S As Int = 1",
+            "    Dim m As Map\n    m.Initialize\n    S = m"
+        )),
+        [
+            "`S` is a `Const`: it cannot be assigned",
+            "cannot convert Map to Int"
+        ]
+    );
     // A variable named `Const` is still a variable.
     ok(&program("Dim Const As Int = 1\nLog(Const)"));
 }
