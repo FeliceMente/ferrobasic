@@ -285,6 +285,22 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).
+- [ ] `Const` ([#33](https://github.com/FeliceMente/ferrobasic/issues/33);
+      sources in [research](research/level0-semantics.md#constants-docs-forum-open)).
+      FerroBASIC refuses it until these are recorded, one test each:
+  - [ ] the documented forms: `Private` / `Public Const`, lower case, the
+        value before `As`, `Dim Const` with several names in
+        `Process_Globals` and in a Sub; `Int`, `Long`, `Double`, `String`,
+        `Boolean` (`level0/const_forms`);
+  - [ ] assigning one is refused, and how (`level0/const_assign`);
+  - [ ] one with no value (`level0/const_no_value`);
+  - [ ] a value from operators and other constants
+        (`level0/const_expression`), or from a call
+        (`level0/const_from_call`);
+  - [ ] a variable initialised from a constant declared after it: inlined,
+        read before set, or refused (`level0/const_used_before`);
+  - [ ] constants of object types: `List`, `Map`, an array
+        (`level0/const_object_type`).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the
