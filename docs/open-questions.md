@@ -310,38 +310,54 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).
-- [ ] `Const` ([#33](https://github.com/FeliceMente/ferrobasic/issues/33);
-      sources in [research](research/level0-semantics.md#constants-docs-forum-open)).
-      FerroBASIC refuses it until these are recorded, one test each so that
-      one refusal cannot hide another answer:
-  - [ ] the booklet's example, `Private Const Size As Int = 10` and
+- [x] `Const` ([#33](https://github.com/FeliceMente/ferrobasic/issues/33);
+      sources in [research](research/level0-semantics.md#constants-docs-forum-recorded)),
+      recorded with B4J 10.70, one test per question:
+  - [x] the booklet's example, `Private Const Size As Int = 10` and
         `Public Const ItemNumber As Int = 100` (`level0/const_forms`);
-  - [ ] other types: `Long` (`level0/const_long`), `Double`
+  - [x] other types: `Long` (`level0/const_long`), `Double`
         (`level0/const_double`), `String` (`level0/const_string`),
-        `Boolean` (`level0/const_boolean`); and the type of one with no
-        `As` (a `Dim` with no `As` is provisionally a `String`)
-        (`level0/const_no_as`);
-  - [ ] forms from real projects: lower-case `const`
+        `Boolean` (`level0/const_boolean`); with no `As` it is a `String`
+        (`level0/const_no_as`), as a `Dim` with no `As` provisionally is
+        (open, above);
+  - [x] forms from real projects: lower-case `const`
         (`level0/const_lower_case`), the value before `As`
         (`level0/const_value_before_as`);
-  - [ ] `Dim Const` in `Process_Globals` (`level0/const_dim_module`), with
+  - [x] `Dim Const` in `Process_Globals` (`level0/const_dim_module`), with
         several names (`level0/const_dim_several`), and inside a Sub
         (`level0/const_dim_in_sub`);
-  - [ ] assigning one is refused, and how (`level0/const_assign`);
-  - [ ] one with no value (`level0/const_no_value`);
-  - [ ] a value from arithmetic on literals
+  - [x] assigning one is refused: "Cannot modify Const variable."
+        (`level0/const_assign`);
+  - [x] one with no value is refused: "Const variable must be set in the
+        declaration line." (`level0/const_no_value`);
+  - [x] any expression as the value: arithmetic on literals
         (`level0/const_literal_arithmetic`), a concatenation
         (`level0/const_concatenation`), another constant
         (`level0/const_from_const`), a call (`level0/const_from_call`), a
         member of a literal (`level0/const_from_member`);
-  - [ ] a variable initialised from a constant declared after it: inlined,
-        read before set, or refused (`level0/const_used_before`);
-  - [ ] a constant as a `Select Case` label, as real projects use them
-        (`level0/const_select_case`);
-  - [ ] constants of type `List` (`level0/const_list`), `Map`
-        (`level0/const_map`) and an array (`level0/const_array`), and
-        whether their contents may change (`level0/const_list_mutate`,
-        `level0/const_map_mutate`, `level0/const_array_mutate`).
+  - [x] a variable initialised from a constant declared after it reads it
+        before it is set, `0`: constants are not inlined
+        (`level0/const_used_before`);
+  - [x] a constant as a `Select Case` label (`level0/const_select_case`);
+  - [x] constants of type `List` (`level0/const_list`), `Map`
+        (`level0/const_map`) and an array (`level0/const_array`); a `List`
+        or `Map` constant's contents may change (`level0/const_list_mutate`,
+        `level0/const_map_mutate`), an array constant's items may not:
+        "Cannot modify Const variable." (`level0/const_array_mutate`).
+- [ ] What `Const` leaves open. FerroBASIC refuses each until it is
+      recorded:
+  - [ ] a `For` counting over a constant (`level0/const_for_counter`), and
+        a `For Each v As T` in a Sub over a module constant of type `T`
+        (`level0/const_for_each_variable`);
+  - [ ] a `Dim` of a constant's name after it (`level0/const_dim_after`),
+        a `Const` of a variable's name after its `Dim`
+        (`level0/const_after_dim`), and a `Dim` in a Sub with a module
+        constant's name and type (`level0/const_local_dim`);
+  - [ ] assigning a field of a constant record
+        (`level0/const_record_field`);
+  - [ ] a `Const` array with bounds and no value: refused as a `Const`
+        without a value is, or an array of default items
+        (`level0/const_array_bounds`).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the
