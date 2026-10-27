@@ -287,16 +287,20 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/continuation_comment_tight`).
 - [ ] `Const` ([#33](https://github.com/FeliceMente/ferrobasic/issues/33);
       sources in [research](research/level0-semantics.md#constants-docs-forum-open)).
-      FerroBASIC refuses it until these are recorded, one test each so that
-      one refusal cannot hide another answer:
-  - [ ] the booklet's form, `Private` / `Public Const Name As Type = value`,
-        with `Int`, `Long`, `Double`, `String`, `Boolean`
-        (`level0/const_forms`);
+      Planned for Level 0; FerroBASIC refuses it until these are recorded,
+      one test each so that one refusal cannot hide another answer:
+  - [ ] the booklet's example, `Private Const Size As Int = 10` and
+        `Public Const ItemNumber As Int = 100` (`level0/const_forms`);
+  - [ ] other types: `Long` (`level0/const_long`), `Double`
+        (`level0/const_double`), `String` (`level0/const_string`),
+        `Boolean` (`level0/const_boolean`); and the type of one with no
+        `As`, which a `Dim` would make a `String` (`level0/const_no_as`);
   - [ ] forms from real projects: lower-case `const`
         (`level0/const_lower_case`), the value before `As`
         (`level0/const_value_before_as`);
-  - [ ] `Dim Const` with several names (`level0/const_dim_several`), and
-        inside a Sub (`level0/const_dim_in_sub`);
+  - [ ] `Dim Const` in `Process_Globals` (`level0/const_dim_module`), with
+        several names (`level0/const_dim_several`), and inside a Sub
+        (`level0/const_dim_in_sub`);
   - [ ] assigning one is refused, and how (`level0/const_assign`);
   - [ ] one with no value (`level0/const_no_value`);
   - [ ] a value from arithmetic on literals

@@ -502,9 +502,10 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
 
 ### Constants (docs, forum, open)
 
-Not implemented yet ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)):
-FerroBASIC refuses `Const` with a precise error until the recordings of
-the `const_*` tests settle what is open below.
+Planned for Level 0, not implemented yet
+([#33](https://github.com/FeliceMente/ferrobasic/issues/33)): FerroBASIC
+refuses `Const` with a precise error until the recordings of the `const_*`
+tests settle what is open below.
 
 - `Private Const Size As Int = 10` and `Public Const ItemNumber As Int =
   100` declare constants, "which cannot be changed anywhere in the code"
@@ -530,9 +531,11 @@ the `const_*` tests settle what is open below.
   in the real-world corpus, about 100 constants).
 - **open**, one test each so that one refusal cannot hide another answer
   (the list is in [open-questions.md](../open-questions.md)): the
-  booklet's form with five types; lower-case `const` and the value before
-  `As` (real projects); `Dim Const` with several names, and inside a Sub;
-  assigning one; one with no value; a value from arithmetic on literals,
+  booklet's example; constants of type `Long`, `Double`, `String`,
+  `Boolean`, and one with no `As`; lower-case `const` and the value before
+  `As` (real projects); `Dim Const` in `Process_Globals`, with several
+  names, and inside a Sub; assigning one; one with no value; a value from
+  arithmetic on literals,
   a concatenation, another constant, a call or a member of a literal; a
   variable initialised from a constant declared after it, which shows
   whether constants are inlined; constants of type `List`, `Map` and an
