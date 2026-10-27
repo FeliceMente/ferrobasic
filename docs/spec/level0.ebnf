@@ -117,7 +117,7 @@ literal       = INT | REAL | STRING | "True" | "False" | "Null" ;
 IDENT         = ( letter | "_" ) , { letter | digit | "_" } ;
 INT           = digit , { digit } | "0x" , hex , { hex } ;
 REAL          = ( digit , { digit } , "." , digit , { digit }
-                | "." , digit , { digit } ) , [ exponent ]   (* ".08": pending *)
+                | "." , digit , { digit } ) , [ exponent ]
               | digit , { digit } , exponent ;
 exponent      = ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit } ;
 (* A REAL starts with "." only where an operand may start: after an       *)
