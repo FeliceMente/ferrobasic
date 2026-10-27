@@ -116,8 +116,12 @@ expr_list     = expr , { "," , expr } ;
 literal       = INT | REAL | STRING | "True" | "False" | "Null" ;
 IDENT         = ( letter | "_" ) , { letter | digit | "_" } ;
 INT           = digit , { digit } | "0x" , hex , { hex } ;
-REAL          = digit , { digit } , "." , digit , { digit } ,
-                [ ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit } ] ;
+REAL          = ( digit , { digit } , "." , digit , { digit }
+                | "." , digit , { digit } ) , [ exponent ]   (* ".08": pending *)
+              | digit , { digit } , exponent ;
+exponent      = ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit } ;
+(* A REAL starts with "." only where an operand may start: after an       *)
+(* operand or a ".", the "." is a member access's ("a.5" is an error).    *)
 STRING        = '"' , { any_char - '"' } , '"' ;   (* no escapes; may span lines *)
 (* Placeholder: "$" [formatter] "{" expr "}". formatter is empty, digits   *)
 (* "N" or "N.M", or a name (date, time, datetime, xml), case-insensitive.  *)
