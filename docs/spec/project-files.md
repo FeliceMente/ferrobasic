@@ -138,6 +138,35 @@ At Level 0 a module file's `Type` must be `StaticCode`, or the header may be
 absent (as in `tests/conformance`). `Type=Class` is an error that points to
 Level 1; any other type is an error.
 
+## Reading a project
+
+`ferro-project` reads a project file, its `.b4j.meta` file and its module
+files so that each writes back byte for byte: the byte order mark, every
+`Key=Value` line, every line end (CRLF, CR or LF) and the code after the
+header are kept. Round-trip tests run on hand-written files and on the
+[real-world corpus](../../tests/corpus/README.md).
+
+A project's modules are found from its `Module<n>` lines, in the order of
+`n`:
+
+- `Module1=Tools` is `Tools.bas` in the project's folder.
+- `Module1=|relative|..\Shared\Tools` is `Tools.bas` at that path from the
+  project's folder; `\` and `/` both separate folders. (The B4XPages
+  samples name a shared module this way; the corpus has none yet.)
+- When no file has that exact name, the one file of the folder whose name
+  differs only in letter case is the module: the IDE runs on Windows, and
+  `jsonwebtoken` in the corpus names `JSONWebToken.bas` as
+  `Module1=JsonWebToken`. Two such files, and no exact one, is an error.
+- A module that cannot be found or read is an error at its line of the
+  project file; the other modules are still read.
+
+The `NumberOfFiles`, `NumberOfLibraries` and `NumberOfModules` counts can be
+compared with the numbered keys; every project of the corpus agrees. What
+the IDE does when they differ is not known, so nothing depends on them yet.
+
+At Level 0, `ferro check`, `run` and `bundle` still accept only a project
+with no module (see [At Level 0](#at-level-0)).
+
 ## Sources
 
 - Console projects: [`helloworld.b4j`](https://github.com/rwbl/b4j-howtos/blob/master/helloworld.b4j)

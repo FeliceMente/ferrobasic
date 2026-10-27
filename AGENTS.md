@@ -96,7 +96,8 @@ cargo run -p ferro-recorder -- --dry-run          # tests the recorder would rec
 cargo run -p ferro-difftest                       # compare against recordings: the report
 cargo build -p ferro-cli && cargo run -p ferro-difftest -- --target standalone
 cargo run -p ferro-corpus --bin ferro-corpus-fetch    # download the real-world corpus
-cargo test -p ferro-syntax --test projects -- --ignored  # tests that need it
+cargo test -p ferro-syntax --test projects -- --ignored   # tests that need it
+cargo test -p ferro-project --test projects -- --ignored
 ```
 
 ## Before closing a task
