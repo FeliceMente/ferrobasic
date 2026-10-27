@@ -171,6 +171,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       compares numerically, String vs number compares as Strings (forum).
 - [ ] `<` / `>` on Booleans or objects is a compile error.
 - [ ] `Null` compared with a number, Boolean or Char is a compile error.
+- [ ] A real literal may start with its decimal point (`.08`), and is a
+      `Double`: `MteBuildLib.b4j` in the real-world corpus writes
+      `Array (320000,.08, .05, .03)`, so B4J accepts it, but no public
+      source says so and its value and type are not recorded. FerroBASIC
+      accepts it meanwhile (test `level0/real_leading_point`, pending).
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.

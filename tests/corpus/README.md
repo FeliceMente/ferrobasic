@@ -63,5 +63,5 @@ modules it names (`crates/project/tests/projects.rs`).
 | [`helloworld`](https://github.com/rwbl/b4j-howtos) | GPL-3.0-or-later | hello world with the date | `DateTime` |
 | [`console-read-input`](https://github.com/pyhoon/console-read-input-b4j) | MIT | reads lines typed on the console | `JavaObject` |
 | [`vcardsplitter`](https://github.com/axtens/vcardsplitter) | MIT | splits a file of vCards into one file per card | a module, jStringFunctions, jStringUtils |
-| [`mteeval-buildlib`](https://github.com/macthomasengineering/MteEVAL-b4x-library) | BSD-3-Clause | an expression compiler and its tests | four modules, a class; `.08` number literals |
+| [`mteeval-buildlib`](https://github.com/macthomasengineering/MteEVAL-b4x-library) | BSD-3-Clause | an expression compiler and its tests | four modules, a class |
 | [`jsonwebtoken`](https://github.com/pyhoon/jsonwebtoken-b4j) | MIT | a JSON Web Token class | a class, `JavaObject`, jStringUtils, the java-jwt and Jackson jars |

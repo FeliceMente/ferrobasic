@@ -169,6 +169,10 @@ impl Lexer<'_> {
                 self.push(kind, len);
             }
             '0'..='9' => self.number(),
+            // A real may start with its point: `.08` (a real-world project
+            // writes `Array(320000, .08)`). No member name starts with a
+            // digit, so this never takes a member access's dot.
+            '.' if rest.as_bytes().get(1).is_some_and(u8::is_ascii_digit) => self.number(),
             '"' => self.string(),
             '$' if rest.starts_with("$\"") && self.smart_depth >= MAX_SMART_NESTING => {
                 // Too deep: report it once, then lex the rest of this string
@@ -457,7 +461,7 @@ mod tests {
     #[test]
     fn numbers() {
         assert_eq!(
-            significant("12 0xFF 1.5 2.5e-3 1e5 3.x"),
+            significant("12 0xFF 1.5 2.5e-3 1e5 3.x .08 .5e2 (1,.5) x.y"),
             [
                 (INT, "12"),
                 (INT, "0xFF"),
@@ -467,6 +471,16 @@ mod tests {
                 (INT, "3"),
                 (DOT, "."),
                 (IDENT, "x"),
+                (REAL, ".08"),
+                (REAL, ".5e2"),
+                (L_PAREN, "("),
+                (INT, "1"),
+                (COMMA, ","),
+                (REAL, ".5"),
+                (R_PAREN, ")"),
+                (IDENT, "x"),
+                (DOT, "."),
+                (IDENT, "y"),
             ]
         );
     }
