@@ -184,8 +184,9 @@ struct LoopsBefore {
     counter: bool,
     /// An accepted `For Each v As T`.
     typed_for_each: bool,
-    /// A refused loop: what B4J does after it is not recorded.
-    refused: bool,
+    /// A loop B4J's answer to is not recorded: refused, or accepted by
+    /// FerroBASIC alone. What B4J does after it is not recorded either.
+    unrecorded: bool,
 }
 
 /// Whether a declarator belongs to a `Const` statement.
@@ -1275,7 +1276,7 @@ impl Lowerer {
     fn refused_loop(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) {
         let k = key(text);
         if self.subs.contains_key(&k) {
-            self.sub_named_loops.entry(k).or_default().refused = true;
+            self.sub_named_loops.entry(k).or_default().unrecorded = true;
         }
         for e in exprs(node) {
             self.expr(&e);
@@ -1296,11 +1297,10 @@ impl Lowerer {
         let seen = self.sub_named_loops.entry(k).or_default();
         match node.kind() {
             // `declare_loop_local` refused it, before lowering.
-            FOR_STMT if typed => seen.refused = true,
+            FOR_STMT if typed => seen.unrecorded = true,
             FOR_STMT => seen.counter = true,
             _ if typed => seen.typed_for_each = true,
-            // Not recorded as accepted: what B4J does after it is open.
-            _ => seen.refused = true,
+            _ => seen.unrecorded = true,
         }
     }
 
@@ -1312,14 +1312,15 @@ impl Lowerer {
     ///   other (recorded);
     /// - a `For Each v As T` may loop after loops over it one after the
     ///   other, typed `For Each` loops or an `Int` counter, and inside a
-    ///   typed `For Each` over it (recorded);
+    ///   typed `For Each` of a Sub over it (recorded);
     /// - a `For Each` without `As` is refused ("Current declaration does not
     ///   match previous one", recorded) after a loop of the same Sub over
     ///   it, or inside a `For` of a Sub over it, and over a module variable
     ///   from another Sub.
     ///
-    /// Only accepted loops count as before; after a refused one, a refusal
-    /// gets the open message, but a refused loop never refuses another.
+    /// After a loop whose answer B4J did not record (refused, or accepted by
+    /// FerroBASIC alone), a refusal gets the open message, but such a loop
+    /// never refuses another.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         if let Some((var, _)) = &found
@@ -1343,12 +1344,11 @@ impl Lowerer {
         let before = self.sub_named_loops.get(&k).copied().unwrap_or_default();
         // The innermost loop over the same name around this one, and
         // whether it is a `For`.
-        let around = node
-            .ancestors()
-            .skip(1)
-            .filter(|a| matches!(a.kind(), FOR_STMT | FOR_EACH_STMT))
-            .find(|a| child(a, NAME).is_some_and(|n| key(&name_of(&n)) == k))
-            .map(|a| (a.kind() == FOR_STMT, child(&a, TYPE_REF).is_some()));
+        let around = node.ancestors().skip(1).find_map(|a| {
+            let over_it = matches!(a.kind(), FOR_STMT | FOR_EACH_STMT)
+                && child(&a, NAME).is_some_and(|n| key(&name_of(&n)) == k);
+            over_it.then(|| (a.kind() == FOR_STMT, child(&a, TYPE_REF).is_some()))
+        });
         let in_sub = !self.in_process_globals;
         // What it loops over again, and whether B4J's refusal is recorded
         // there; none when the loop is accepted.
@@ -1358,13 +1358,14 @@ impl Lowerer {
                     Some((VarRef::Global(_), _)) => "a module variable",
                     _ => "a loop variable of this Sub",
                 };
-                let ty = found.as_ref().map(|(_, ty)| ty.clone());
+                // After a counter of the Sub, only an `Int` one (recorded).
+                let other_counter =
+                    in_sub && before.counter && !matches!(found, Some((_, Ty::Int)));
                 let open = match around {
-                    // Inside a typed `For Each` over it (recorded).
-                    Some((false, true)) => before.refused,
+                    // Inside a typed `For Each` of a Sub over it (recorded).
+                    Some((false, true)) => !in_sub || other_counter,
                     Some(_) => true,
-                    // After an `Int` counter of the Sub (recorded).
-                    None => in_sub && before.counter && ty != Some(Ty::Int),
+                    None => other_counter,
                 };
                 open.then_some((what, false))
             }
@@ -1376,7 +1377,7 @@ impl Lowerer {
                 };
                 self.loop_declared
                     .contains(&k)
-                    .then_some(("a module variable", recorded && !before.refused))
+                    .then_some(("a module variable", recorded && !before.unrecorded))
             }
             Some((VarRef::Local(_), _)) if self.sub_named_locals.get(&k) == Some(&true) => {
                 let recorded = match around {
@@ -1384,7 +1385,10 @@ impl Lowerer {
                     Some((is_for, _)) => is_for,
                     None => before.counter || before.typed_for_each,
                 };
-                Some(("a loop variable of this Sub", recorded && !before.refused))
+                Some((
+                    "a loop variable of this Sub",
+                    recorded && !before.unrecorded,
+                ))
             }
             _ => None,
         };

@@ -441,7 +441,7 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `process_globals_for_each_named_like_sub_for_each_again`); another `For
   Each v As T` is accepted after typed `For Each` loops or an `Int`
   counter over it, one after the other, in a Sub or in `Process_Globals`,
-  and inside a typed `For Each` over it (**recorded**:
+  and inside a typed `For Each` of a Sub over it (**recorded**:
   `local_typed_for_each_named_like_sub_loop_again`,
   `local_typed_for_each_after_counter_named_like_sub`,
   `local_typed_for_each_after_module_counter_named_like_sub`,
@@ -457,7 +457,9 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   loop of `Process_Globals` (`process_globals_for_each_named_like_sub_nested`);
   a `For Each v As T` of another type after a counter of the Sub
   (`local_typed_for_each_other_type_after_counter_named_like_sub`) or
-  inside a `For` over it (`local_typed_for_each_in_counter_named_like_sub`);
+  inside a `For` over it (`local_typed_for_each_in_counter_named_like_sub`),
+  or nested in `Process_Globals`
+  (`process_globals_typed_for_each_named_like_sub_nested`);
   and a `Dim` of
   `Class_Globals` with a Sub's name.
   With the same type, a counter and a

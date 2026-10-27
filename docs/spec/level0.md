@@ -75,9 +75,10 @@ End Sub
   (B4J: "Loop iterator should be a numeric variable", recorded). Another
   `For Each v As T` may loop over it after typed `For Each` loops or an
   `Int` counter over it, one after the other, in a Sub or in
-  `Process_Globals`, and inside a typed `For Each` over it, and the name
-  still calls the Sub (recorded); with another type after a counter, or
-  inside a `For` over it, it is *(open)*. Another `For Each` without `As`
+  `Process_Globals`, and inside a typed `For Each` of a Sub over it, and
+  the name still calls the Sub (recorded); with another type after a
+  counter, inside a `For` over it, or nested in `Process_Globals`, it is
+  *(open)*. Another `For Each` without `As`
   over it is an error after a loop of the same Sub over it, inside a
   `For` of a Sub over it, and in another Sub over a counter or
   `For Each` variable of `Process_Globals` (B4J: "Current declaration
