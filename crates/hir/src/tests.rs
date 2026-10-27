@@ -886,9 +886,9 @@ fn loops_in_process_globals() {
     assert_eq!(diags, ["a `For` counter must be a number, not String"]);
     // Another `For Each` without `As` over it is refused (B4J: "Current
     // declaration does not match previous one", recorded): after a loop of
-    // the same Sub over it, nested or not, and over a module variable from
-    // another Sub; in `Process_Globals`, after its counter or a typed
-    // `For Each` there.
+    // the same Sub over it, or inside a `For` of a Sub over it, and over a
+    // module variable from another Sub; in `Process_Globals`, after its
+    // counter or a typed `For Each` there.
     let refused = |what: &str| {
         format!(
             "`Bump` is {what} with the name of a Sub: a `For Each` without `As` cannot loop \
@@ -921,12 +921,6 @@ fn loops_in_process_globals() {
             1,
         ),
         (
-            "    For Bump = 1 To 2\n        For Each Bump In Array As Int(5)\n        Next\n    Next",
-            "",
-            "a module variable",
-            1,
-        ),
-        (
             "    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
             "",
             "a module variable",
@@ -954,9 +948,10 @@ fn loops_in_process_globals() {
         let diags = errors(&sub(body, app));
         assert_eq!(diags, vec![refused(what); count], "{body}{app}");
     }
-    // Another `For Each v As T` is accepted after any loop over it, or
-    // inside one, in a Sub or in `Process_Globals`, and the name still calls
-    // the Sub (recorded).
+    // Another `For Each v As T` is accepted after typed `For Each` loops or
+    // an `Int` counter over it, one after the other, or inside a typed
+    // `For Each` over it, in a Sub or in `Process_Globals`, and the name
+    // still calls the Sub (recorded).
     for (body, app) in [
         (
             "",
@@ -992,8 +987,9 @@ fn loops_in_process_globals() {
     }
     // Where B4J's answer is not recorded, a `For Each` without `As` is open:
     // as the first loop over it, which only a later typed `For Each` can
-    // declare, in a Sub or in `Process_Globals`, and after a refused loop.
-    // The typed `For Each` after it is accepted.
+    // declare, in a Sub or in `Process_Globals`, nested in a loop of
+    // `Process_Globals`, and after a refused loop. The typed `For Each` after
+    // it is accepted.
     let open = |what: &str| {
         format!(
             "`Bump` is {what} with the name of a Sub: whether a `For Each` without `As` may \
@@ -1001,6 +997,11 @@ fn loops_in_process_globals() {
         )
     };
     for (body, app, what) in [
+        (
+            "    For Bump = 1 To 2\n        For Each Bump In Array As Int(5)\n        Next\n    Next",
+            "",
+            "a module variable",
+        ),
         (
             "",
             "    For Each Bump In Array As Int(5)\n    Next\n    For Each Bump As Int In Array As Int(5)\n        Log(Bump)\n    Next",
@@ -1013,6 +1014,17 @@ fn loops_in_process_globals() {
         ),
     ] {
         assert_eq!(errors(&sub(body, app)), [open(what)], "{body}{app}");
+    }
+    // So is a `For Each v As T` of another type than `Int` after a counter
+    // of the Sub, which would make the counter that type, and one inside a
+    // `For` over it, which would share its counter.
+    let open_typed = "`Bump` is a loop variable of this Sub with the name of a Sub: whether this \
+                      `For Each` may loop over it here is not known yet, so use another name";
+    for app in [
+        "    For Bump = 0 To 1 Step 0.5\n    Next\n    For Each Bump As Double In Array As Double(1.5)\n        Log(Bump)\n    Next",
+        "    For Bump = 1 To 3\n        For Each Bump As Int In Array As Int(7, 8)\n            Log(Bump)\n        Next\n    Next",
+    ] {
+        assert_eq!(errors(&sub("", app)), [open_typed], "{app}");
     }
     // A loop refused after its variable was found is not one before: a
     // `For Each` without `As` after a typed `For` (refused) is open.

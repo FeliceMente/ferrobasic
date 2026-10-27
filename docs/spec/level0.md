@@ -73,14 +73,17 @@ End Sub
   wherever it is (recorded). A `For` may loop over it again anywhere,
   whichever loop declares it, and counts with a number as any `For` does
   (B4J: "Loop iterator should be a numeric variable", recorded). Another
-  `For Each v As T` may loop over it after any loop over it, or inside
-  one, in a Sub or in `Process_Globals`, and the name still calls the Sub
-  (recorded). Another `For Each` without `As` over it is an error after a
-  loop of the same Sub over it, nested or not, and in another Sub over a
-  counter or `For Each` variable of `Process_Globals` (B4J: "Current
-  declaration does not match previous one", recorded); as the first loop
-  over it, which only a later `For Each v As T` can declare, it is
-  *(open)*. A
+  `For Each v As T` may loop over it after typed `For Each` loops or an
+  `Int` counter over it, one after the other, in a Sub or in
+  `Process_Globals`, and inside a typed `For Each` over it, and the name
+  still calls the Sub (recorded); with another type after a counter, or
+  inside a `For` over it, it is *(open)*. Another `For Each` without `As`
+  over it is an error after a loop of the same Sub over it, inside a
+  `For` of a Sub over it, and in another Sub over a counter or
+  `For Each` variable of `Process_Globals` (B4J: "Current declaration
+  does not match previous one", recorded); as the first loop over it,
+  which only a later `For Each v As T` can declare, and nested in a loop
+  of `Process_Globals`, it is *(open)*. A
   `For Each v As T` of a Sub may have the name of a Sub and of a module
   variable of type `T`, and with another type it is an error as for any
   other name (recorded). In `Class_Globals`, a `Dim` with a Sub's
