@@ -445,10 +445,13 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   typed `For Each` one: `process_globals_for_each_named_like_sub_for_each_again`,
   `process_globals_counter_named_like_sub_typed_for_each_again`,
   `process_globals_for_each_named_like_sub_typed_for_each_again`), a
-  `For Each v As T` after a `For` counter of the same Sub
-  (`local_typed_for_each_after_counter_named_like_sub`) or inside a loop
-  over the same name (`local_typed_for_each_named_like_sub_nested`), and a
-  `Dim` of
+  `For Each v As T` after a `For` over the same name in the Sub,
+  whichever variable it counts
+  (`local_typed_for_each_after_counter_named_like_sub`,
+  `local_typed_for_each_after_module_counter_named_like_sub`), a
+  `For Each` with or without `As` inside a loop over the same name
+  (`local_typed_for_each_named_like_sub_nested`,
+  `local_for_each_named_like_sub_nested`), and a `Dim` of
   `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
