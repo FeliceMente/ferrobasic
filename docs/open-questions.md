@@ -287,20 +287,27 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/continuation_comment_tight`).
 - [ ] `Const` ([#33](https://github.com/FeliceMente/ferrobasic/issues/33);
       sources in [research](research/level0-semantics.md#constants-docs-forum-open)).
-      FerroBASIC refuses it until these are recorded, one test each:
-  - [ ] the documented forms: `Private` / `Public Const`, lower case, the
-        value before `As`, `Dim Const` with several names in
-        `Process_Globals` and in a Sub; `Int`, `Long`, `Double`, `String`,
-        `Boolean` (`level0/const_forms`);
+      FerroBASIC refuses it until these are recorded, one test each so that
+      one refusal cannot hide another answer:
+  - [ ] the booklet's form, `Private` / `Public Const Name As Type = value`,
+        with `Int`, `Long`, `Double`, `String`, `Boolean`
+        (`level0/const_forms`);
+  - [ ] forms from real projects: lower-case `const`
+        (`level0/const_lower_case`), the value before `As`
+        (`level0/const_value_before_as`);
+  - [ ] `Dim Const` with several names (`level0/const_dim_several`), and
+        inside a Sub (`level0/const_dim_in_sub`);
   - [ ] assigning one is refused, and how (`level0/const_assign`);
   - [ ] one with no value (`level0/const_no_value`);
-  - [ ] a value from operators and other constants
-        (`level0/const_expression`), or from a call
-        (`level0/const_from_call`);
+  - [ ] a value from arithmetic on literals
+        (`level0/const_literal_arithmetic`), a concatenation
+        (`level0/const_concatenation`), another constant
+        (`level0/const_from_const`), a call (`level0/const_from_call`), a
+        member of a literal (`level0/const_from_member`);
   - [ ] a variable initialised from a constant declared after it: inlined,
         read before set, or refused (`level0/const_used_before`);
-  - [ ] constants of object types: `List`, `Map`, an array
-        (`level0/const_object_type`).
+  - [ ] constants of type `List` (`level0/const_list`), `Map`
+        (`level0/const_map`) and an array (`level0/const_array`).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the

@@ -528,14 +528,15 @@ the `const_*` tests settle what is open below.
   `As`), also `Private const` in lower case, of types `Int`, `String` and
   `Boolean`, in `Process_Globals` and `Class_Globals` (`mteeval-buildlib`
   in the real-world corpus, about 100 constants).
-- **open**, one test each so that one refusal cannot hide another answer:
-  the forms above together (`const_forms`), assigning one (`const_assign`),
-  one with no value (`const_no_value`), a value computed from operators
-  and other constants (`const_expression`) or from a call
-  (`const_from_call`), a variable initialised from a constant declared
-  after it, which shows whether constants are inlined
-  (`const_used_before`), and constants of object types: `List`, `Map`, an
-  array (`const_object_type`).
+- **open**, one test each so that one refusal cannot hide another answer
+  (the list is in [open-questions.md](../open-questions.md)): the
+  booklet's form with five types; lower-case `const` and the value before
+  `As` (real projects); `Dim Const` with several names, and inside a Sub;
+  assigning one; one with no value; a value from arithmetic on literals,
+  a concatenation, another constant, a call or a member of a literal; a
+  variable initialised from a constant declared after it, which shows
+  whether constants are inlined; constants of type `List`, `Map` and an
+  array.
 
 ### Keywords used as names (generated)
 
