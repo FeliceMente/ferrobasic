@@ -786,8 +786,14 @@ fn loops_in_process_globals() {
     // declared it first or the `For` counts a module variable; with or
     // without `As` inside a loop over it, or as the first loop over it; in
     // `Process_Globals`, with `As` over its counter, and with or without
-    // `As` after a typed `For Each` there.
+    // `As` after a typed `For Each` there, or before any other loop there.
     for (body, app, what, count) in [
+        (
+            "    For Each Bump In Array As Int(5)\n    Next\n    For Each Bump As Int In Array As Int(1)\n    Next",
+            "",
+            "a module variable",
+            1,
+        ),
         (
             "    For Bump = 1 To 2\n    Next",
             "    For Bump = 5 To 6\n    Next\n    For Each Bump As Int In Array As Int(7)\n        Log(Bump)\n    Next",
@@ -862,6 +868,22 @@ fn loops_in_process_globals() {
             "{body}{app}"
         );
     }
+    // A loop refused after its variable was found is not one before: a
+    // `For Each` without `As` after a typed `For` (refused) gets the open
+    // message.
+    let diags = errors(&sub(
+        "",
+        "    For Bump As Int = 1 To 2\n    Next\n    For Each Bump In Array As Int(5)\n    Next",
+    ));
+    assert_eq!(
+        diags,
+        [
+            "`Bump` is a Sub: a `For` counter with its name cannot be declared with `As`, so \
+             loop without `As`",
+            "`Bump` is a loop variable of this Sub with the name of a Sub: whether another \
+             `For Each` may loop over it here is not known yet, so use another name",
+        ]
+    );
     // In `Process_Globals` only the loops before it count: a `For Each`
     // without `As` right after its counter is the recorded refusal, though a
     // typed `For Each` comes after it, which is open.

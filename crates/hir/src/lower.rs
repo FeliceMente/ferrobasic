@@ -35,15 +35,14 @@ struct Lowerer {
     /// Loop variables of `Process_Globals` already refused with an error.
     refused_loop_names: HashSet<String>,
     /// Module variables that a loop of `Process_Globals` declares.
-    /// With the kind of the loop (`For` or `For Each`) that declares each.
-    loop_declared: HashMap<String, SyntaxKind>,
+    loop_declared: HashSet<String>,
     /// The loops of the Sub being lowered (`Process_Globals` included) over
     /// each name with a Sub's name, in source order, up to the current one.
     sub_named_loops: HashMap<String, LoopsBefore>,
-    /// The current Sub's locals with a Sub's name, with the loop variable
-    /// that declares each (none for a refused `Dim`): their uses mean the
-    /// Sub (recorded).
-    sub_named_locals: HashMap<String, Option<(TextRange, SyntaxKind)>>,
+    /// The current Sub's locals with a Sub's name: `true` for a loop
+    /// variable, `false` for a refused `Dim`. Their uses mean the Sub
+    /// (recorded).
+    sub_named_locals: HashMap<String, bool>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -578,7 +577,7 @@ impl Lowerer {
             return;
         }
         if let Some(&id) = self.globals.get(&k)
-            && self.loop_declared.contains_key(&k)
+            && self.loop_declared.contains(&k)
         {
             let existing = self.module.global(id).ty.clone();
             if existing != ty && existing != Ty::Error && ty != Ty::Error {
@@ -618,7 +617,7 @@ impl Lowerer {
             // that variable, whichever declarations and in which order
             // (recorded), and another type is refused (recorded).
             let existing = self.module.global(id).ty.clone();
-            let counter_over_dim = node.kind() == FOR_STMT && !self.loop_declared.contains_key(&k);
+            let counter_over_dim = node.kind() == FOR_STMT && !self.loop_declared.contains(&k);
             if counter_over_dim || existing == ty || existing == Ty::Error || ty == Ty::Error {
                 return;
             }
@@ -634,7 +633,7 @@ impl Lowerer {
             return;
         }
         if self.loop_name_free(&text, &name) {
-            self.loop_declared.insert(k, node.kind());
+            self.loop_declared.insert(k);
             self.declare_global(text, ty, range(&name));
         }
     }
@@ -816,12 +815,12 @@ impl Lowerer {
                 self.push_local(name, ty, at);
             }
             // A loop of that name still means the Sub.
-            self.sub_named_locals.entry(k).or_insert(None);
+            self.sub_named_locals.entry(k).or_insert(false);
             return;
         }
         if !self.local_names.contains_key(&k) {
             if self.subs.contains_key(&k) {
-                self.sub_named_locals.insert(k, Some((at, FOR_EACH_STMT)));
+                self.sub_named_locals.insert(k, true);
             } else if let Some(&id) = self.globals.get(&k)
                 && self.module.global(id).ty == ty
             {
@@ -848,13 +847,13 @@ impl Lowerer {
                     ),
                 );
                 if !declared {
-                    self.sub_named_locals.insert(k, Some((at, FOR_STMT)));
+                    self.sub_named_locals.insert(k, true);
                     self.push_local(name, ty, at);
                 }
                 return;
             }
             if !declared {
-                self.sub_named_locals.insert(k, Some((at, FOR_STMT)));
+                self.sub_named_locals.insert(k, true);
             }
         }
         self.declare_local(name, ty, at);
@@ -1093,6 +1092,7 @@ impl Lowerer {
                     self.refused_loop(node, &text, &name);
                     return;
                 };
+                self.accepted_loop(node, &text);
                 if !ty.is_numeric() && ty != Ty::Error {
                     let ty = self.ty_name(&ty);
                     self.error(
@@ -1152,6 +1152,7 @@ impl Lowerer {
                     self.refused_loop(node, &text, &name);
                     return;
                 };
+                self.accepted_loop(node, &text);
                 let Some(coll) = exprs(node).into_iter().next() else {
                     return;
                 };
@@ -1248,6 +1249,10 @@ impl Lowerer {
     /// collection, then its body. An undeclared variable is declared with
     /// the error type first, so its uses are not reported again.
     fn refused_loop(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) {
+        let k = key(text);
+        if self.subs.contains_key(&k) {
+            self.sub_named_loops.entry(k).or_default().refused = true;
+        }
         for e in exprs(node) {
             self.expr(&e);
         }
@@ -1255,6 +1260,22 @@ impl Lowerer {
             self.declare_local(text, Ty::Error, range(name));
         }
         self.loop_body(node);
+    }
+
+    /// Notes a loop lowered past its variable, when its name is a Sub's.
+    fn accepted_loop(&mut self, node: &SyntaxNode, text: &str) {
+        let k = key(text);
+        if !self.subs.contains_key(&k) {
+            return;
+        }
+        let typed = child(node, TYPE_REF).is_some();
+        let seen = self.sub_named_loops.entry(k).or_default();
+        match node.kind() {
+            FOR_EACH_STMT if typed => seen.typed_for_each = true,
+            // `declare_loop_local` refused it, before lowering.
+            FOR_STMT if typed => seen.refused = true,
+            _ => seen.other = true,
+        }
     }
 
     /// The variable a `For` / `For Each` loops over, or the loop refused
@@ -1268,8 +1289,9 @@ impl Lowerer {
     /// loop variable of the same Sub, and over a module variable, unless a
     /// typed `For Each` of `Process_Globals` came before it there), as open
     /// anywhere else: with `As` after a `For` over the same name, whichever
-    /// variable that counts, inside a loop over the same name, or after a
-    /// refused loop.
+    /// variable that counts, or inside a loop over the same name. Only
+    /// accepted loops count as before; after a refused one, a refusal gets
+    /// the open message, but a refused loop never refuses another.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         let k = key(text);
@@ -1288,17 +1310,20 @@ impl Lowerer {
         let refused = match &found {
             _ if node.kind() == FOR_STMT => None,
             Some((VarRef::Global(id), _)) if self.module.global(*id).range != range(name) => {
+                // In `Process_Globals` the refusal is recorded after its own
+                // counter only.
+                let after_counter = !self.in_process_globals || before.other;
                 let open_here = self.in_process_globals && before.typed_for_each;
-                self.loop_declared.contains_key(&k).then_some((
-                    "a module variable",
-                    !open_here && !nested && !before.refused,
-                ))
+                let recorded = after_counter && !open_here && !nested && !before.refused;
+                self.loop_declared
+                    .contains(&k)
+                    .then_some(("a module variable", recorded))
             }
             Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
-                Some(Some(_)) if typed => {
+                Some(true) if typed => {
                     (before.other || nested).then_some(("a loop variable of this Sub", false))
                 }
-                Some(Some((declared, _))) if *declared != range(name) => {
+                Some(true) => {
                     let after_loop = before.typed_for_each || before.other;
                     let recorded = after_loop && !nested && !before.refused;
                     Some(("a loop variable of this Sub", recorded))
@@ -1308,15 +1333,8 @@ impl Lowerer {
             _ => None,
         };
         let Some((what, recorded)) = refused else {
-            let seen = self.sub_named_loops.entry(k).or_default();
-            if typed && node.kind() == FOR_EACH_STMT {
-                seen.typed_for_each = true;
-            } else {
-                seen.other = true;
-            }
             return LoopVar::Found(found);
         };
-        self.sub_named_loops.entry(k).or_default().refused = true;
         let at = range(name);
         let message = if typed || !recorded {
             format!(
@@ -1414,7 +1432,7 @@ impl Lowerer {
                 // expected" inside its loop: recorded).
                 // A `Dim` with a Sub's name was reported already: assigning it
                 // is not reported again.
-                let refused_dim = matches!(self.sub_named_locals.get(&key(&name)), Some(None));
+                let refused_dim = self.sub_named_locals.get(&key(&name)) == Some(&false);
                 let found = if refused_dim {
                     self.lookup_var(&name)
                 } else {
@@ -1673,7 +1691,7 @@ impl Lowerer {
         let k = key(name);
         let sub_named = self.subs.contains_key(&k)
             && match found.0 {
-                VarRef::Global(_) => self.loop_declared.contains_key(&k),
+                VarRef::Global(_) => self.loop_declared.contains(&k),
                 VarRef::Local(_) => self.sub_named_locals.contains_key(&k),
             };
         (!sub_named).then_some(found)
