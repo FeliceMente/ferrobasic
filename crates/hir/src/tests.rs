@@ -248,7 +248,7 @@ fn later_constructs_get_one_precise_error() {
     };
     only(
         "Sub Process_Globals\n\tPrivate Const Size As Int = 10\nEnd Sub\nSub AppStart (Args() As String)\n\tLog(Size)\nEnd Sub\n",
-        "`Const` declarations are not supported yet",
+        "`Const` declarations are not supported yet: planned for Level 0",
     );
     only(
         &program("Dim o As Object = 1\nIf o Is Int Then Log(1)"),
