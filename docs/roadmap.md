@@ -21,8 +21,10 @@ Order changed: the interpreter comes right after the parser, and recording
 came later, with `.provisional` outputs standing in
 (see [compatibility-testing.md](compatibility-testing.md#provisional-outputs)).
 
-- [ ] Collect 5–10 small B4J console projects and document the project-file
-      format in `docs/spec/project-files.md`.
+- [x] Collect 5–10 small B4J console projects and document the project-file
+      format in `docs/spec/project-files.md`: six projects, saved by B4J 2.18
+      to 10.5, referenced in `tests/corpus/corpus.toml` (original URL,
+      commit, licence, SHA-256) and fetched for the tests.
 - [ ] `ferro-project`: read `.b4j` headers and modules; round-trip tests.
 - [x] `ferro-syntax`: token kinds, lexer (case-insensitive keywords, smart
       strings, line continuation, comments as trivia).

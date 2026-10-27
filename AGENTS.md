@@ -79,8 +79,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   `tools/licenses/generate.sh` (a test fails until you do).
 - Never use the B4X name in binaries, crate names or user-facing messages;
   "B4X-compatible" in documentation is fine.
-- Never commit third-party B4X libraries, B4X binaries or corpus projects whose
-  licence does not allow redistribution.
+- Never commit third-party B4X libraries, B4X binaries or real-world corpus
+  projects: reference a project in `tests/corpus/corpus.toml` (URL, commit,
+  licence, each file's SHA-256) and fetch it (`tests/corpus/README.md`).
 
 ## Commands
 
@@ -94,6 +95,8 @@ cargo run -p ferro-cli -- bundle tests/conformance/level0/<file>.bas -o /tmp/pro
 cargo run -p ferro-recorder -- --dry-run          # tests the recorder would record (it runs on Windows)
 cargo run -p ferro-difftest                       # compare against recordings: the report
 cargo build -p ferro-cli && cargo run -p ferro-difftest -- --target standalone
+cargo run -p ferro-corpus --bin ferro-corpus-fetch    # download the real-world corpus
+cargo test -p ferro-syntax --test projects -- --ignored  # tests that need it
 ```
 
 ## Before closing a task
