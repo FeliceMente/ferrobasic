@@ -19,14 +19,15 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 - Recording runs 12 and 13 settle loops over a variable named like a
   Sub. Another `For Each v As T` over it is accepted after typed
   `For Each` loops or an `Int` counter over it, one after the other, in a
-  Sub or in `Process_Globals`, and inside a typed `For Each` over it, as
-  in B4J, and the name still calls the Sub. Before, these were refused
+  Sub or in `Process_Globals`, and inside a typed `For Each` of a Sub over
+  it, as in B4J, and the name still calls the Sub. Before, these were refused
   until recorded. One without `As` is refused after a loop over it,
   inside a `For` of a Sub over it, and over a module variable from
   another Sub, with the settled message. Still refused as open (new
   pending tests): one without `As` as the first loop over the name or
   nested in a loop of `Process_Globals`, and one with `As` of another
-  type after a counter or inside a `For` over the name.
+  type after a counter, inside a `For` over the name, or nested in
+  `Process_Globals`.
 - Recording runs 12 and 13: the leading-point reals are recorded as
   FerroBASIC runs them, and are `Double`s.
 - A real literal may start with its decimal point (`.08`), as in

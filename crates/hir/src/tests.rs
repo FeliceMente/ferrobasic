@@ -1026,6 +1026,39 @@ fn loops_in_process_globals() {
     ] {
         assert_eq!(errors(&sub("", app)), [open_typed], "{app}");
     }
+    // The same inside a typed `For Each` after a counter of another type,
+    // and inside a typed `For Each` of `Process_Globals`.
+    assert_eq!(
+        errors(&sub(
+            "",
+            "    For Each Bump As Double In Array As Double(1.5)\n        For Bump = 0 To 1 Step 0.5\n        Next\n        For Each Bump As Double In Array As Double(2.5)\n        Next\n    Next"
+        )),
+        [open_typed]
+    );
+    assert_eq!(
+        errors(&sub(
+            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n        Next\n    Next",
+            ""
+        )),
+        [
+            "`Bump` is a module variable with the name of a Sub: whether this `For Each` may loop \
+          over it here is not known yet, so use another name"
+        ]
+    );
+    // A refused loop never refuses another: a `For Each v As T` after one,
+    // in a Sub or in `Process_Globals`, is accepted.
+    for (body, app) in [
+        (
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(5)\n    Next\n    For Each Bump As Int In Array As Int(1)\n    Next",
+            "",
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(5)\n    Next\n    For Each Bump As Int In Array As Int(1)\n    Next",
+        ),
+    ] {
+        assert_eq!(errors(&sub(body, app)).len(), 1, "{body}{app}");
+    }
     // A loop refused after its variable was found is not one before: a
     // `For Each` without `As` after a typed `For` (refused) is open.
     let diags = errors(&sub(
