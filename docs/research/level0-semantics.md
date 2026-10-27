@@ -442,7 +442,12 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   a sub name" (**recorded**: `module_variable_named_like_sub`). Not
   recorded (*open*): another `For Each`, with or without `As`, in
   `Process_Globals` over its own loop variable (without `As` only over a
-  `For Each` one), and a `Dim` of `Class_Globals` with a Sub's name.
+  typed `For Each` one: `process_globals_for_each_named_like_sub_for_each_again`,
+  `process_globals_counter_named_like_sub_typed_for_each_again`,
+  `process_globals_for_each_named_like_sub_typed_for_each_again`), a
+  `For Each v As T` after a `For` counter of the same Sub
+  (`local_typed_for_each_after_counter_named_like_sub`), and a `Dim` of
+  `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,

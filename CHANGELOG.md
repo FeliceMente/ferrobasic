@@ -12,9 +12,12 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   Sub. Before, it was refused until a recording showed what B4J does.
   One without `As` is refused over any loop variable of the Sub, and over
   a module variable from another Sub or from `Process_Globals` over its
-  own counter, with the settled message (recorded).
+  own counter, with the settled message (recorded). Still refused until
+  recorded: one with `As` after a `For` counter of the same Sub, and the
+  other cases in `Process_Globals` (new pending tests).
 - Recording run 12: the leading-point reals are recorded as FerroBASIC
-  runs them.
+  runs them. Their type, `Double` for now, is pending
+  (test `real_leading_point_type`).
 - A real literal may start with its decimal point (`.08`), as in
   `MteBuildLib.b4j` of the real-world corpus, which B4J builds. Before, it
   was a syntax error. After an operand the dot is still a member access's
