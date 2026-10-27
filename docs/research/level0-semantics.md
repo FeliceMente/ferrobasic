@@ -446,7 +446,9 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `process_globals_counter_named_like_sub_typed_for_each_again`,
   `process_globals_for_each_named_like_sub_typed_for_each_again`), a
   `For Each v As T` after a `For` counter of the same Sub
-  (`local_typed_for_each_after_counter_named_like_sub`), and a `Dim` of
+  (`local_typed_for_each_after_counter_named_like_sub`) or inside a loop
+  over the same name (`local_typed_for_each_named_like_sub_nested`), and a
+  `Dim` of
   `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable

@@ -12,9 +12,11 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   Sub. Before, it was refused until a recording showed what B4J does.
   One without `As` is refused over any loop variable of the Sub, and over
   a module variable from another Sub or from `Process_Globals` over its
-  own counter, with the settled message (recorded). Still refused until
-  recorded: one with `As` after a `For` counter of the same Sub, and the
-  other cases in `Process_Globals` (new pending tests).
+  own counter, with the settled message (recorded). Now refused as open
+  until recorded: one with `As` after a `For` counter of the same Sub,
+  which was accepted before, and one with `As` nested in a loop over the
+  same name, which was too. The other cases in `Process_Globals` stay
+  refused as open (new pending tests for all of them).
 - Recording run 12: the leading-point reals are recorded as FerroBASIC
   runs them. Their type, `Double` for now, is pending
   (test `real_leading_point_type`).

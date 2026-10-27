@@ -37,12 +37,9 @@ struct Lowerer {
     /// Module variables that a loop of `Process_Globals` declares.
     /// With the kind of the loop (`For` or `For Each`) that declares each.
     loop_declared: HashMap<String, SyntaxKind>,
-    /// Names a typed `For Each` of `Process_Globals` loops over, whichever
-    /// loop declares them.
-    process_globals_for_each: HashSet<String>,
-    /// The current Sub's names with a Sub's name that a `For` has counted
-    /// over so far.
-    sub_named_counted: HashSet<String>,
+    /// The loops of the Sub being lowered (`Process_Globals` included) over
+    /// each name with a Sub's name, in source order, up to the current one.
+    sub_named_loops: HashMap<String, Vec<SeenLoop>>,
     /// The current Sub's locals with a Sub's name, with the loop variable
     /// that declares each (none for a refused `Dim`): their uses mean the
     /// Sub (recorded).
@@ -179,6 +176,14 @@ fn typed_loop_variable(name: &str, statement: &str, globals: &str) -> String {
 /// sub name" (recorded, in `Process_Globals` and in a Sub).
 fn variable_named_like_sub(name: &str) -> String {
     format!("a variable cannot have the name of a Sub: `{name}` is a Sub")
+}
+
+/// A loop over a name with a Sub's name, as `loop_variable` saw it.
+struct SeenLoop {
+    /// The whole loop statement, body included.
+    range: TextRange,
+    /// A `For Each v As T`, not a `For` or a `For Each` without `As`.
+    typed_for_each: bool,
 }
 
 /// What a `For` / `For Each` loops over.
@@ -601,9 +606,6 @@ impl Lowerer {
             // `For Each` without `As` uses a declared variable.
             _ => return,
         };
-        if node.kind() == FOR_EACH_STMT {
-            self.process_globals_for_each.insert(k.clone());
-        }
         if self.refused_loop_names.contains(&k) {
             return;
         }
@@ -725,7 +727,7 @@ impl Lowerer {
             .collect();
         self.ret = sub.ret.clone();
         self.sub_named_locals.clear();
-        self.sub_named_counted.clear();
+        self.sub_named_loops.clear();
         self.in_class_globals = self.class_globals == Some(id);
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
         self.loops = 0;
@@ -1253,27 +1255,36 @@ impl Lowerer {
     }
 
     /// The variable a `For` / `For Each` loops over, or the loop refused
-    /// (reported and checked here). A `For` may loop over a loop variable
-    /// with a Sub's name anywhere, and must count with a number like any
-    /// other (recorded). So may a `For Each v As T` over a `For Each`
-    /// variable of the same Sub (recorded). Another `For Each` is refused:
-    /// without `As` where B4J's refusal is recorded ("Current declaration
-    /// does not match previous one": over any loop variable of the same Sub,
-    /// and over a module variable, unless a `For Each` of `Process_Globals`
-    /// loops over it and this loop is there too), as open anywhere else,
-    /// with `As` after a `For` counter of the same Sub included.
+    /// (reported and checked here), judged by the loops over the same name
+    /// before it. A `For` may loop over a loop variable with a Sub's name
+    /// anywhere, and must count with a number like any other (recorded).
+    /// So may a `For Each v As T` of a Sub after other `For Each v As T`
+    /// loops of it, one after the other (recorded). Another `For Each` is
+    /// refused: without `As` where B4J's refusal is recorded ("Current
+    /// declaration does not match previous one": over any loop variable of
+    /// the same Sub, and over a module variable, unless a typed `For Each`
+    /// of `Process_Globals` came before it there), as open anywhere else:
+    /// with `As` after a `For` or inside a loop over the same name.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         let k = key(text);
         if !self.subs.contains_key(&k) {
             return LoopVar::Found(found);
         }
+        let typed = child(node, TYPE_REF).is_some();
+        let this = SeenLoop {
+            range: node.text_range(),
+            typed_for_each: typed && node.kind() == FOR_EACH_STMT,
+        };
+        let before = self.sub_named_loops.entry(k.clone()).or_default();
+        let nested = before.iter().any(|l| l.range.contains_range(this.range));
+        let after_typed_for_each = before.iter().any(|l| l.typed_for_each);
+        let only_typed_for_each = before.iter().all(|l| l.typed_for_each);
+        before.push(this);
         if node.kind() == FOR_STMT {
-            self.sub_named_counted.insert(k);
             return LoopVar::Found(found);
         }
         let at = range(name);
-        let typed = child(node, TYPE_REF).is_some();
         // What it loops over again, and whether B4J's refusal of a `For Each`
         // without `As` there is recorded.
         let (what, recorded) = match &found {
@@ -1281,21 +1292,18 @@ impl Lowerer {
                 if !self.loop_declared.contains_key(&k) {
                     return LoopVar::Found(found);
                 }
-                let open_here =
-                    self.in_process_globals && self.process_globals_for_each.contains(&k);
+                let open_here = self.in_process_globals && after_typed_for_each;
                 ("a module variable", !open_here)
             }
             Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
-                Some(Some((declared, kind))) if *declared != at => {
-                    if typed && *kind == FOR_EACH_STMT {
+                Some(Some(_)) if typed => {
+                    if only_typed_for_each && !nested {
                         return LoopVar::Found(found);
                     }
-                    ("a loop variable of this Sub", true)
-                }
-                // This typed `For Each` declares it, after a `For` counted
-                // over it: not recorded.
-                Some(Some(_)) if typed && self.sub_named_counted.contains(&k) => {
                     ("a loop variable of this Sub", false)
+                }
+                Some(Some((declared, _))) if *declared != at => {
+                    ("a loop variable of this Sub", !nested)
                 }
                 _ => return LoopVar::Found(found),
             },
