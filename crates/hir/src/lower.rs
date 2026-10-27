@@ -39,7 +39,7 @@ struct Lowerer {
     loop_declared: HashMap<String, SyntaxKind>,
     /// The loops of the Sub being lowered (`Process_Globals` included) over
     /// each name with a Sub's name, in source order, up to the current one.
-    sub_named_loops: HashMap<String, Vec<SeenLoop>>,
+    sub_named_loops: HashMap<String, LoopsBefore>,
     /// The current Sub's locals with a Sub's name, with the loop variable
     /// that declares each (none for a refused `Dim`): their uses mean the
     /// Sub (recorded).
@@ -178,12 +178,15 @@ fn variable_named_like_sub(name: &str) -> String {
     format!("a variable cannot have the name of a Sub: `{name}` is a Sub")
 }
 
-/// A loop over a name with a Sub's name, as `loop_variable` saw it.
-struct SeenLoop {
-    /// The whole loop statement, body included.
-    range: TextRange,
-    /// A `For Each v As T`, not a `For` or a `For Each` without `As`.
+/// The loops of a Sub so far over a name with a Sub's name.
+#[derive(Default, Clone, Copy)]
+struct LoopsBefore {
+    /// An accepted `For Each v As T`.
     typed_for_each: bool,
+    /// An accepted `For`, or `For Each` without `As`.
+    other: bool,
+    /// A refused loop: what B4J does after it is not recorded.
+    refused: bool,
 }
 
 /// What a `For` / `For Each` loops over.
@@ -1261,10 +1264,12 @@ impl Lowerer {
     /// So may a `For Each v As T` of a Sub after other `For Each v As T`
     /// loops of it, one after the other (recorded). Another `For Each` is
     /// refused: without `As` where B4J's refusal is recorded ("Current
-    /// declaration does not match previous one": over any loop variable of
-    /// the same Sub, and over a module variable, unless a typed `For Each`
-    /// of `Process_Globals` came before it there), as open anywhere else:
-    /// with `As` after a `For` or inside a loop over the same name.
+    /// declaration does not match previous one": after another loop over a
+    /// loop variable of the same Sub, and over a module variable, unless a
+    /// typed `For Each` of `Process_Globals` came before it there), as open
+    /// anywhere else: with `As` after a `For` over the same name, whichever
+    /// variable that counts, inside a loop over the same name, or after a
+    /// refused loop.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         let k = key(text);
@@ -1272,43 +1277,47 @@ impl Lowerer {
             return LoopVar::Found(found);
         }
         let typed = child(node, TYPE_REF).is_some();
-        let this = SeenLoop {
-            range: node.text_range(),
-            typed_for_each: typed && node.kind() == FOR_EACH_STMT,
-        };
-        let before = self.sub_named_loops.entry(k.clone()).or_default();
-        let nested = before.iter().any(|l| l.range.contains_range(this.range));
-        let after_typed_for_each = before.iter().any(|l| l.typed_for_each);
-        let only_typed_for_each = before.iter().all(|l| l.typed_for_each);
-        before.push(this);
-        if node.kind() == FOR_STMT {
-            return LoopVar::Found(found);
-        }
-        let at = range(name);
+        let before = self.sub_named_loops.get(&k).copied().unwrap_or_default();
+        // Inside a loop over the same name: not recorded.
+        let nested = node.ancestors().skip(1).any(|a| {
+            matches!(a.kind(), FOR_STMT | FOR_EACH_STMT)
+                && child(&a, NAME).is_some_and(|n| key(&name_of(&n)) == k)
+        });
         // What it loops over again, and whether B4J's refusal of a `For Each`
-        // without `As` there is recorded.
-        let (what, recorded) = match &found {
-            Some((VarRef::Global(id), _)) if self.module.global(*id).range != at => {
-                if !self.loop_declared.contains_key(&k) {
-                    return LoopVar::Found(found);
-                }
-                let open_here = self.in_process_globals && after_typed_for_each;
-                ("a module variable", !open_here)
+        // without `As` there is recorded; none when the loop is accepted.
+        let refused = match &found {
+            _ if node.kind() == FOR_STMT => None,
+            Some((VarRef::Global(id), _)) if self.module.global(*id).range != range(name) => {
+                let open_here = self.in_process_globals && before.typed_for_each;
+                self.loop_declared.contains_key(&k).then_some((
+                    "a module variable",
+                    !open_here && !nested && !before.refused,
+                ))
             }
             Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
                 Some(Some(_)) if typed => {
-                    if only_typed_for_each && !nested {
-                        return LoopVar::Found(found);
-                    }
-                    ("a loop variable of this Sub", false)
+                    (before.other || nested).then_some(("a loop variable of this Sub", false))
                 }
-                Some(Some((declared, _))) if *declared != at => {
-                    ("a loop variable of this Sub", !nested)
+                Some(Some((declared, _))) if *declared != range(name) => {
+                    let after_loop = before.typed_for_each || before.other;
+                    let recorded = after_loop && !nested && !before.refused;
+                    Some(("a loop variable of this Sub", recorded))
                 }
-                _ => return LoopVar::Found(found),
+                _ => None,
             },
-            _ => return LoopVar::Found(found),
+            _ => None,
         };
+        let Some((what, recorded)) = refused else {
+            let seen = self.sub_named_loops.entry(k).or_default();
+            if typed && node.kind() == FOR_EACH_STMT {
+                seen.typed_for_each = true;
+            } else {
+                seen.other = true;
+            }
+            return LoopVar::Found(found);
+        };
+        self.sub_named_loops.entry(k).or_default().refused = true;
+        let at = range(name);
         let message = if typed || !recorded {
             format!(
                 "`{text}` is {what} with the name of a Sub: whether another `For Each` may loop \

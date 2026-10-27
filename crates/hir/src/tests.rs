@@ -782,11 +782,36 @@ fn loops_in_process_globals() {
         app_start(&module).body
     );
     // Where B4J's answer is not recorded, another `For Each` is open: with
-    // `As` after a `For` counter of the same Sub, also when a `For Each`
-    // declared it first, or inside a loop over it; in `Process_Globals`,
-    // with `As` over its counter, and with or without `As` after a typed
-    // `For Each` there.
+    // `As` after a `For` over it in the same Sub, also when a `For Each`
+    // declared it first or the `For` counts a module variable; with or
+    // without `As` inside a loop over it, or as the first loop over it; in
+    // `Process_Globals`, with `As` over its counter, and with or without
+    // `As` after a typed `For Each` there.
     for (body, app, what, count) in [
+        (
+            "    For Bump = 1 To 2\n    Next",
+            "    For Bump = 5 To 6\n    Next\n    For Each Bump As Int In Array As Int(7)\n        Log(Bump)\n    Next",
+            "a loop variable of this Sub",
+            1,
+        ),
+        (
+            "",
+            "    For Bump = 1 To 2\n        For Each Bump In Array As Int(5)\n        Next\n    Next",
+            "a loop variable of this Sub",
+            1,
+        ),
+        (
+            "    For Bump = 1 To 2\n        For Each Bump In Array As Int(5)\n        Next\n    Next",
+            "",
+            "a module variable",
+            1,
+        ),
+        (
+            "",
+            "    For Each Bump In Array As Int(5)\n    Next\n    For Each Bump As Int In Array As Int(5)\n        Log(Bump)\n    Next",
+            "a loop variable of this Sub",
+            1,
+        ),
         (
             "",
             "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(2)\n        Log(Bump)\n    Next",

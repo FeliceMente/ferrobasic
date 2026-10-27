@@ -10,13 +10,15 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 - Another `For Each v As T` over a `For Each` variable of the same Sub
   named like a Sub is accepted, as in B4J, and the name still calls the
   Sub. Before, it was refused until a recording showed what B4J does.
-  One without `As` is refused over any loop variable of the Sub, and over
-  a module variable from another Sub or from `Process_Globals` over its
-  own counter, with the settled message (recorded). Now refused as open
-  until recorded: one with `As` after a `For` counter of the same Sub,
-  which was accepted before, and one with `As` nested in a loop over the
-  same name, which was too. The other cases in `Process_Globals` stay
-  refused as open (new pending tests for all of them).
+  One without `As` is refused after another loop over a loop variable of
+  the Sub, and over a module variable from another Sub or from
+  `Process_Globals` after its own counter, with the settled message
+  (recorded). Now refused as open until recorded, though accepted
+  before: one with `As` after a `For` over the same name in the Sub,
+  also when that `For` counts a module variable, and one with `As` nested
+  in a loop over the same name. Also refused as open: one without `As`
+  nested in a loop over the same name, and the other cases in
+  `Process_Globals` (new pending tests for all of them).
 - Recording run 12: the leading-point reals are recorded as FerroBASIC
   runs them. Their type, `Double` for now, is pending
   (test `real_leading_point_type`).

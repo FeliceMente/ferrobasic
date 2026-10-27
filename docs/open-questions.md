@@ -257,9 +257,20 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       refuses it as open
       (`level0/local_typed_for_each_after_counter_named_like_sub`), also
       when a `For Each` declared it before the `For`.
-- [ ] A `For Each v As T` inside a loop over the same variable of the
-      Sub (recorded only one after the other). FerroBASIC refuses it as
-      open (`level0/local_typed_for_each_named_like_sub_nested`).
+- [ ] The same when the `For` comes in a Sub with a counter of
+      `Process_Globals` of that name: does the `For` count the module
+      variable or the Sub's own, which the later `For Each v As T`
+      declares? Each part is recorded as accepted alone
+      (`level0/process_globals_loop_named_like_sub_loop_elsewhere`,
+      `level0/local_for_each_named_like_sub_over_module_variable`), not
+      together. FerroBASIC refuses it as open
+      (`level0/local_typed_for_each_after_module_counter_named_like_sub`).
+- [ ] A `For Each` inside a loop over the same variable of the Sub, with
+      `As` or without (recorded only one after the other). FerroBASIC
+      refuses both as open
+      (`level0/local_typed_for_each_named_like_sub_nested`,
+      `level0/local_for_each_named_like_sub_nested`), and the same
+      nesting in `Process_Globals`.
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:
