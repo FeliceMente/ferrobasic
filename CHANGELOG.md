@@ -5,6 +5,14 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+- `ferro-project` reads a whole project: its project file, its `.b4j.meta`
+  file and the modules it names, local or `|relative|`, also when a
+  module's file is named in another letter case than in the project file,
+  as on Windows. Each file writes back byte for byte. `ferro check`, `run`
+  and `bundle` still accept only a project with no module (Level 0).
+
 ## 0.0.4 (pre-alpha)
 
 ### Recorded from B4J

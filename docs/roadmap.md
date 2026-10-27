@@ -25,7 +25,8 @@ came later, with `.provisional` outputs standing in
       format in `docs/spec/project-files.md`: six projects, saved by B4J 2.18
       to 10.5, referenced in `tests/corpus/corpus.toml` (original URL,
       commit, licence, SHA-256) and fetched for the tests.
-- [ ] `ferro-project`: read `.b4j` headers and modules; round-trip tests.
+- [x] `ferro-project`: read `.b4j` headers and modules; round-trip tests
+      (byte for byte, on hand-written files and on the real-world corpus).
 - [x] `ferro-syntax`: token kinds, lexer (case-insensitive keywords, smart
       strings, line continuation, comments as trivia).
 - [x] `ferro-syntax`: parser producing a lossless CST for the Level 0 grammar,

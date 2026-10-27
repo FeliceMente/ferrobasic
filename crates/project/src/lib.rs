@@ -1,8 +1,18 @@
 //! Reader for B4X project files (.b4j/.b4a/.b4i/.b4r) and .b4xlib archives.
 //!
-//! Today: the `Key=Value` header that project files (`.b4j`) and module
-//! files (`.bas`) start with, and the Level 0 checks on it
-//! (`docs/spec/project-files.md`, `docs/spec/cli.md`).
+//! Today:
+//! - the `Key=Value` header that project files (`.b4j`) and module files
+//!   (`.bas`) start with, and the Level 0 checks on it
+//!   (`docs/spec/project-files.md`, `docs/spec/cli.md`);
+//! - project, module and `.b4j.meta` files read so that they write back
+//!   byte for byte ([`HeaderFile`], [`MetaFile`]), and a whole project with
+//!   the modules it names ([`load`]).
+
+mod file;
+mod project;
+
+pub use file::{HeaderFile, Line, MetaFile};
+pub use project::{Build, FileEntry, Module, ModuleRef, Project, find_file, load};
 
 /// One `Key=Value` line of a header.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,8 +156,7 @@ pub fn check_module(text: &str) -> Vec<Problem> {
 
 /// `Library1`, `Module12`…: `prefix` then a number.
 fn numbered(key: &str, prefix: &str) -> bool {
-    key.strip_prefix(prefix)
-        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    file::number(key, prefix).is_some()
 }
 
 #[cfg(test)]
