@@ -36,10 +36,13 @@ crates/
   mir/            typed IR and lowering
   interp/         reference interpreter and REPL
   difftest/       differential runner, normalizer, differ, report
-  corpus/         the conformance corpus, as the test harnesses read it
+  corpus/         the conformance corpus and the real-world corpus's
+                  references, as the test harnesses read them; fetches
+                  the real-world projects
   cli/            the `ferro` command
 tests/conformance/  test programs with recorded expected outputs
-tests/corpus/     real-world B4X projects (licence-checked)
+tests/corpus/     references to real-world B4X projects (URL, commit,
+                  licence, SHA-256), fetched for the tests, never copied
 tools/recorder/   records expected outputs from the original toolchain
 tools/licenses/   generates THIRD-PARTY-NOTICES.txt
 docs/             architecture, porting, spec, testing, roadmap
