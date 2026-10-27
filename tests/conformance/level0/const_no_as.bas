@@ -7,5 +7,4 @@ End Sub
 
 Sub AppStart (Args() As String)
     Log(GetType(Size))
-    Log(Size + 1)
 End Sub

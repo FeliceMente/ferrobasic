@@ -952,7 +952,7 @@ impl Lowerer {
                 if let Some(modifier) = child(node, CONST_MODIFIER) {
                     self.error(
                         range(&modifier),
-                        "`Const` declarations are not supported yet",
+                        "`Const` declarations are not supported yet: planned for Level 0",
                     );
                 }
                 for (decl, _) in self.declarators(node) {

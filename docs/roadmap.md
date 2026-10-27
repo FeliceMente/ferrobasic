@@ -68,3 +68,6 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 - [x] `ferro-difftest --target interp` and `--target standalone` against
       `.expected` / `.provisional`, with the report by level and feature
       ([compatibility-testing.md](compatibility-testing.md#the-report)).
+- [ ] `Const` declarations at Level 0
+      ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)), once
+      recording run 12 settles the rules of the pending `const_*` tests.

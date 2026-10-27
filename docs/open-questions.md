@@ -287,14 +287,15 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/continuation_comment_tight`).
 - [ ] `Const` ([#33](https://github.com/FeliceMente/ferrobasic/issues/33);
       sources in [research](research/level0-semantics.md#constants-docs-forum-open)).
-      Planned for Level 0; FerroBASIC refuses it until these are recorded,
-      one test each so that one refusal cannot hide another answer:
+      FerroBASIC refuses it until these are recorded, one test each so that
+      one refusal cannot hide another answer:
   - [ ] the booklet's example, `Private Const Size As Int = 10` and
         `Public Const ItemNumber As Int = 100` (`level0/const_forms`);
   - [ ] other types: `Long` (`level0/const_long`), `Double`
         (`level0/const_double`), `String` (`level0/const_string`),
         `Boolean` (`level0/const_boolean`); and the type of one with no
-        `As`, which a `Dim` would make a `String` (`level0/const_no_as`);
+        `As` (a `Dim` with no `As` is provisionally a `String`)
+        (`level0/const_no_as`);
   - [ ] forms from real projects: lower-case `const`
         (`level0/const_lower_case`), the value before `As`
         (`level0/const_value_before_as`);
@@ -310,8 +311,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         member of a literal (`level0/const_from_member`);
   - [ ] a variable initialised from a constant declared after it: inlined,
         read before set, or refused (`level0/const_used_before`);
+  - [ ] a constant as a `Select Case` label, as real projects use them
+        (`level0/const_select_case`);
   - [ ] constants of type `List` (`level0/const_list`), `Map`
-        (`level0/const_map`) and an array (`level0/const_array`).
+        (`level0/const_map`) and an array (`level0/const_array`), and
+        whether their contents may change (`level0/const_list_mutate`,
+        `level0/const_map_mutate`, `level0/const_array_mutate`).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the
