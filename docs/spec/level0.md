@@ -104,8 +104,10 @@ End Sub
 - Unsupported constructs get a diagnostic naming the construct and the level
   that adds it. Examples are `Class_Globals`, `Wait For`, `Sleep`, `#If`,
   inline Java (`#If Java`), and a library other than the core one. A
-  construct no level adds yet says so: `Const` declarations and type tests
-  (`x Is T`). Each gets one error, without follow-on errors.
+  construct no level adds yet says so: type tests (`x Is T`). `Const`
+  declarations are planned for Level 0 and refused until their recordings
+  settle the rules ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)).
+  Each gets one error, without follow-on errors.
 
 ## Types
 
