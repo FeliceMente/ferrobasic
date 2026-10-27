@@ -145,7 +145,8 @@ End Sub
   of any type, `List`, `Map` and arrays included, with any expression as
   its value (recorded). Each must be given its value there (B4J: "Const
   variable must be set in the declaration line.", recorded). Without `As`
-  it is a `String`, as a `Dim` without `As` is (recorded). Its value is
+  it is a `String` (recorded), as a `Dim` without `As` provisionally is
+  (below). Its value is
   computed where it is declared, in order, as a `Dim`'s: a module variable
   initialised from a constant declared after it reads `0` (recorded).
   Assigning a constant, or an item of a constant array, is an error (B4J:
@@ -153,8 +154,9 @@ End Sub
   or `Map` constant's contents are not (`Set`, `Put`, recorded). A
   constant may be a `Select Case` label (recorded). A loop over a
   constant, another declaration of its name (a later `Dim`, or a `Dim` of
-  a Sub), a `Const` of a name declared before, and assigning a field of a
-  constant record are *(open)*, so compile errors.
+  a Sub), a `Const` of a name declared before, a `Const` array with bounds
+  and no value, and assigning a field of a constant record are *(open)*,
+  so compile errors.
 - `Dim`, `Private` and `Public` in a Sub all declare a local. In
   `Process_Globals` they declare module variables. `Private` and `Public` only
   matter with several modules (Level 1).
