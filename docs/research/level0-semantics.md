@@ -432,15 +432,27 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `process_globals_string_loop_named_like_sub_counter_elsewhere`,
   `process_globals_loop_named_like_sub_for_each_elsewhere`,
   `local_for_each_named_like_sub_loop_again`,
-  `local_for_each_named_like_sub_other_type`); a `Dim` with a Sub's name is
-  refused: "Variable name cannot be the same as a sub name" (**recorded**:
-  `module_variable_named_like_sub`). Not recorded: another `For Each`
-  with `As` over such a variable in the same Sub, another without `As`
-  anywhere else, and a `Dim` of `Class_Globals` with a Sub's name (*open*:
-  `local_typed_for_each_named_like_sub_loop_again`,
+  `local_for_each_named_like_sub_other_type`,
   `local_for_each_after_counter_named_like_sub`,
-  `process_globals_loop_named_like_sub_for_each_again`,
-  `process_globals_for_each_named_like_sub_for_each_elsewhere`).
+  `process_globals_for_each_named_like_sub_for_each_elsewhere`,
+  `process_globals_loop_named_like_sub_for_each_again`); another `For
+  Each v As T` over a `For Each` variable of the same Sub is accepted
+  (**recorded**: `local_typed_for_each_named_like_sub_loop_again`); a
+  `Dim` with a Sub's name is refused: "Variable name cannot be the same as
+  a sub name" (**recorded**: `module_variable_named_like_sub`). Not
+  recorded (*open*): another `For Each`, with or without `As`, in
+  `Process_Globals` over its own loop variable (without `As` only over a
+  typed `For Each` one: `process_globals_for_each_named_like_sub_for_each_again`,
+  `process_globals_counter_named_like_sub_typed_for_each_again`,
+  `process_globals_for_each_named_like_sub_typed_for_each_again`), a
+  `For Each v As T` after a `For` over the same name in the Sub,
+  whichever variable it counts
+  (`local_typed_for_each_after_counter_named_like_sub`,
+  `local_typed_for_each_after_module_counter_named_like_sub`), a
+  `For Each` with or without `As` inside a loop over the same name
+  (`local_typed_for_each_named_like_sub_nested`,
+  `local_for_each_named_like_sub_nested`), and a `Dim` of
+  `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,
