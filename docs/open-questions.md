@@ -176,6 +176,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `Array (320000,.08, .05, .03)`, so B4J accepts it, but no public
       source says so and its value and type are not recorded. FerroBASIC
       accepts it meanwhile (test `level0/real_leading_point`, pending).
+      Whether an exponent may follow (`.5e2`) is open too, in a test of its
+      own so that a refusal does not hide the first answer
+      (`level0/real_leading_point_exponent`, pending). After an operand or
+      a dot, a `.` stays a member access's (`a.5` is an error).
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.
