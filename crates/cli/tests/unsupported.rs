@@ -24,7 +24,7 @@ public static int twice(int x) { return 2 * x; }
 ";
 
 const EXPECTED: &str = "\
-later.bas:2:10: error: `Const` declarations are not supported yet
+later.bas:2:10: error: `Const` declarations are not supported yet: planned for Level 0
   \tPrivate Const Size As Int = 10
   \t        ^
 later.bas:7:5: error: type tests (`Is`) are not supported yet

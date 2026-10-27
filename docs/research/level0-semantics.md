@@ -500,6 +500,37 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   ([forum](https://www.b4x.com/android/forum/threads/can-you-use-a-variable-without-declaring.27855/)).
   **open**; current compilers may reject them.
 
+### Constants (docs, forum, open)
+
+Not implemented yet ([#33](https://github.com/FeliceMente/ferrobasic/issues/33),
+see [language-support.md](../language-support.md)).
+
+- `Private Const Size As Int = 10` and `Public Const ItemNumber As Int =
+  100` declare constants, "which cannot be changed anywhere in the code"
+  (**docs**, booklet §2.3.3). The `Dim` syntax shows `Dim [Const]
+  variable1 [= expression], variable2 [= expression], ..., [As type]`
+  (**docs**, booklet §4.2).
+- `Dim Const` arrived with B4A 4.00 (December 2014): "constant variables
+  are assigned when declared, and their value cannot be later changed",
+  which the compiler enforces (**forum**, Erel,
+  [release notes](https://www.b4x.com/android/forum/threads/b4a-v4-00-has-been-released.48027/page-2)).
+  Older threads saying there are no constants predate it
+  ([forum](https://b4x.com/android/forum/threads/constants.23418),
+  [forum](https://www.b4x.com/android/forum/threads/constants.35383)).
+- Assigning one is "Cannot set a Const variable" in B4A, and a `Dim
+  Const` inside a Sub is accepted (**forum**: a 2014 bug report, fixed
+  by Erel, [thread](https://www.b4x.com/android/forum/threads/constants-leak.47798/)).
+- B4R treats every global non-primitive variable as a constant
+  ([forum](https://www.b4x.com/android/forum/threads/unable-to-change-string-variable.147844/)):
+  a B4R rule, not part of the B4J profile.
+- Real projects write `Public Const NAME = value As Int` (value before
+  `As`), also `Private const` in lower case, of types `Int`, `String` and
+  `Boolean`, in `Process_Globals` and `Class_Globals` (`mteeval-buildlib`
+  in the real-world corpus, about 100 constants).
+- **open**: everything else, one pending test per question so that one
+  refusal cannot hide another answer; the questions and their tests are
+  listed in [open-questions.md](../open-questions.md).
+
 ### Keywords used as names (generated)
 
 `In` is accepted as a name: B4X's `AsyncStreamsText` class declares a
