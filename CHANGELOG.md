@@ -16,21 +16,15 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   loop over a constant, another declaration of its name, an array constant
   with bounds and no value, and assigning a field of a constant record
   (new pending tests).
-- Another `For Each v As T` over a `For Each` variable of the same Sub
-  named like a Sub is accepted, as in B4J, and the name still calls the
-  Sub. Before, it was refused until a recording showed what B4J does.
-  One without `As` is refused after another loop over a loop variable of
-  the Sub, and over a module variable from another Sub or from
-  `Process_Globals` after its own counter, with the settled message
-  (recorded). Now refused as open until recorded, though accepted
-  before: one with `As` after a `For` over the same name in the Sub,
-  also when that `For` counts a module variable, and one with `As` nested
-  in a loop over the same name. Also refused as open: one without `As`
-  nested in a loop over the same name, and the other cases in
-  `Process_Globals` (new pending tests for all of them).
-- Recording run 12: the leading-point reals are recorded as FerroBASIC
-  runs them. Their type, `Double` for now, is pending
-  (test `real_leading_point_type`).
+- Recording runs 12 and 13 settle loops over a variable named like a
+  Sub. Another `For Each v As T` over it is accepted after any loop over
+  it, nested or not, in a Sub or in `Process_Globals`, as in B4J, and the
+  name still calls the Sub. One without `As` is refused after a loop over
+  it, nested or not, and over a module variable from another Sub, with
+  the settled message. Only one without `As` as the first loop over the
+  name stays refused as open (new pending tests).
+- Recording runs 12 and 13: the leading-point reals are recorded as
+  FerroBASIC runs them, and are `Double`s.
 - A real literal may start with its decimal point (`.08`), as in
   `MteBuildLib.b4j` of the real-world corpus, which B4J builds. Before, it
   was a syntax error. After an operand the dot is still a member access's

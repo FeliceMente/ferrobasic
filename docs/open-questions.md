@@ -176,9 +176,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the
       real-world corpus writes `Array (320000,.08, .05, .03)`). After an
       operand or a dot, a `.` stays a member access's (`a.5` is an error).
-- [ ] Its type: provisionally `Double`, as `0.08`'s. The recordings print
-      its values, which an `Int` or a `Float` would print otherwise, but
-      not its type (`level0/real_leading_point_type`).
+- [x] Its type is `Double`, as `0.08`'s (recording:
+      `level0/real_leading_point_type`).
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.
@@ -229,48 +228,36 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       recording:
       `level0/process_globals_string_loop_named_like_sub_counter_elsewhere`).
 - [x] Another `For Each` without `As` over that name is refused ("Current
-      declaration does not match previous one"): in a Sub over its own
-      `For Each` variable or `For` counter, in another Sub over a counter
-      or `For Each` variable of `Process_Globals`, and in `Process_Globals`
-      over its own counter (recordings:
+      declaration does not match previous one"): in a Sub after a loop over
+      its own `For Each` variable or `For` counter, nested in one or not;
+      in another Sub over a counter or `For Each` variable of
+      `Process_Globals`; and in `Process_Globals` after its own counter or
+      typed `For Each` (recordings:
       `level0/local_for_each_named_like_sub_loop_again`,
       `level0/local_for_each_after_counter_named_like_sub`,
+      `level0/local_for_each_named_like_sub_nested`,
       `level0/process_globals_loop_named_like_sub_for_each_elsewhere`,
       `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`,
-      `level0/process_globals_loop_named_like_sub_for_each_again`).
-- [ ] The same in `Process_Globals` over a typed `For Each` variable of
-      `Process_Globals`, whichever loop came first. FerroBASIC refuses it
-      as open (`level0/process_globals_for_each_named_like_sub_for_each_again`).
-- [x] Another `For Each v As T` of the same type over a `For Each`
-      variable of the same Sub is accepted, and reading it still calls the
-      Sub (recording: `level0/local_typed_for_each_named_like_sub_loop_again`).
+      `level0/process_globals_loop_named_like_sub_for_each_again`,
+      `level0/process_globals_for_each_named_like_sub_for_each_again`).
+- [ ] The same as the first loop over that name, which only a later
+      `For Each v As T` can declare, in a Sub or in `Process_Globals`.
+      FerroBASIC refuses it as open
+      (`level0/local_for_each_named_like_sub_before_typed`,
+      `level0/process_globals_for_each_named_like_sub_before_typed`).
+- [x] Another `For Each v As T` over that name is accepted after any loop
+      over it, nested in one or not, in a Sub (also after a `For` over a
+      counter of `Process_Globals`) or in `Process_Globals`, and reading it
+      still calls the Sub (recordings:
+      `level0/local_typed_for_each_named_like_sub_loop_again`,
+      `level0/local_typed_for_each_after_counter_named_like_sub`,
+      `level0/local_typed_for_each_after_module_counter_named_like_sub`,
+      `level0/local_typed_for_each_named_like_sub_nested`,
+      `level0/process_globals_counter_named_like_sub_typed_for_each_again`,
+      `level0/process_globals_for_each_named_like_sub_typed_for_each_again`).
       In another Sub over a loop variable of `Process_Globals` it is a
       `For Each` over a module variable of type `T`, accepted as recorded
       below.
-- [ ] Another `For Each v As T` in `Process_Globals` over its own loop
-      variable. FerroBASIC refuses it as open
-      (`level0/process_globals_counter_named_like_sub_typed_for_each_again`,
-      `level0/process_globals_for_each_named_like_sub_typed_for_each_again`).
-- [ ] A `For Each v As T` over a `For` counter of the same Sub, after it.
-      (Before it, the `For` is recorded as accepted:
-      `level0/local_counter_after_for_each_named_like_sub`.) FerroBASIC
-      refuses it as open
-      (`level0/local_typed_for_each_after_counter_named_like_sub`), also
-      when a `For Each` declared it before the `For`.
-- [ ] The same when the `For` comes in a Sub with a counter of
-      `Process_Globals` of that name: does the `For` count the module
-      variable or the Sub's own, which the later `For Each v As T`
-      declares? Each part is recorded as accepted alone
-      (`level0/process_globals_loop_named_like_sub_loop_elsewhere`,
-      `level0/local_for_each_named_like_sub_over_module_variable`), not
-      together. FerroBASIC refuses it as open
-      (`level0/local_typed_for_each_after_module_counter_named_like_sub`).
-- [ ] A `For Each` inside a loop over the same variable of the Sub, with
-      `As` or without (recorded only one after the other). FerroBASIC
-      refuses both as open
-      (`level0/local_typed_for_each_named_like_sub_nested`,
-      `level0/local_for_each_named_like_sub_nested`), and the same
-      nesting in `Process_Globals`.
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:
