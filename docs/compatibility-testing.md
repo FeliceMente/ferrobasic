@@ -108,8 +108,13 @@ file: its expected stdout, derived by hand from the sources in
 ## Where test programs come from
 
 1. Hand-written conformance tests, at least one per language feature.
-2. A real-world corpus of open source B4X projects whose licences allow it,
-   first measured as parse rate and type-check rate (`tests/corpus/`).
+2. A real-world corpus of open source B4X projects, first measured as parse
+   rate and type-check rate. The projects are referenced, not copied:
+   `tests/corpus/corpus.toml` gives each one's URL, commit, licence and the
+   SHA-256 of each file, and `ferro-corpus-fetch` downloads them into
+   `target/corpus` ([tests/corpus/README.md](../tests/corpus/README.md)).
+   The tests that need them are `#[ignore]`d, so `cargo test --workspace`
+   needs no network; run them with `--ignored` after fetching.
 3. Generated programs (`crates/progen`): a generator driven by the EBNF and the
    type rules produces well-typed, terminating Level 0 programs with bounded
    loops. Each mismatch is shrunk by delta debugging and kept as a regression test.
@@ -177,6 +182,7 @@ The two targets also run as tests: `crates/difftest` on the interpreter, and
 - `clippy` and `cargo test --workspace` (every conformance test, in the
   interpreter and as a standalone binary) on Linux x86_64, Windows, macOS
   arm64 and macOS Intel;
+- the real-world corpus on Linux: fetched, then its `--ignored` tests;
 - a static Linux build (`x86_64-unknown-linux-musl`), checked by bundling a
   program and running it.
 

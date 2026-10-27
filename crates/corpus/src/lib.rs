@@ -1,7 +1,8 @@
 //! The conformance corpus in `tests/conformance` (see
 //! `docs/compatibility-testing.md`), read the same way by every crate's test
 //! harness: every program under it, at any depth, with its status and its
-//! expected output.
+//! expected output. Also the real-world corpus that `tests/corpus/corpus.toml`
+//! references ([`projects`]).
 //!
 //! The metadata is checked strictly, so that a typo cannot quietly turn a
 //! test into one that is skipped: every `.bas` needs a `.meta.toml` with a
@@ -9,6 +10,11 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+
+mod projects;
+mod sha256;
+
+pub use projects::{Project, ProjectFile, fetched_root, projects};
 
 /// `status` in a `.meta.toml`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

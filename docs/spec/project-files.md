@@ -73,6 +73,27 @@ Version=8.9
 | `NumberOfFiles`, `NumberOfLibraries`, `NumberOfModules` | the counts of the numbered keys. |
 | `Version` | the IDE version that last saved the project. |
 
+### In the real-world corpus
+
+The six console projects of the [real-world corpus](../../tests/corpus/README.md),
+saved by B4J 2.18 to 10.5, show what a reader must accept beyond the samples
+above:
+
+- Keys in another order in B4J 2.18 and 4.7, `Version` first and
+  `Library<n>` last (`VCardSplitter.b4j`, `MteBuildLib.b4j`); sorted in the
+  projects saved by B4J 7 to 10.5.
+- Keys that are not always there: no `Group` in B4J 2.18 and 4.7, and in
+  B4J 2.18 an `IconFile` with an empty value (`IconFile=`).
+- A package name other than the default: `Build1=Default,com.puterise`.
+- A module named in another case than its file: `Module1=JsonWebToken` for
+  `JSONWebToken.bas`, so a reader that finds modules by file name must
+  compare names without case.
+- Next to the project file, a `<project>.b4j.meta` file with the same
+  `Key=Value` lines but no `@EndOfDesignText@`. Its keys describe the IDE's
+  state (`ModuleBookmarks<n>`, `ModuleBreakpoints<n>`, `ModuleClosedNodes<n>`,
+  `SelectedBuild`, `VisibleModules`). Two of the six projects publish one;
+  the other four are published without it.
+
 ### At Level 0
 
 Level 0 runs a console program in one module. A project file is accepted
@@ -110,6 +131,9 @@ Version=10
 | `Type` | `StaticCode` for a code module, `Class` for a class; B4A also has `Service` and `Activity`. |
 | `Version` | the IDE version that last saved the module. |
 
+B4J 2.18 wrote no `ModulesStructureVersion` (`Tools.bas` of vcardsplitter, in the real-world corpus),
+and up to B4J 4.7 the keys come in another order, `Type` first.
+
 At Level 0 a module file's `Type` must be `StaticCode`, or the header may be
 absent (as in `tests/conformance`). `Type=Class` is an error that points to
 Level 1; any other type is an error.
@@ -127,6 +151,7 @@ Level 1; any other type is an error.
 - `Type=StaticCode` is a code module, and the `B4A=true` line has no
   meaning: Erel on the [forum](https://b4x.com/android/forum/threads/b4x-browser-please-provide-example-b4xlibs-to-parse.135060/)
   (posts 6 and 8).
+- Real console projects: the six that [`tests/corpus/corpus.toml`](../../tests/corpus/corpus.toml)
+  references, each with its original URL, commit and licence.
 
-These files are cited, not copied into the repository: their licences are
-not checked.
+These files are cited, not copied into the repository.

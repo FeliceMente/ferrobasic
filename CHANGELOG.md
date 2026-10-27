@@ -7,6 +7,10 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- A real-world corpus: six open source B4J console projects, referenced in
+  `tests/corpus/corpus.toml` by original URL, commit, licence and each
+  file's SHA-256, not copied. `ferro-corpus-fetch` downloads and checks
+  them; their sources must round-trip through the lossless syntax tree.
 - `ferro-difftest` runs the conformance corpus in the interpreter
   (`--target interp`) or as `ferro bundle` binaries (`--target standalone`)
   and prints the compatibility report: pass, fail, deviation and pending, by
