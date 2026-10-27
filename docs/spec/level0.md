@@ -110,10 +110,8 @@ End Sub
 - Unsupported constructs get a diagnostic naming the construct and the level
   that adds it. Examples are `Class_Globals`, `Wait For`, `Sleep`, `#If`,
   inline Java (`#If Java`), and a library other than the core one. A
-  construct no level adds yet says so: type tests (`x Is T`). `Const`
-  declarations are planned for Level 0 and refused until their recordings
-  settle the rules ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)).
-  Each gets one error, without follow-on errors.
+  construct no level adds yet says so: type tests (`x Is T`). Each gets one
+  error, without follow-on errors.
 
 ## Types
 
@@ -142,6 +140,23 @@ End Sub
 
 ## Declarations and scope
 
+- `Const` after `Dim`, `Private` or `Public` (in any letter case) makes
+  every name of the statement a constant, in `Process_Globals` or in a Sub,
+  of any type, `List`, `Map` and arrays included, with any expression as
+  its value (recorded). Each must be given its value there (B4J: "Const
+  variable must be set in the declaration line.", recorded). Without `As`
+  it is a `String` (recorded), as a `Dim` without `As` provisionally is
+  (below). Its value is
+  computed where it is declared, in order, as a `Dim`'s: a module variable
+  initialised from a constant declared after it reads `0` (recorded).
+  Assigning a constant, or an item of a constant array, is an error (B4J:
+  "Cannot modify Const variable.", recorded); calls that change a `List`
+  or `Map` constant's contents are not (`Set`, `Put`, recorded). A
+  constant may be a `Select Case` label (recorded). A loop over a
+  constant, another declaration of its name (a later `Dim`, or a `Dim` of
+  a Sub), a `Const` of a name declared before, a `Const` array with bounds
+  and no value, and assigning a field of a constant record are *(open)*,
+  so compile errors.
 - `Dim`, `Private` and `Public` in a Sub all declare a local. In
   `Process_Globals` they declare module variables. `Private` and `Public` only
   matter with several modules (Level 1).

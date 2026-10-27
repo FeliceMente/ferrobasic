@@ -7,6 +7,15 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+- `Const` declarations are supported, as recorded from B4J (#33): every
+  form (`Private Const`, `Public Const`, `Dim Const`, several names, the
+  value before `As`, lower-case `const`), of any type, with any value, in
+  `Process_Globals` or in a Sub. Assigning a constant, or an item of an
+  array constant, and a constant without a value are errors, as in B4J.
+  Without `As` a constant is a `String`. Still refused until recorded: a
+  loop over a constant, another declaration of its name, an array constant
+  with bounds and no value, and assigning a field of a constant record
+  (new pending tests).
 - Another `For Each v As T` over a `For Each` variable of the same Sub
   named like a Sub is accepted, as in B4J, and the name still calls the
   Sub. Before, it was refused until a recording showed what B4J does.
