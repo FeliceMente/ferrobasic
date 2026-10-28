@@ -1041,6 +1041,25 @@ fn loops_in_process_globals() {
     ] {
         assert_eq!(errors(&sub(&body, &app)).len(), 1, "{body}{app}");
     }
+    // So is a `For Each v As T` refused for another type than the
+    // variable's.
+    let diags = errors(&sub(
+        "",
+        &format!(
+            "{typed}    For Each Bump As String In Array As String(\"x\")\n    Next\n{untyped}"
+        ),
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    // A `For Each` without `As` in another Sub over a loop variable of
+    // `Process_Globals` of another type than `Int` is open: only `Int` was
+    // recorded.
+    assert_eq!(
+        errors(&sub(
+            typed_string,
+            "    For Each Bump In Array As String(\"b\")\n    Next"
+        )),
+        [open(module, open_untyped)]
+    );
     let diags = errors(&sub(
         "",
         "    For Bump As Int = 1 To 2\n    Next\n    For Each Bump In Array As Int(5)\n    Next",
