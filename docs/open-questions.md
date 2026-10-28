@@ -217,8 +217,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (recordings: `level0/process_globals_loop_named_like_sub_loop_elsewhere`,
       `level0/process_globals_loop_named_like_sub_args`,
       `level0/process_globals_loop_named_like_sub_assign_inside`).
-- [x] A `For` may loop over that name again anywhere, whichever loop
-      declares it (recordings:
+- [x] A `For` may loop over that name again, after a `For` or a
+      `For Each v As Int`, in a Sub or in `Process_Globals`, and in
+      another Sub over a loop variable of `Process_Globals` (recordings:
       `level0/process_globals_loop_named_like_sub_loop_again`,
       `level0/process_globals_for_each_named_like_sub_loop_elsewhere`,
       `level0/local_counter_named_like_sub_loop_again`,
@@ -275,6 +276,21 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       Sub or from another Sub: does it count as that type? FerroBASIC
       refuses it as open
       (`level0/local_counter_after_double_for_each_named_like_sub`).
+- [ ] Every other loop over that name. FerroBASIC settles only the
+      recorded combinations, which `recorded_loop` in
+      `crates/hir/src/lower.rs` lists, and refuses any other as open:
+      - a `For` inside a loop over it, in a Sub or in `Process_Globals`
+        (`level0/local_counter_in_loop_named_like_sub`,
+        `level0/process_globals_counter_in_loop_named_like_sub`);
+      - a `For Each v As T` of another type than `Int` again
+        (`level0/local_typed_for_each_double_loop_again_named_like_sub`,
+        `level0/process_globals_typed_for_each_double_loop_again_named_like_sub`),
+        or in another Sub where a loop variable of `Process_Globals` has
+        the name (`level0/local_typed_for_each_double_over_module_variable_named_like_sub`);
+      - in another Sub over a loop variable of `Process_Globals`, a loop
+        after another one over the name
+        (`level0/process_globals_loop_named_like_sub_loop_elsewhere_again`,
+        `level0/local_typed_for_each_over_module_variable_loop_again_named_like_sub`).
 - [x] A `For Each v As T` in another Sub over a loop variable of
       `Process_Globals` is a `For Each` over a module variable of type
       `T`, accepted as recorded below.

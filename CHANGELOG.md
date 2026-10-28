@@ -17,18 +17,20 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   with bounds and no value, and assigning a field of a constant record
   (new pending tests).
 - Recording runs 12 and 13 settle loops over a variable named like a
-  Sub. Another `For Each v As T` over it is accepted after typed
-  `For Each` loops or an `Int` counter over it, one after the other, in a
-  Sub or in `Process_Globals`, and inside a typed `For Each` of a Sub over
-  it, as in B4J, and the name still calls the Sub. Before, these were refused
-  until recorded. One without `As` is refused after a loop over it,
-  inside a `For` of a Sub over it, and over a module variable from
-  another Sub, with the settled message. Still refused as open (new
-  pending tests): one without `As` as the first loop over the name or
-  nested in a loop of `Process_Globals`, and one with `As` of another
-  type after a counter, inside a `For` over the name, or nested in
-  `Process_Globals`, and a `For` over one that a `For Each` of another
-  number type declared.
+  Sub, and FerroBASIC now settles only the combinations they recorded,
+  refusing any other as open until it is recorded (new pending tests).
+  Accepted, as in B4J, and the name still calls the Sub: another
+  `For Each v As Int` after a `For` or a `For Each v As Int` over the
+  name, in a Sub or in `Process_Globals`, or inside a `For Each v As Int`
+  of a Sub; these were refused until recorded. Refused with the settled
+  message: one without `As` after such a loop, or inside a `For` of a Sub
+  over the name. Now refused as open, though accepted before: a `For`
+  inside a loop over the name; a `For` over a variable that a `For Each`
+  of another number type than `Int` declares; a `For Each` of another
+  type than `Int` again, or in another Sub over a name that a loop of
+  `Process_Globals` declares; and a second loop in another Sub over a
+  loop variable of `Process_Globals`. After a loop refused or open, the
+  loops over the name after it get no error of their own.
 - Recording runs 12 and 13: the leading-point reals are recorded as
   FerroBASIC runs them, and are `Double`s.
 - A real literal may start with its decimal point (`.08`), as in
