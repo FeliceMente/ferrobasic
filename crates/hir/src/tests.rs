@@ -419,12 +419,12 @@ fn constants() {
         (
             &format!("{dim_after}\n    Private Size As Int = 4"),
             "",
-            open_again.to_string(),
+            redeclared("may be declared again"),
         ),
         (
             &format!("{after_dim}\n    Private Const Size As Int = 4"),
             "",
-            open_const.to_string(),
+            redeclared("may be declared again"),
         ),
         (dim_after, "    Size = 5", redeclared("may be assigned")),
         (after_dim, "    Size = 5", redeclared("may be assigned")),
@@ -433,7 +433,28 @@ fn constants() {
             "    For Size = 1 To 2\n    Next",
             redeclared("may be looped over"),
         ),
-        (dim_after, "    Dim Size As Int = 4", open_again.to_string()),
+        (
+            dim_after,
+            "    Dim Size As Int = 4",
+            redeclared("may be declared again"),
+        ),
+        // The pair, then a loop of `Process_Globals`: open on the loop.
+        (
+            &format!("{dim_after}\n    For Size = 1 To 2\n    Next"),
+            "",
+            redeclared("may be looped over"),
+        ),
+        // Not declared once by a `Const` alone, as recorded: inside an `If`.
+        (
+            "    If True Then\n        Private Const Size As Int = 10\n    End If",
+            "    Dim Size As Int = 4",
+            open_again.to_string(),
+        ),
+        (
+            "    If True Then\n        Private Const Size As Int = 10\n    End If",
+            "    For Size = 1 To 2\n    Next",
+            open_loop.to_string(),
+        ),
         (
             "    Private Const Ps() As Point = Array As Point(NewPoint)",
             "    Ps(0).X = 4",
@@ -542,6 +563,14 @@ fn constants() {
             assert_eq!(found, want, "{program}");
         }
     }
+    // Nor with a loop of `Process_Globals` over it: both loops are open.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10\n    For Each Size In Array As Int(1)\n    Next",
+            "    For Size = 1 To 2\n    Next"
+        )),
+        [open_loop, open_loop]
+    );
     // Whether it may change is asked once.
     assert_eq!(
         errors(&module(after_dim, "    Size = 5\n    Size = 6")),
@@ -549,7 +578,7 @@ fn constants() {
     );
     assert_eq!(
         errors(&module(after_dim, "    Dim Size As Int = 4\n    Size = 6")),
-        [open_again]
+        [redeclared("may be declared again")]
     );
     // Another type is the clash already reported, alone.
     assert_eq!(
