@@ -39,6 +39,10 @@ struct Lowerer {
     /// The loops of the Sub being lowered (`Process_Globals` included) over
     /// each name with a Sub's name, in source order, up to the current one.
     sub_named_loops: HashMap<String, LoopsBefore>,
+    /// The loop variables refused where they are declared, by the range of
+    /// the loop's name: a typed `For` with a Sub's name, or a typed loop of
+    /// another type than its variable's.
+    refused_loop_vars: HashSet<TextRange>,
     /// The current Sub's locals with a Sub's name: `true` for a loop
     /// variable, `false` for a refused `Dim`. Their uses mean the Sub
     /// (recorded).
@@ -178,14 +182,122 @@ fn variable_named_like_sub(name: &str) -> String {
 }
 
 /// The loops of a Sub so far over a name with a Sub's name.
-#[derive(Default, Clone, Copy)]
+#[derive(Default)]
 struct LoopsBefore {
-    /// An accepted `For Each v As T`.
-    typed_for_each: bool,
-    /// An accepted `For`, or `For Each` without `As`.
-    other: bool,
-    /// A refused loop: what B4J does after it is not recorded.
-    refused: bool,
+    /// The accepted loops, in order: all over the same variable.
+    seen: Vec<LoopKind>,
+    /// A loop B4J's answer to is not recorded, or refused: the program has
+    /// an error, and the loops after it are not judged.
+    unrecorded: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LoopKind {
+    Counter,
+    /// `For Each v As T`.
+    Typed,
+    /// `For Each` without `As`.
+    Untyped,
+}
+
+/// Where a loop over a name with a Sub's name is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LoopScope {
+    /// In a Sub, over its own loop variable.
+    Sub,
+    /// In `Process_Globals`, over one of its loop variables.
+    ProcessGlobals,
+    /// In another Sub, over a loop variable of `Process_Globals`.
+    Elsewhere,
+    /// In another Sub, over its own loop variable, which has the name of a
+    /// loop variable of `Process_Globals` too.
+    SubOverModule,
+}
+
+/// What B4J's recordings say about a loop over a name with a Sub's name:
+/// accepted (`Some(true)`), refused with "Current declaration does not
+/// match previous one" (`Some(false)`), or not recorded (`None`). The
+/// variable's type is `ty`; `before` holds the loops over it accepted
+/// before in the same Sub, and `around` those around it, all over the
+/// same variable. Only
+/// these rows are recorded; anything else is open.
+fn recorded_loop(
+    scope: LoopScope,
+    kind: LoopKind,
+    ty: &Ty,
+    before: &[LoopKind],
+    around: &[LoopKind],
+) -> Option<bool> {
+    use LoopKind::*;
+    use LoopScope::*;
+    let int = |t: &Ty| *t == Ty::Int;
+    // The first loop over the name in this Sub.
+    let first = match (scope, kind) {
+        // `local_counter_named_like_sub`, `process_globals_loop_named_like_sub`,
+        // `process_globals_loop_named_like_sub_loop_elsewhere`,
+        // `process_globals_for_each_named_like_sub_loop_elsewhere`.
+        (_, Counter) if int(ty) => Some(true),
+        // It declares the name, of any type: `local_for_each_named_like_sub`
+        // (`Int`), `local_for_each_named_like_sub_member` (`String`), and
+        // their `Process_Globals` twins.
+        (Sub | ProcessGlobals, Typed) => Some(true),
+        // `local_for_each_named_like_sub_over_module_variable`.
+        (SubOverModule, Typed) if int(ty) => Some(true),
+        // `process_globals_loop_named_like_sub_for_each_elsewhere`,
+        // `process_globals_for_each_named_like_sub_for_each_elsewhere`.
+        (Elsewhere, Untyped) if int(ty) => Some(false),
+        _ => None,
+    };
+    // This loop after an earlier one over the name, one after the other.
+    let after = |earlier: LoopKind| match (scope, earlier, kind) {
+        // `local_typed_for_each_after_module_counter_named_like_sub`.
+        (SubOverModule, Counter, Typed) if int(ty) => Some(true),
+        (Elsewhere | SubOverModule, ..) => None,
+        // `local_counter_named_like_sub_loop_again`,
+        // `process_globals_loop_named_like_sub_loop_again`.
+        (_, Counter, Counter) if int(ty) => Some(true),
+        // `local_counter_after_for_each_named_like_sub`,
+        // `process_globals_counter_after_for_each_named_like_sub`.
+        (_, Typed, Counter) if int(ty) => Some(true),
+        // `local_typed_for_each_after_counter_named_like_sub`,
+        // `process_globals_counter_named_like_sub_typed_for_each_again`.
+        (_, Counter, Typed) if int(ty) => Some(true),
+        // `local_typed_for_each_named_like_sub_loop_again`,
+        // `process_globals_for_each_named_like_sub_typed_for_each_again`.
+        (_, Typed, Typed) if int(ty) => Some(true),
+        // `local_for_each_after_counter_named_like_sub`,
+        // `process_globals_loop_named_like_sub_for_each_again`.
+        (_, Counter, Untyped) => Some(false),
+        // `local_for_each_named_like_sub_loop_again`,
+        // `process_globals_for_each_named_like_sub_for_each_again`.
+        (_, Typed, Untyped) if int(ty) => Some(false),
+        _ => None,
+    };
+    // This loop inside one over the name.
+    let inside = |outer: LoopKind| match (scope, outer, kind) {
+        // `local_typed_for_each_named_like_sub_nested`.
+        (Sub, Typed, Typed) if int(ty) => Some(true),
+        // `local_for_each_named_like_sub_nested`.
+        (Sub, Counter, Untyped) => Some(false),
+        _ => None,
+    };
+    // Every recording has at most two loops over the name: this one, and
+    // one before it or around it. Anything longer is not recorded.
+    match (before, around) {
+        ([], []) => first,
+        ([earlier], []) => after(*earlier),
+        // The loop around it is the one before it.
+        ([earlier], [outer]) if earlier == outer => inside(*outer),
+        _ => None,
+    }
+}
+
+fn loop_kind(node: &SyntaxNode) -> LoopKind {
+    match (node.kind(), child(node, TYPE_REF).is_some()) {
+        (FOR_STMT, _) => LoopKind::Counter,
+        (_, true) => LoopKind::Typed,
+        _ => LoopKind::Untyped,
+    }
 }
 
 /// Whether a declarator belongs to a `Const` statement.
@@ -791,6 +903,7 @@ impl Lowerer {
                 let existing = &self.locals[id.0 as usize].ty;
                 if *existing != ty && *existing != Ty::Error && ty != Ty::Error {
                     let existing = self.ty_name(existing);
+                    self.refused_loop_vars.insert(at);
                     self.error(
                         at,
                         format!("`{name}` is already declared as {existing} in this Sub"),
@@ -857,6 +970,7 @@ impl Lowerer {
         if self.subs.contains_key(&k) {
             if typed {
                 // Whatever declared the name first (recorded without one).
+                self.refused_loop_vars.insert(at);
                 self.error(
                     at,
                     format!(
@@ -907,6 +1021,7 @@ impl Lowerer {
                  again as {ty}"
             )
         };
+        self.refused_loop_vars.insert(at);
         self.error(at, message);
     }
 
@@ -1116,7 +1231,7 @@ impl Lowerer {
                     self.refused_loop(node, &text, &name);
                     return;
                 };
-                self.accepted_loop(node, &text);
+                self.accepted_loop(node, &name, &ty);
                 if !ty.is_numeric() && ty != Ty::Error {
                     let ty = self.ty_name(&ty);
                     self.error(
@@ -1176,7 +1291,7 @@ impl Lowerer {
                     self.refused_loop(node, &text, &name);
                     return;
                 };
-                self.accepted_loop(node, &text);
+                self.accepted_loop(node, &name, &ty);
                 let Some(coll) = exprs(node).into_iter().next() else {
                     return;
                 };
@@ -1275,7 +1390,7 @@ impl Lowerer {
     fn refused_loop(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) {
         let k = key(text);
         if self.subs.contains_key(&k) {
-            self.sub_named_loops.entry(k).or_default().refused = true;
+            self.sub_named_loops.entry(k).or_default().unrecorded = true;
         }
         for e in exprs(node) {
             self.expr(&e);
@@ -1287,35 +1402,39 @@ impl Lowerer {
     }
 
     /// Notes a loop lowered past its variable, when its name is a Sub's.
-    fn accepted_loop(&mut self, node: &SyntaxNode, text: &str) {
-        let k = key(text);
+    fn accepted_loop(&mut self, node: &SyntaxNode, name: &SyntaxNode, ty: &Ty) {
+        let k = key(&name_of(name));
         if !self.subs.contains_key(&k) {
             return;
         }
-        let typed = child(node, TYPE_REF).is_some();
+        let kind = loop_kind(node);
+        let refused = self.refused_loop_already(node, name, ty);
         let seen = self.sub_named_loops.entry(k).or_default();
-        match node.kind() {
-            FOR_EACH_STMT if typed => seen.typed_for_each = true,
-            // `declare_loop_local` refused it, before lowering.
-            FOR_STMT if typed => seen.refused = true,
-            _ => seen.other = true,
+        if refused || kind == LoopKind::Untyped {
+            seen.unrecorded = true;
+        } else {
+            seen.seen.push(kind);
         }
     }
 
+    /// Whether a loop is refused elsewhere: where its variable is declared
+    /// (`refused_loop_vars`); over a variable of an unknown type, reported
+    /// where the type is; or, for a `For` over anything but a number or with
+    /// `As` in `Process_Globals`, when it is lowered.
+    fn refused_loop_already(&self, node: &SyntaxNode, name: &SyntaxNode, ty: &Ty) -> bool {
+        self.refused_loop_vars.contains(&range(name))
+            || *ty == Ty::Error
+            || (node.kind() == FOR_STMT
+                && (!ty.is_numeric()
+                    || (self.in_process_globals && child(node, TYPE_REF).is_some())))
+    }
+
     /// The variable a `For` / `For Each` loops over, or the loop refused
-    /// (reported and checked here), judged by the loops over the same name
-    /// before it. A `For` may loop over a loop variable with a Sub's name
-    /// anywhere, and must count with a number like any other (recorded).
-    /// So may a `For Each v As T` of a Sub after other `For Each v As T`
-    /// loops of it, one after the other (recorded). Another `For Each` is
-    /// refused: without `As` where B4J's refusal is recorded ("Current
-    /// declaration does not match previous one": after another loop over a
-    /// loop variable of the same Sub, and over a module variable, unless a
-    /// typed `For Each` of `Process_Globals` came before it there), as open
-    /// anywhere else: with `As` after a `For` over the same name, whichever
-    /// variable that counts, or inside a loop over the same name. Only
-    /// accepted loops count as before; after a refused one, a refusal gets
-    /// the open message, but a refused loop never refuses another.
+    /// (reported and checked here). Over a loop variable with a Sub's name,
+    /// a loop is accepted, or refused with B4J's message, only where
+    /// `recorded_loop` lists B4J's answer; anything else is refused as
+    /// open. After a loop refused or not recorded, which is an error
+    /// already, the loops over the name are not judged.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
         if let Some((var, _)) = &found
@@ -1335,56 +1454,77 @@ impl Lowerer {
         if !self.subs.contains_key(&k) {
             return LoopVar::Found(found);
         }
-        let typed = child(node, TYPE_REF).is_some();
-        let before = self.sub_named_loops.get(&k).copied().unwrap_or_default();
-        // Inside a loop over the same name: not recorded.
-        let nested = node.ancestors().skip(1).any(|a| {
-            matches!(a.kind(), FOR_STMT | FOR_EACH_STMT)
-                && child(&a, NAME).is_some_and(|n| key(&name_of(&n)) == k)
-        });
-        // What it loops over again, and whether B4J's refusal of a `For Each`
-        // without `As` there is recorded; none when the loop is accepted.
-        let refused = match &found {
-            _ if node.kind() == FOR_STMT => None,
-            Some((VarRef::Global(id), _)) if self.module.global(*id).range != range(name) => {
-                // In `Process_Globals` the refusal is recorded after its own
-                // counter only.
-                let after_counter = !self.in_process_globals || before.other;
-                let open_here = self.in_process_globals && before.typed_for_each;
-                let recorded = after_counter && !open_here && !nested && !before.refused;
-                self.loop_declared
-                    .contains(&k)
-                    .then_some(("a module variable", recorded))
+        // A loop variable with a Sub's name: anything else was reported
+        // already, or is not one.
+        let (scope, ty) = match &found {
+            Some((VarRef::Global(_), ty)) if self.loop_declared.contains(&k) => {
+                let scope = if self.in_process_globals {
+                    LoopScope::ProcessGlobals
+                } else {
+                    LoopScope::Elsewhere
+                };
+                (scope, ty.clone())
             }
-            Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
-                Some(true) if typed => {
-                    (before.other || nested).then_some(("a loop variable of this Sub", false))
-                }
-                Some(true) => {
-                    let after_loop = before.typed_for_each || before.other;
-                    let recorded = after_loop && !nested && !before.refused;
-                    Some(("a loop variable of this Sub", recorded))
-                }
-                _ => None,
-            },
-            _ => None,
+            Some((VarRef::Local(_), ty)) if self.sub_named_locals.get(&k) == Some(&true) => {
+                let module_ty = self
+                    .globals
+                    .get(&k)
+                    .filter(|_| self.loop_declared.contains(&k))
+                    .map(|id| self.module.global(*id).ty.clone());
+                let scope = match module_ty {
+                    None => LoopScope::Sub,
+                    Some(module_ty) if module_ty == *ty => LoopScope::SubOverModule,
+                    // Another type than the module variable's: reported
+                    // already (recorded).
+                    Some(_) => return LoopVar::Found(found),
+                };
+                (scope, ty.clone())
+            }
+            _ => return LoopVar::Found(found),
         };
-        let Some((what, recorded)) = refused else {
+        let kind = loop_kind(node);
+        let before = self.sub_named_loops.get(&k);
+        if before.is_some_and(|b| b.unrecorded) || self.refused_loop_already(node, name, &ty) {
             return LoopVar::Found(found);
-        };
-        let at = range(name);
-        let message = if typed || !recorded {
-            format!(
-                "`{text}` is {what} with the name of a Sub: whether another `For Each` may loop \
-                 over it here is not known yet, so use another name"
-            )
+        }
+        // Every loop over the same name around this one: more than one is
+        // open (`recorded_loop`).
+        let around: Vec<LoopKind> = node
+            .ancestors()
+            .skip(1)
+            .filter(|a| {
+                matches!(a.kind(), FOR_STMT | FOR_EACH_STMT)
+                    && child(a, NAME).is_some_and(|n| key(&name_of(&n)) == k)
+            })
+            .map(|a| loop_kind(&a))
+            .collect();
+        let seen = before.map_or(&[][..], |b| &b.seen);
+        let answer = recorded_loop(scope, kind, &ty, seen, &around);
+        if answer == Some(true) {
+            return LoopVar::Found(found);
+        }
+        let what = if matches!(scope, LoopScope::Sub | LoopScope::SubOverModule) {
+            "a loop variable of this Sub"
         } else {
+            "a module variable"
+        };
+        let message = if answer == Some(false) {
             format!(
                 "`{text}` is {what} with the name of a Sub: a `For Each` without `As` cannot \
                  loop over it again"
             )
+        } else {
+            let form = match kind {
+                LoopKind::Counter => "this `For`",
+                LoopKind::Typed => "this `For Each`",
+                LoopKind::Untyped => "a `For Each` without `As`",
+            };
+            format!(
+                "`{text}` is {what} with the name of a Sub: whether {form} may loop over it here \
+                 is not known yet, so use another name"
+            )
         };
-        self.error(at, message);
+        self.error(range(name), message);
         self.refused_loop(node, text, name);
         LoopVar::Refused
     }
