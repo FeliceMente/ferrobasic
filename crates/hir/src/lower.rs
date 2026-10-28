@@ -1903,7 +1903,8 @@ impl Lowerer {
             } else {
                 const_again_open(&name, is_const)
             };
-            self.error(at, message);
+            // Over a variable declared both ways, this asks its question.
+            self.const_error(var, at, message);
             return false;
         }
         if is_const && !has_value {
