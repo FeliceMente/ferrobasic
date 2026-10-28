@@ -8,7 +8,7 @@ iOS, WebAssembly and microcontrollers such as the Raspberry Pi Pico. It comes
 with a reference interpreter, a REPL and a Language Server, so you can use
 VS Code or any LSP-capable editor instead of a dedicated IDE.
 
-> **Status: pre-alpha (milestone M0 → M1).** Level 0 programs (one module,
+> **Status: pre-alpha (milestone M1).** Level 0 programs (one module,
 > language core, `List`/`Map`) can be checked, run with the reference
 > interpreter and built into standalone executables for the host. Start with
 > the [tutorial](docs/tutorial.md); see [`docs/roadmap.md`](docs/roadmap.md)
