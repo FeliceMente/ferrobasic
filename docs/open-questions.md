@@ -396,7 +396,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
   - [ ] a `Dim` with no value after a constant of its name: built, and
         which value it keeps (`level0/const_dim_after_no_value`);
   - [ ] the same with another type than `Int`
-        (`level0/const_dim_after_string`);
+        (`level0/const_dim_after_string`), or with the `Dim` inside an `If`
+        (`level0/const_dim_after_in_if`);
   - [ ] a `Dim` with no value in a Sub with a module constant's name
         (`level0/const_local_dim_no_value`);
   - [ ] a `For Each` without `As` over a constant
