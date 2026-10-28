@@ -500,6 +500,48 @@ fn constants() {
             "{body}{globals}"
         );
     }
+    // A declaration inside a block of `Process_Globals` is not the recorded
+    // pair.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10\n    If True Then\n        Private Size As Int = 3\n    End If",
+            ""
+        )),
+        [open_again]
+    );
+    // After a declaration again of `Process_Globals` refused as open, a use
+    // in a Sub has no error of its own, before or after it; after a `Dim`
+    // of a Sub refused, a use keeps its recorded error, in any order.
+    for (globals, body, other, message) in [
+        (
+            "    Private Const Size As Int = 10\n    Private Size As Int",
+            "    Size = 5",
+            "",
+            open_again.to_string(),
+        ),
+        (
+            size,
+            "    Dim Size As Int = 4",
+            "    Size = 5",
+            "`Size` is a `Const` of the module: a `Dim` cannot declare it again".to_string(),
+        ),
+    ] {
+        let pg = format!("Sub Process_Globals\n    Type Point (X As Int)\n{globals}\nEnd Sub\n");
+        let subs = format!(
+            "Sub AppStart (Args() As String)\n{body}\nEnd Sub\nSub Other\n{other}\nEnd Sub\nSub NewPoint As Point\n    Dim q As Point\n    q.Initialize\n    Return q\nEnd Sub\n"
+        );
+        let mut expected = vec![message];
+        if !other.is_empty() {
+            expected.push("`Size` is a `Const`: it cannot be assigned".to_string());
+        }
+        for program in [format!("{pg}{subs}"), format!("{subs}{pg}")] {
+            let mut found = errors(&program);
+            found.sort();
+            let mut want = expected.clone();
+            want.sort();
+            assert_eq!(found, want, "{program}");
+        }
+    }
     // Whether it may change is asked once.
     assert_eq!(
         errors(&module(after_dim, "    Size = 5\n    Size = 6")),

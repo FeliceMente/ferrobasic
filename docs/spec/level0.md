@@ -167,14 +167,16 @@ End Sub
   with a module `Int` constant's name, with a value, is an error (B4J:
   "Cannot redeclare a const variable.", recorded). In `Process_Globals`,
   an `Int` declared by a `Const` and by a `Dim` with a value, in either
-  order, with no other declaration of or loop over its name there, is one
-  variable: each declaration sets its value in turn (recorded); whether
+  order, both statements of `Process_Globals` itself (not inside an `If`
+  or a loop), with no other declaration of or loop over its name there, is
+  one variable: each declaration sets its value in turn (recorded); whether
   it may change is *(open)*, so assigning it anywhere, a loop over it or
   assigning an item of it is a compile error, reported once. A
   constant may be a `Select Case` label (recorded). Any other loop over a
   constant or declaration again of its name is *(open)*, so a compile
-  error; after it, the program has an error already, and the uses of the
-  name are refused with no error of their own.
+  error. After a declaration again in `Process_Globals` refused so, the
+  program has an error already: the uses of the name are refused with no
+  error of their own, wherever the Subs are.
 - `Dim`, `Private` and `Public` in a Sub all declare a local. In
   `Process_Globals` they declare module variables. `Private` and `Public` only
   matter with several modules (Level 1).
