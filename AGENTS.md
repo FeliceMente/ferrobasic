@@ -116,3 +116,15 @@ cargo test -p ferro-project --test projects -- --ignored
 
 - Small, focused commits; message in the imperative ("Add lexer for smart strings").
 - One topic per PR; describe what changed, why, and how it was tested.
+
+## Branches and releases
+
+- Features: branch from `dev`, open the PR into `dev`. Never open a feature
+  PR into `main`.
+- Release preparation (version, CHANGELOG section, the tutorial re-run) is a
+  PR into `dev` too, so `dev` holds exactly what ships.
+- Release: a PR from `dev` into `main`. CI runs on it (see
+  `docs/compatibility-testing.md`, "CI"), and it is merged only with CI
+  green. Tag the merge commit on `main` (`vX.Y.Z`) and publish the release.
+- After a release: a PR from `main` back into `dev`, so the two do not
+  diverge; it also bumps the version to the next `-dev`.
