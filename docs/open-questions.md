@@ -368,6 +368,20 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         before it is set, `0`: constants are not inlined
         (`level0/const_used_before`);
   - [x] a constant as a `Select Case` label (`level0/const_select_case`);
+  - [x] a `For` over an `Int` constant, and a `For Each v As Int` in a
+        Sub over a module one, are refused: "Cannot modify Const
+        variable." (`level0/const_for_counter`,
+        `level0/const_for_each_variable`); so is assigning a field of a
+        constant record (`level0/const_record_field`);
+  - [x] a `Dim` in a Sub with a module `Int` constant's name, with a
+        value, is refused: "Cannot redeclare a const variable."
+        (`level0/const_local_dim`);
+  - [x] a `Const` array with bounds and no value is refused as a `Const`
+        without a value is (`level0/const_array_bounds`);
+  - [x] in `Process_Globals`, a `Dim` of an `Int` constant's name after it,
+        and a `Const` of a variable's name after its `Dim`, both with a
+        literal value, build: each sets its value in turn (`level0/const_dim_after`
+        prints 3, `level0/const_after_dim` prints 10);
   - [x] constants of type `List` (`level0/const_list`), `Map`
         (`level0/const_map`) and an array (`level0/const_array`); a `List`
         or `Map` constant's contents may change (`level0/const_list_mutate`,
@@ -375,18 +389,23 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         "Cannot modify Const variable." (`level0/const_array_mutate`).
 - [ ] What `Const` leaves open. FerroBASIC refuses each until it is
       recorded:
-  - [ ] a `For` counting over a constant (`level0/const_for_counter`), and
-        a `For Each v As T` in a Sub over a module constant of type `T`
-        (`level0/const_for_each_variable`);
-  - [ ] a `Dim` of a constant's name after it (`level0/const_dim_after`),
-        a `Const` of a variable's name after its `Dim`
-        (`level0/const_after_dim`), and a `Dim` in a Sub with a module
-        constant's name and type (`level0/const_local_dim`);
-  - [ ] assigning a field of a constant record
-        (`level0/const_record_field`);
-  - [ ] a `Const` array with bounds and no value: refused as a `Const`
-        without a value is, or an array of default items
-        (`level0/const_array_bounds`).
+  - [ ] whether a variable declared both by a `Const` and by a `Dim` in
+        `Process_Globals` may then be assigned, in either order
+        (`level0/const_dim_after_assign`, `level0/const_after_dim_assign`);
+        FerroBASIC refuses any change to it, a loop over it or an item;
+  - [ ] a `Dim` with no value after a constant of its name: built, and
+        which value it keeps (`level0/const_dim_after_no_value`);
+  - [ ] the same with another type than `Int`
+        (`level0/const_dim_after_string`), with the `Dim` inside an `If`
+        (`level0/const_dim_after_in_if`), or with a value that reads the
+        constant (`level0/const_dim_after_from_const`);
+  - [ ] a `Dim` with no value in a Sub with a module constant's name
+        (`level0/const_local_dim_no_value`);
+  - [ ] a `For Each` without `As` over a constant
+        (`level0/const_for_each_untyped`), and two `Const`s of one name
+        (`level0/const_twice`); like them, any other loop over a constant
+        (in `Process_Globals`, over a local constant, of another type than
+        `Int`) or declaration again of its name (a third one).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the

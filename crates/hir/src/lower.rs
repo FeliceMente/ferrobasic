@@ -43,6 +43,13 @@ struct Lowerer {
     /// the loop's name: a typed `For` with a Sub's name, or a typed loop of
     /// another type than its variable's.
     refused_loop_vars: HashSet<TextRange>,
+    /// What `declare_process_globals` found about the constants of
+    /// `Process_Globals`.
+    const_states: HashMap<GlobalId, ConstState>,
+    /// Whether to lower each declaration again of a constant's name in
+    /// `Process_Globals`, as `declare_process_globals` decided, by the range
+    /// of its declarator.
+    const_declarations: HashMap<TextRange, bool>,
     /// The current Sub's locals with a Sub's name: `true` for a loop
     /// variable, `false` for a refused `Dim`. Their uses mean the Sub
     /// (recorded).
@@ -172,6 +179,59 @@ fn typed_loop_variable(name: &str, statement: &str, globals: &str) -> String {
     format!(
         "declaring the `{statement}` variable `{name}` in the loop is not supported in \
          `{globals}` yet: `{name}` is already declared, so write the loop without `As`"
+    )
+}
+
+/// A declarator of `Process_Globals`, as `declare_process_globals` sees it.
+struct GlobalDeclaration {
+    range: TextRange,
+    /// Its name's range.
+    at: TextRange,
+    ty: Ty,
+    is_const: bool,
+    /// Its value is a literal, as recorded.
+    literal: bool,
+    /// A statement of `Process_Globals` itself, not inside a block.
+    direct: bool,
+}
+
+/// What the declarations of `Process_Globals` make of a constant.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConstState {
+    /// Declared there once, by its `Const` alone.
+    Single,
+    /// An `Int` declared by a `Const` and by a `Dim` with a value, in either
+    /// order, and nothing else: built (recorded), but whether it may then
+    /// change is not known, asked once (`reported`).
+    Redeclared { reported: bool },
+    /// Declared again where that is refused as open: the program has an
+    /// error already, so the uses of the name are refused with no error of
+    /// their own.
+    Reported,
+}
+
+/// A declaration again of a constant's name, or a `Const` of a name declared
+/// before, of the same type: not recorded.
+fn const_again_open(name: &str, is_const: bool) -> String {
+    if is_const {
+        format!(
+            "`{name}` is already declared: whether a `Const` may declare it again here is not \
+             known yet, so use another name"
+        )
+    } else {
+        format!(
+            "`{name}` is a `Const`: whether another declaration may declare it again here is not \
+             known yet, so use another name"
+        )
+    }
+}
+
+/// A module variable declared both by a `Const` and by a `Dim`: whether it
+/// may change is not known.
+fn redeclared_const_open(name: &str, what: &str) -> String {
+    format!(
+        "`{name}` is declared both by a `Const` and by a `Dim`: whether it {what} is not known \
+         yet"
     )
 }
 
@@ -683,15 +743,109 @@ impl Lowerer {
         let nodes = sub
             .descendants()
             .filter(|n| matches!(n.kind(), DIM_STMT | FOR_STMT | FOR_EACH_STMT));
+        // Each name's declarations: `Err` for a loop, at its name.
+        let mut declarations: HashMap<String, Vec<Result<GlobalDeclaration, TextRange>>> =
+            HashMap::new();
         for node in nodes {
             if node.kind() == DIM_STMT {
+                let direct = node.parent().and_then(|block| block.parent()).as_ref() == Some(sub);
                 for (decl, ty) in self.declarators(&node) {
                     let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
+                    let declaration = GlobalDeclaration {
+                        range: range(&decl),
+                        at: child(&decl, NAME).map_or_else(|| range(&decl), |n| range(&n)),
+                        ty: ty.clone(),
+                        is_const: in_const(&decl),
+                        literal: exprs(&decl).first().is_some_and(|e| e.kind() == LITERAL),
+                        direct,
+                    };
                     self.declare_dim_global(name.clone(), ty, range(&decl));
                     self.mark_const(&decl, &name);
+                    declarations
+                        .entry(key(&name))
+                        .or_default()
+                        .push(Ok(declaration));
                 }
             } else {
                 self.declare_loop_global(&node);
+                if let Some(name) = child(&node, NAME) {
+                    declarations
+                        .entry(key(&name_of(&name)))
+                        .or_default()
+                        .push(Err(range(&name)));
+                }
+            }
+        }
+        for (k, found) in declarations {
+            let Some(&id) = self.globals.get(&k) else {
+                continue;
+            };
+            let global = self.module.global(id);
+            let (first, is_const, ty) = (global.range, global.is_const, global.ty.clone());
+            let name = global.name.clone();
+            // An `Int` declared by a `Const` and by a `Dim`, in either order,
+            // both with a literal value and statements of `Process_Globals`
+            // itself.
+            let pair = match &found[..] {
+                [Ok(a), Ok(b), ..] => {
+                    a.is_const != b.is_const
+                        && a.literal
+                        && b.literal
+                        && a.direct
+                        && b.direct
+                        && a.ty == Ty::Int
+                        && b.ty == Ty::Int
+                }
+                _ => false,
+            };
+            // Every declaration but the first: lowered for the recorded pair
+            // alone (the program has an error otherwise).
+            let again: Vec<TextRange> = found
+                .iter()
+                .flatten()
+                .map(|d| d.range)
+                .filter(|&r| r != first)
+                .collect();
+            if pair && found.len() == 2 {
+                self.module.globals[id.0 as usize].is_const = true;
+                self.const_states
+                    .insert(id, ConstState::Redeclared { reported: false });
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, true)));
+                continue;
+            }
+            if pair {
+                // The pair, then what makes it open: reported there; another
+                // type is the clash reported already.
+                match &found[2] {
+                    Ok(d) if d.ty == ty => {
+                        self.error(d.at, redeclared_const_open(&name, "may be declared again"));
+                    }
+                    Ok(_) => {}
+                    Err(at) => self.error(*at, redeclared_const_open(&name, "may be looped over")),
+                }
+                self.const_states.insert(id, ConstState::Reported);
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, false)));
+                continue;
+            }
+            // The first declaration again that is refused, reported here so
+            // that every Sub sees it refused, wherever it is; another type
+            // is the clash reported already.
+            let refused = found
+                .iter()
+                .flatten()
+                .find(|d| d.range != first && d.ty == ty && (d.is_const || is_const));
+            if let Some(d) = refused {
+                self.error(d.at, const_again_open(&name, d.is_const));
+                self.const_states.insert(id, ConstState::Reported);
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, false)));
+            } else if let [Ok(d)] = &found[..]
+                && d.is_const
+                && d.direct
+            {
+                self.const_states.insert(id, ConstState::Single);
             }
         }
     }
@@ -1022,7 +1176,8 @@ impl Lowerer {
             )
         };
         self.refused_loop_vars.insert(at);
-        self.error(at, message);
+        // After a constant refused, or asked about once, no error of its own.
+        self.const_error(&VarRef::Global(id), at, message);
     }
 
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
@@ -1437,16 +1592,26 @@ impl Lowerer {
     /// already, the loops over the name are not judged.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
-        if let Some((var, _)) = &found
+        if let Some((var, ty)) = &found
             && self.is_const(var)
         {
-            self.error(
-                range(name),
+            // B4J: "Cannot modify Const variable." (recorded), for a `For`
+            // and a `For Each v As Int` in a Sub over a module `Int` `Const`.
+            let recorded = !self.in_process_globals
+                && self.recorded_const(var)
+                && *ty == Ty::Int
+                && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some());
+            let message = if recorded {
+                format!("`{text}` is a `Const`: a loop cannot loop over it")
+            } else if self.redeclared_const(var) {
+                redeclared_const_open(text, "may be looped over")
+            } else {
                 format!(
-                    "`{text}` is a `Const`: whether a loop may loop over it is not known yet, so \
-                     use another name"
-                ),
-            );
+                    "`{text}` is a `Const`: whether a loop may loop over it here is not known \
+                     yet, so use another name"
+                )
+            };
+            self.const_error(var, range(name), message);
             self.refused_loop(node, text, name);
             return LoopVar::Refused;
         }
@@ -1619,10 +1784,12 @@ impl Lowerer {
                     Some((var, ty)) if !refused_dim && self.is_const(&var) => {
                         // B4J: "Cannot modify Const variable." (recorded).
                         let name = self.var(&var).name.clone();
-                        self.error(
-                            range(node),
-                            format!("`{name}` is a `Const`: it cannot be assigned"),
-                        );
+                        let message = if self.redeclared_const(&var) {
+                            redeclared_const_open(&name, "may be assigned")
+                        } else {
+                            format!("`{name}` is a `Const`: it cannot be assigned")
+                        };
+                        self.const_error(&var, range(node), message);
                         Err(Unassignable::Const(ty))
                     }
                     Some((var, ty)) => Ok((Place::Var(var), ty)),
@@ -1645,8 +1812,8 @@ impl Lowerer {
             }
             CALL_EXPR | MEMBER_EXPR => {
                 let expr = self.expr(node);
-                if let Some(message) = self.const_place(&expr) {
-                    self.error(range(node), message);
+                if let Some((var, message)) = self.const_place(&expr) {
+                    self.const_error(&var, range(node), message);
                     return Err(Unassignable::Const(expr.ty));
                 }
                 match expr.kind {
@@ -1710,56 +1877,109 @@ impl Lowerer {
         }
     }
 
+    /// Whether B4J's answers recorded for a constant apply to it: one of a
+    /// main module's `Process_Globals`, declared there once, by its `Const`
+    /// alone.
+    fn recorded_const(&self, var: &VarRef) -> bool {
+        self.class_globals.is_none() && self.const_state(var) == Some(ConstState::Single)
+    }
+
+    fn const_state(&self, var: &VarRef) -> Option<ConstState> {
+        match var {
+            VarRef::Global(id) => self.const_states.get(id).copied(),
+            VarRef::Local(_) => None,
+        }
+    }
+
+    /// Reports an error about changing a constant, unless declaring it
+    /// again was refused already. Whether one declared both ways may change
+    /// is asked once: after that, the program has an error already.
+    fn const_error(&mut self, var: &VarRef, at: TextRange, message: String) {
+        match (var, self.const_state(var)) {
+            (_, Some(ConstState::Reported | ConstState::Redeclared { reported: true })) => {}
+            (VarRef::Global(id), Some(ConstState::Redeclared { reported: false })) => {
+                self.const_states
+                    .insert(*id, ConstState::Redeclared { reported: true });
+                self.error(at, message);
+            }
+            _ => self.error(at, message),
+        }
+    }
+
+    /// Whether a constant was declared again in `Process_Globals`, so that
+    /// whether it may change is not known.
+    fn redeclared_const(&self, var: &VarRef) -> bool {
+        matches!(self.const_state(var), Some(ConstState::Redeclared { .. }))
+    }
+
     /// Checks a declarator of a `Dim` against the constants, and whether
     /// to lower it. A `Const` must be given its value there (B4J: "Const
-    /// variable must be set in the declaration line.", recorded). Whether a
-    /// `Const` may declare a name declared before, or another declaration
-    /// a `Const`'s, is not recorded; with another type, the clash is
-    /// reported already. Nor is one of an array with bounds and no value.
+    /// variable must be set in the declaration line.", recorded, with
+    /// bounds too). In `Process_Globals`, an `Int` declared by a `Const`
+    /// and by a `Dim` with a value, in either order, is built, each
+    /// declaration giving its value in turn (recorded); a `Dim` in a Sub
+    /// with the name of a module `Int` `Const`, with a value, is refused
+    /// (B4J: "Cannot redeclare a const variable.", recorded). Any other
+    /// declaration again of a constant's name, of the same type, is not
+    /// recorded; with another type, the clash is reported already.
     fn const_declaration(&mut self, decl: &SyntaxNode, ty: &Ty, var: &VarRef) -> bool {
         let is_const = in_const(decl);
+        let has_value = !exprs(decl).is_empty();
         let declared = self.var(var);
         let name = child(decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
         let at = child(decl, NAME).map_or_else(|| range(decl), |n| range(&n));
         let same_type = declared.ty == *ty;
         if declared.range != range(decl) && same_type && (is_const || declared.is_const) {
-            let message = if is_const {
-                format!(
-                    "`{name}` is already declared: whether a `Const` may declare it again is not \
-                     known yet, so use another name"
-                )
+            let global = matches!(var, VarRef::Global(_));
+            // `declare_process_globals` decided, and reported, those of
+            // `Process_Globals`; any it did not is refused below.
+            if self.in_process_globals
+                && !self.in_class_globals
+                && global
+                && let Some(&lowered) = self.const_declarations.get(&range(decl))
+            {
+                return lowered;
+            }
+            let state = self.const_state(var);
+            if state == Some(ConstState::Reported) {
+                return false;
+            }
+            let message = if !self.in_process_globals
+                && self.recorded_const(var)
+                && *ty == Ty::Int
+                && !is_const
+                && has_value
+            {
+                format!("`{name}` is a `Const` of the module: a `Dim` cannot declare it again")
+            } else if self.redeclared_const(var) {
+                redeclared_const_open(&name, "may be declared again")
             } else {
-                format!(
-                    "`{name}` is a `Const`: whether another declaration may declare it again is \
-                     not known yet, so use another name"
-                )
+                const_again_open(&name, is_const)
             };
-            self.error(at, message);
+            // Over a variable declared both ways, this asks its question.
+            self.const_error(var, at, message);
             return false;
         }
-        if is_const && exprs(decl).is_empty() {
-            let bounds = child(decl, ARRAY_BOUNDS).filter(|b| !exprs(b).is_empty());
-            let message = if bounds.is_some() {
-                format!(
-                    "`{name}` is a `Const` array with bounds: whether it may have no value is not \
-                     known yet, so give it its value"
-                )
-            } else {
-                format!("`{name}` is a `Const`: give it its value where it is declared")
-            };
-            self.error(at, message);
+        if is_const && !has_value {
+            self.error(
+                at,
+                format!("`{name}` is a `Const`: give it its value where it is declared"),
+            );
             return false;
         }
         true
     }
 
     /// Why an item or field assignment is refused when it changes a
-    /// constant: an item of a `Const` array is refused (B4J: "Cannot modify
-    /// Const variable.", recorded); a field, or an item of an item, is not
-    /// recorded.
-    fn const_place(&self, expr: &Expr) -> Option<String> {
+    /// constant: an item of a `Const` array, or a field of a `Const` record,
+    /// is refused (B4J: "Cannot modify Const variable.", recorded); an item
+    /// of an item, a field of a field, or any part of a constant declared
+    /// again, is not recorded.
+    fn const_place(&self, expr: &Expr) -> Option<(VarRef, String)> {
         let item = matches!(&expr.kind, ExprKind::Index { array, .. }
             if matches!(array.kind, ExprKind::Var(_)));
+        let field = matches!(&expr.kind, ExprKind::Field { record, .. }
+            if matches!(&record.kind, ExprKind::Var(var) if self.recorded_const(var)));
         let mut root = expr;
         loop {
             match &root.kind {
@@ -1767,14 +1987,21 @@ impl Lowerer {
                 ExprKind::Field { record, .. } => root = record,
                 ExprKind::Var(var) if self.is_const(var) => {
                     let name = &self.var(var).name;
-                    return Some(if item {
-                        format!("`{name}` is a `Const`: its items cannot be assigned")
-                    } else {
-                        format!(
-                            "`{name}` is a `Const`: whether this part of it may be assigned is \
+                    return Some((
+                        *var,
+                        if self.redeclared_const(var) {
+                            redeclared_const_open(name, "may change")
+                        } else if item {
+                            format!("`{name}` is a `Const`: its items cannot be assigned")
+                        } else if field {
+                            format!("`{name}` is a `Const`: its fields cannot be assigned")
+                        } else {
+                            format!(
+                                "`{name}` is a `Const`: whether this part of it may be assigned is \
                              not known yet"
-                        )
-                    });
+                            )
+                        },
+                    ));
                 }
                 _ => return None,
             }
