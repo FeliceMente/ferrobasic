@@ -16,21 +16,24 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   loop over a constant, another declaration of its name, an array constant
   with bounds and no value, and assigning a field of a constant record
   (new pending tests).
-- Another `For Each v As T` over a `For Each` variable of the same Sub
-  named like a Sub is accepted, as in B4J, and the name still calls the
-  Sub. Before, it was refused until a recording showed what B4J does.
-  One without `As` is refused after another loop over a loop variable of
-  the Sub, and over a module variable from another Sub or from
-  `Process_Globals` after its own counter, with the settled message
-  (recorded). Now refused as open until recorded, though accepted
-  before: one with `As` after a `For` over the same name in the Sub,
-  also when that `For` counts a module variable, and one with `As` nested
-  in a loop over the same name. Also refused as open: one without `As`
-  nested in a loop over the same name, and the other cases in
-  `Process_Globals` (new pending tests for all of them).
-- Recording run 12: the leading-point reals are recorded as FerroBASIC
-  runs them. Their type, `Double` for now, is pending
-  (test `real_leading_point_type`).
+- Recording runs 12 and 13 settle loops over a variable named like a
+  Sub, and FerroBASIC now settles only the combinations they recorded,
+  refusing any other as open until it is recorded (new pending tests).
+  Accepted, as in B4J, and the name still calls the Sub: another
+  `For Each v As Int` after a `For` or a `For Each v As Int` over the
+  name, in a Sub or in `Process_Globals`, or inside a `For Each v As Int`
+  of a Sub; these were refused until recorded. Refused with the settled
+  message: one without `As` after such a loop, or inside a `For` of a Sub
+  over the name. Now refused as open, though accepted before: a `For`
+  inside a loop over the name; a `For` over a variable that a `For Each`
+  of another number type than `Int` declares; a `For Each` of another
+  type than `Int` again, or in another Sub over a name that a loop of
+  `Process_Globals` declares; a second loop in another Sub over a loop
+  variable of `Process_Globals`; and a third loop over the name, one after
+  the other or nested, as no recording has more than two. After a loop refused or open, the
+  loops over the name after it get no error of their own.
+- Recording runs 12 and 13: the leading-point reals are recorded as
+  FerroBASIC runs them, and are `Double`s.
 - A real literal may start with its decimal point (`.08`), as in
   `MteBuildLib.b4j` of the real-world corpus, which B4J builds. Before, it
   was a syntax error. After an operand the dot is still a member access's

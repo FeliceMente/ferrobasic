@@ -9,9 +9,12 @@ features = ["const"]
 
 # The comment in the .bas predates this refusal, which settles it.
 
-# Filled in by tools/recorder when the expected output is recorded:
-# [recording]
-# product = "B4J"
-# version = ""
-# platform = ""
-# date = ""
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+rejected = true   # the original toolchain refused to build it
+date = "2026-10-27"

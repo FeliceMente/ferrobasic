@@ -70,20 +70,29 @@ End Sub
   followed by '=' expected", recorded). Every use of such a name in an
   expression, bare, with arguments or as a statement, calls the Sub,
   whatever the loop variable's type, and assigning it is an error,
-  wherever it is (recorded). A `For` may loop over it again anywhere,
-  whichever loop declares it, and counts with a number as any `For` does
-  (B4J: "Loop iterator should be a numeric variable", recorded). Another
-  `For Each v As T` in a Sub, after `For Each v As T` loops of the same
-  Sub one after the other, is accepted, and the name still calls the Sub
-  (recorded); after a `For` over it in the Sub, whichever variable the
-  `For` counts, or inside a loop over it, it is *(open)*. Another
-  `For Each` without `As` over it is an error in a Sub after another loop
-  over its own `For Each` variable or `For` counter, in another Sub over
-  a counter or `For Each` variable of `Process_Globals`, and in
-  `Process_Globals` after its own counter (B4J: "Current declaration does
-  not match previous one", recorded); inside a loop over it, it is
-  *(open)*. In `Process_Globals`, another `For Each v As T`, and one
-  without `As` after a `For Each v As T` there, are *(open)*. A
+  wherever it is (recorded). A loop over such a name is settled only
+  where B4J's answer is recorded, as listed below and in `recorded_loop`
+  (`crates/hir/src/lower.rs`); any other loop over it is *(open)*, so a
+  compile error. Accepted, and the name still calls the Sub (recorded):
+  - the first loop over it in a Sub or in `Process_Globals`: a `For`, or a
+    `For Each v As T` of any type, which declares it; in another Sub, over
+    a loop variable of `Process_Globals`, a `For`, or a `For Each v As
+    Int`, which declares its own variable (only `Int` is recorded there);
+  - in a Sub or in `Process_Globals`, one after the other: a `For` after a
+    `For` or a `For Each v As Int`, and a `For Each v As Int` after
+    either; in another Sub, a `For Each v As Int` after a `For`;
+  - inside a `For Each v As Int` of a Sub, a `For Each v As Int`.
+
+  A `For` counts with a number as any `For` does (B4J: "Loop iterator
+  should be a numeric variable", recorded). A `For Each` without `As`
+  over it is an error (B4J: "Current declaration does not match previous
+  one", recorded): in a Sub or in `Process_Globals` after a `For` or a
+  `For Each v As Int` over it, inside a `For` of a Sub over it, and as the
+  first loop of another Sub over a loop variable of `Process_Globals`.
+  Every recording has at most two loops over the name, so a third, one
+  after the other or nested, is *(open)* too. After a refused or open loop
+  over it, the program has an error already, and the loops after it are
+  not judged. A
   `For Each v As T` of a Sub may have the name of a Sub and of a module
   variable of type `T`, and with another type it is an error as for any
   other name (recorded). In `Class_Globals`, a `Dim` with a Sub's

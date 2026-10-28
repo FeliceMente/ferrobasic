@@ -435,23 +435,37 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `local_for_each_named_like_sub_other_type`,
   `local_for_each_after_counter_named_like_sub`,
   `process_globals_for_each_named_like_sub_for_each_elsewhere`,
-  `process_globals_loop_named_like_sub_for_each_again`); another `For
-  Each v As T` over a `For Each` variable of the same Sub is accepted
-  (**recorded**: `local_typed_for_each_named_like_sub_loop_again`); a
+  `process_globals_loop_named_like_sub_for_each_again`), also inside a
+  `For` of a Sub over it and in `Process_Globals` after a typed `For Each`
+  (**recorded**: `local_for_each_named_like_sub_nested`,
+  `process_globals_for_each_named_like_sub_for_each_again`); another `For
+  Each v As T` is accepted after typed `For Each` loops or an `Int`
+  counter over it, one after the other, in a Sub or in `Process_Globals`,
+  and inside a typed `For Each` of a Sub over it (**recorded**:
+  `local_typed_for_each_named_like_sub_loop_again`,
+  `local_typed_for_each_after_counter_named_like_sub`,
+  `local_typed_for_each_after_module_counter_named_like_sub`,
+  `local_typed_for_each_named_like_sub_nested`,
+  `process_globals_counter_named_like_sub_typed_for_each_again`,
+  `process_globals_for_each_named_like_sub_typed_for_each_again`); a
   `Dim` with a Sub's name is refused: "Variable name cannot be the same as
   a sub name" (**recorded**: `module_variable_named_like_sub`). Not
-  recorded (*open*): another `For Each`, with or without `As`, in
-  `Process_Globals` over its own loop variable (without `As` only over a
-  typed `For Each` one: `process_globals_for_each_named_like_sub_for_each_again`,
-  `process_globals_counter_named_like_sub_typed_for_each_again`,
-  `process_globals_for_each_named_like_sub_typed_for_each_again`), a
-  `For Each v As T` after a `For` over the same name in the Sub,
-  whichever variable it counts
-  (`local_typed_for_each_after_counter_named_like_sub`,
-  `local_typed_for_each_after_module_counter_named_like_sub`), a
-  `For Each` with or without `As` inside a loop over the same name
-  (`local_typed_for_each_named_like_sub_nested`,
-  `local_for_each_named_like_sub_nested`), and a `Dim` of
+  recorded (*open*): a `For Each` without `As` as the first loop over the
+  name, which only a later typed `For Each` can declare
+  (`local_for_each_named_like_sub_before_typed`,
+  `process_globals_for_each_named_like_sub_before_typed`), or nested in a
+  loop of `Process_Globals` (`process_globals_for_each_named_like_sub_nested`);
+  a `For Each v As T` of another type after a counter of the Sub
+  (`local_typed_for_each_other_type_after_counter_named_like_sub`) or
+  inside a `For` over it (`local_typed_for_each_in_counter_named_like_sub`),
+  or nested in `Process_Globals`
+  (`process_globals_typed_for_each_named_like_sub_nested`); a `For` over
+  a loop variable that a `For Each v As T` of another number type than
+  `Int` declared (`local_counter_after_double_for_each_named_like_sub`);
+  any other combination of loops over the name, as FerroBASIC settles only
+  the recorded ones (`recorded_loop` in `crates/hir/src/lower.rs`, and
+  the pending tests listed in [open-questions.md](../open-questions.md));
+  and a `Dim` of
   `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
