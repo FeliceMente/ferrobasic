@@ -322,53 +322,151 @@ fn constants() {
     ] {
         assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
     }
-    // Not recorded: a loop over it, another declaration of its name, a
-    // `Const` of a name declared before, a field of a `Const` record.
-    let open_loop = "`Size` is a `Const`: whether a loop may loop over it is not known yet, so \
-                     use another name";
-    let open_again = "`Size` is a `Const`: whether another declaration may declare it again is \
-                      not known yet, so use another name";
+    // In `Process_Globals`, an `Int` declared by a `Const` and by a `Dim`
+    // with a value, in either order, builds (recorded).
+    for globals in [
+        "    Private Const Size As Int = 10\n    Private Size As Int = 3",
+        "    Private Size As Int = 3\n    Private Const Size As Int = 10",
+    ] {
+        ok(&module(globals, "    Log(Size)"));
+    }
+    // Refused (B4J: "Cannot modify Const variable.", "Cannot redeclare a
+    // const variable.", "Const variable must be set in the declaration
+    // line.", recorded).
+    let size = "    Private Const Size As Int = 10";
     for (globals, body, message) in [
         (
-            "    Private Const Size As Int = 10",
+            size,
             "    For Size = 1 To 2\n    Next",
-            open_loop,
+            "`Size` is a `Const`: a loop cannot loop over it",
         ),
         (
-            "    Private Const Size As Int = 10",
+            size,
             "    For Each Size As Int In Array As Int(1)\n    Next",
-            open_loop,
+            "`Size` is a `Const`: a loop cannot loop over it",
         ),
         (
-            "    Private Const Size As Int = 10\n    Private Size As Int = 3",
-            "",
-            open_again,
-        ),
-        (
-            "    Private Const Size As Int = 10",
+            size,
             "    Dim Size As Int = 4",
-            open_again,
-        ),
-        (
-            "    Private Size As Int = 3\n    Private Const Size As Int = 10",
-            "",
-            "`Size` is already declared: whether a `Const` may declare it again is not known \
-             yet, so use another name",
+            "`Size` is a `Const` of the module: a `Dim` cannot declare it again",
         ),
         (
             "    Private Const P As Point = NewPoint",
             "    P.X = 4",
-            "`P` is a `Const`: whether this part of it may be assigned is not known yet",
+            "`P` is a `Const`: its fields cannot be assigned",
+        ),
+        (
+            "    Private Const A(3) As Int",
+            "",
+            "`A` is a `Const`: give it its value where it is declared",
         ),
     ] {
         assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
     }
-    let open_bounds = "`A` is a `Const` array with bounds: whether it may have no value is not \
-                       known yet, so give it its value";
+    // Not recorded: any other loop over it or declaration again of its
+    // name, and whether one declared again may change.
+    let open_loop = "`Size` is a `Const`: whether a loop may loop over it here is not known \
+                     yet, so use another name";
+    let open_again = "`Size` is a `Const`: whether another declaration may declare it again \
+                      here is not known yet, so use another name";
+    let open_const = "`Size` is already declared: whether a `Const` may declare it again here \
+                      is not known yet, so use another name";
+    let redeclared = |what: &str| {
+        format!(
+            "`Size` is declared both by a `Const` and by a `Dim`: whether it {what} is not \
+             known yet"
+        )
+    };
+    let dim_after = "    Private Const Size As Int = 10\n    Private Size As Int = 3";
+    let after_dim = "    Private Size As Int = 3\n    Private Const Size As Int = 10";
+    for (globals, body, message) in [
+        (
+            size,
+            "    For Each Size In Array As Int(1)\n    Next",
+            open_loop.to_string(),
+        ),
+        (
+            &format!("{size}\n    For Size = 1 To 2\n    Next"),
+            "",
+            open_loop.to_string(),
+        ),
+        (
+            "    Private Const Size As Double = 10",
+            "    For Size = 1 To 2\n    Next",
+            open_loop.to_string(),
+        ),
+        (
+            "",
+            "    Dim Const Size As Int = 5\n    For Size = 1 To 2\n    Next",
+            open_loop.to_string(),
+        ),
+        (size, "    Dim Size As Int", open_again.to_string()),
+        (
+            "    Private Const Size As Int = 10\n    Private Size As Int",
+            "",
+            open_again.to_string(),
+        ),
+        (
+            "    Private Const Size As String = \"a\"\n    Private Size As String = \"b\"",
+            "",
+            open_again.to_string(),
+        ),
+        (
+            "    Private Const Size As Int = 10\n    Private Const Size As Int = 11",
+            "",
+            open_const.to_string(),
+        ),
+        (
+            &format!("{dim_after}\n    Private Size As Int = 4"),
+            "",
+            open_again.to_string(),
+        ),
+        (
+            &format!("{after_dim}\n    Private Const Size As Int = 4"),
+            "",
+            open_const.to_string(),
+        ),
+        (dim_after, "    Size = 5", redeclared("may be assigned")),
+        (after_dim, "    Size = 5", redeclared("may be assigned")),
+        (
+            after_dim,
+            "    For Size = 1 To 2\n    Next",
+            redeclared("may be looped over"),
+        ),
+        (dim_after, "    Dim Size As Int = 4", open_again.to_string()),
+        (
+            "    Private Const Ps() As Point = Array As Point(NewPoint)",
+            "    Ps(0).X = 4",
+            "`Ps` is a `Const`: whether this part of it may be assigned is not known yet"
+                .to_string(),
+        ),
+    ] {
+        assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
+    }
+    // A `Const` after two declarations is a third: open.
     assert_eq!(
-        errors(&module("    Private Const A(3) As Int", "")),
-        [open_bounds]
+        errors(&module(
+            "    Private Size As Int = 3\n    Private Size As Int = 4\n    Private Const Size As Int = 10",
+            ""
+        )),
+        [open_const]
     );
+    // After a declaration again refused, the program has an error already:
+    // the uses of the name are refused with no error of their own.
+    for body in [
+        "    Size = 5",
+        "    For Size = 1 To 2\n    Next",
+        "    Dim Size As Int = 4",
+    ] {
+        assert_eq!(
+            errors(&module(
+                "    Private Const Size As Int = 10\n    Private Size As Int",
+                body
+            )),
+            [open_again],
+            "{body}"
+        );
+    }
     // Another type is the clash already reported, alone.
     assert_eq!(
         errors(&module(
