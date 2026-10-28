@@ -290,7 +290,13 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       - in another Sub over a loop variable of `Process_Globals`, a loop
         after another one over the name
         (`level0/process_globals_loop_named_like_sub_loop_elsewhere_again`,
-        `level0/local_typed_for_each_over_module_variable_loop_again_named_like_sub`).
+        `level0/local_typed_for_each_over_module_variable_loop_again_named_like_sub`);
+      - a third loop over it, one after the other or nested, as every
+        recording has at most two
+        (`level0/local_counter_named_like_sub_loop_three_times`,
+        `level0/process_globals_loop_named_like_sub_loop_three_times`,
+        `level0/local_typed_for_each_counter_typed_named_like_sub`,
+        `level0/local_typed_for_each_named_like_sub_nested_three_deep`).
 - [x] A `For Each v As T` in another Sub over a loop variable of
       `Process_Globals` is a `For Each` over a module variable of type
       `T`, accepted as recorded below.

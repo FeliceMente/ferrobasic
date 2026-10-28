@@ -28,8 +28,9 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   inside a loop over the name; a `For` over a variable that a `For Each`
   of another number type than `Int` declares; a `For Each` of another
   type than `Int` again, or in another Sub over a name that a loop of
-  `Process_Globals` declares; and a second loop in another Sub over a
-  loop variable of `Process_Globals`. After a loop refused or open, the
+  `Process_Globals` declares; a second loop in another Sub over a loop
+  variable of `Process_Globals`; and a third loop over the name, one after
+  the other or nested, as no recording has more than two. After a loop refused or open, the
   loops over the name after it get no error of their own.
 - Recording runs 12 and 13: the leading-point reals are recorded as
   FerroBASIC runs them, and are `Double`s.

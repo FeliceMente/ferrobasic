@@ -89,8 +89,10 @@ End Sub
   one", recorded): in a Sub or in `Process_Globals` after a `For` or a
   `For Each v As Int` over it, inside a `For` of a Sub over it, and as the
   first loop of another Sub over a loop variable of `Process_Globals`.
-  After a refused or open loop over it, the program has an error already,
-  and the loops after it are not judged. A
+  Every recording has at most two loops over the name, so a third, one
+  after the other or nested, is *(open)* too. After a refused or open loop
+  over it, the program has an error already, and the loops after it are
+  not judged. A
   `For Each v As T` of a Sub may have the name of a Sub and of a module
   variable of type `T`, and with another type it is an error as for any
   other name (recorded). In `Class_Globals`, a `Dim` with a Sub's

@@ -1031,6 +1031,21 @@ fn loops_in_process_globals() {
     ] {
         assert_eq!(errors(&sub(&body, &app)), [open(what, form)], "{body}{app}");
     }
+    // Every recording has at most two loops over the name: a third, one
+    // after the other or nested, is open on the third loop.
+    for (body, app, what, form) in [
+        (String::new(), format!("{counter}{counter}{counter}"), sub_var, open_for),
+        (format!("{counter}{counter}{counter}"), String::new(), module, open_for),
+        (String::new(), format!("{typed}{counter}{typed}"), sub_var, open_typed),
+        (
+            String::new(),
+            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n            For Each Bump As Int In Array As Int(5)\n            Next\n        Next\n    Next\n".to_string(),
+            sub_var,
+            open_typed,
+        ),
+    ] {
+        assert_eq!(errors(&sub(&body, &app)), [open(what, form)], "{body}{app}");
+    }
     // After a refused loop, the program has an error already: the loops
     // after it are not judged, so no error follows from them.
     for (body, app) in [
