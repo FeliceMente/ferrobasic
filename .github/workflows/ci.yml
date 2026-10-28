@@ -58,6 +58,7 @@ jobs:
       # their SHA-256, then runs the tests that need them.
       - run: cargo run -p ferro-corpus --bin ferro-corpus-fetch
       - run: cargo test -p ferro-syntax --test projects -- --ignored
+      - run: cargo test -p ferro-project --test projects -- --ignored
 
   static-linux:
     name: static Linux binary (musl)

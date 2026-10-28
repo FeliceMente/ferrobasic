@@ -138,6 +138,41 @@ At Level 0 a module file's `Type` must be `StaticCode`, or the header may be
 absent (as in `tests/conformance`). `Type=Class` is an error that points to
 Level 1; any other type is an error.
 
+## Reading a project
+
+`ferro-project` reads a project file, its `.b4j.meta` file and its module
+files so that each writes back byte for byte: the byte order mark, every
+`Key=Value` line, every line end (CRLF, CR or LF) and the code after the
+header are kept. Round-trip tests run on hand-written files and on the
+[real-world corpus](../../tests/corpus/README.md).
+
+A project's modules are found from its `Module<n>` lines, in the order of
+`n`, whatever its number of digits:
+
+- `Module1=Tools` is `Tools.bas` in the project's folder.
+- `Module1=|relative|..\Shared\Tools` is `Tools.bas` at that path from the
+  project's folder; `\` and `/` both separate folders. (The B4XPages
+  samples name a shared module this way; the corpus has none yet.) An
+  absolute path (`/…`, `\\server\…`, `C:\…`) or one ending with a
+  separator is an error: what the IDE does with one is not known, so
+  FerroBASIC refuses it rather than guess.
+- Each folder, and the file, is the one with that exact name, or else the
+  one entry of its folder whose name differs only in letter case, of any
+  letter (`Ü` and `ü` too): the IDE runs on Windows, and `jsonwebtoken` in
+  the corpus names `JSONWebToken.bas` as `Module1=JsonWebToken`. Two such
+  entries, and no exact one, is an error.
+- A module that cannot be found or read is an error at its line of the
+  project file; the other modules are still read. A `.b4j.meta` file that
+  cannot be read (not UTF-8, for example) is reported and left out, as it
+  only holds the IDE's state.
+
+The `NumberOfFiles`, `NumberOfLibraries` and `NumberOfModules` counts can be
+compared with the numbered keys; every project of the corpus agrees. What
+the IDE does when they differ is not known, so nothing depends on them yet.
+
+At Level 0, `ferro check`, `run` and `bundle` still accept only a project
+with no module (see [At Level 0](#at-level-0)).
+
 ## Sources
 
 - Console projects: [`helloworld.b4j`](https://github.com/rwbl/b4j-howtos/blob/master/helloworld.b4j)

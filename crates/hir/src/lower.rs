@@ -35,12 +35,25 @@ struct Lowerer {
     /// Loop variables of `Process_Globals` already refused with an error.
     refused_loop_names: HashSet<String>,
     /// Module variables that a loop of `Process_Globals` declares.
-    /// With the kind of the loop (`For` or `For Each`) that declares each.
-    loop_declared: HashMap<String, SyntaxKind>,
-    /// The current Sub's locals with a Sub's name, with the loop variable
-    /// that declares each (none for a refused `Dim`): their uses mean the
-    /// Sub (recorded).
-    sub_named_locals: HashMap<String, Option<(TextRange, SyntaxKind)>>,
+    loop_declared: HashSet<String>,
+    /// The loops of the Sub being lowered (`Process_Globals` included) over
+    /// each name with a Sub's name, in source order, up to the current one.
+    sub_named_loops: HashMap<String, LoopsBefore>,
+    /// The loop variables refused where they are declared, by the range of
+    /// the loop's name: a typed `For` with a Sub's name, or a typed loop of
+    /// another type than its variable's.
+    refused_loop_vars: HashSet<TextRange>,
+    /// What `declare_process_globals` found about the constants of
+    /// `Process_Globals`.
+    const_states: HashMap<GlobalId, ConstState>,
+    /// Whether to lower each declaration again of a constant's name in
+    /// `Process_Globals`, as `declare_process_globals` decided, by the range
+    /// of its declarator.
+    const_declarations: HashMap<TextRange, bool>,
+    /// The current Sub's locals with a Sub's name: `true` for a loop
+    /// variable, `false` for a refused `Dim`. Their uses mean the Sub
+    /// (recorded).
+    sub_named_locals: HashMap<String, bool>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -169,10 +182,195 @@ fn typed_loop_variable(name: &str, statement: &str, globals: &str) -> String {
     )
 }
 
+/// A declarator of `Process_Globals`, as `declare_process_globals` sees it.
+struct GlobalDeclaration {
+    range: TextRange,
+    /// Its name's range.
+    at: TextRange,
+    ty: Ty,
+    is_const: bool,
+    /// Its value is a literal, as recorded.
+    literal: bool,
+    /// A statement of `Process_Globals` itself, not inside a block.
+    direct: bool,
+}
+
+/// What the declarations of `Process_Globals` make of a constant.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConstState {
+    /// Declared there once, by its `Const` alone.
+    Single,
+    /// An `Int` declared by a `Const` and by a `Dim` with a value, in either
+    /// order, and nothing else: built (recorded), but whether it may then
+    /// change is not known, asked once (`reported`).
+    Redeclared { reported: bool },
+    /// Declared again where that is refused as open: the program has an
+    /// error already, so the uses of the name are refused with no error of
+    /// their own.
+    Reported,
+}
+
+/// A declaration again of a constant's name, or a `Const` of a name declared
+/// before, of the same type: not recorded.
+fn const_again_open(name: &str, is_const: bool) -> String {
+    if is_const {
+        format!(
+            "`{name}` is already declared: whether a `Const` may declare it again here is not \
+             known yet, so use another name"
+        )
+    } else {
+        format!(
+            "`{name}` is a `Const`: whether another declaration may declare it again here is not \
+             known yet, so use another name"
+        )
+    }
+}
+
+/// A module variable declared both by a `Const` and by a `Dim`: whether it
+/// may change is not known.
+fn redeclared_const_open(name: &str, what: &str) -> String {
+    format!(
+        "`{name}` is declared both by a `Const` and by a `Dim`: whether it {what} is not known \
+         yet"
+    )
+}
+
 /// A `Dim` with a Sub's name. B4J: "Variable name cannot be the same as a
 /// sub name" (recorded, in `Process_Globals` and in a Sub).
 fn variable_named_like_sub(name: &str) -> String {
     format!("a variable cannot have the name of a Sub: `{name}` is a Sub")
+}
+
+/// The loops of a Sub so far over a name with a Sub's name.
+#[derive(Default)]
+struct LoopsBefore {
+    /// The accepted loops, in order: all over the same variable.
+    seen: Vec<LoopKind>,
+    /// A loop B4J's answer to is not recorded, or refused: the program has
+    /// an error, and the loops after it are not judged.
+    unrecorded: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LoopKind {
+    Counter,
+    /// `For Each v As T`.
+    Typed,
+    /// `For Each` without `As`.
+    Untyped,
+}
+
+/// Where a loop over a name with a Sub's name is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LoopScope {
+    /// In a Sub, over its own loop variable.
+    Sub,
+    /// In `Process_Globals`, over one of its loop variables.
+    ProcessGlobals,
+    /// In another Sub, over a loop variable of `Process_Globals`.
+    Elsewhere,
+    /// In another Sub, over its own loop variable, which has the name of a
+    /// loop variable of `Process_Globals` too.
+    SubOverModule,
+}
+
+/// What B4J's recordings say about a loop over a name with a Sub's name:
+/// accepted (`Some(true)`), refused with "Current declaration does not
+/// match previous one" (`Some(false)`), or not recorded (`None`). The
+/// variable's type is `ty`; `before` holds the loops over it accepted
+/// before in the same Sub, and `around` those around it, all over the
+/// same variable. Only
+/// these rows are recorded; anything else is open.
+fn recorded_loop(
+    scope: LoopScope,
+    kind: LoopKind,
+    ty: &Ty,
+    before: &[LoopKind],
+    around: &[LoopKind],
+) -> Option<bool> {
+    use LoopKind::*;
+    use LoopScope::*;
+    let int = |t: &Ty| *t == Ty::Int;
+    // The first loop over the name in this Sub.
+    let first = match (scope, kind) {
+        // `local_counter_named_like_sub`, `process_globals_loop_named_like_sub`,
+        // `process_globals_loop_named_like_sub_loop_elsewhere`,
+        // `process_globals_for_each_named_like_sub_loop_elsewhere`.
+        (_, Counter) if int(ty) => Some(true),
+        // It declares the name, of any type: `local_for_each_named_like_sub`
+        // (`Int`), `local_for_each_named_like_sub_member` (`String`), and
+        // their `Process_Globals` twins.
+        (Sub | ProcessGlobals, Typed) => Some(true),
+        // `local_for_each_named_like_sub_over_module_variable`.
+        (SubOverModule, Typed) if int(ty) => Some(true),
+        // `process_globals_loop_named_like_sub_for_each_elsewhere`,
+        // `process_globals_for_each_named_like_sub_for_each_elsewhere`.
+        (Elsewhere, Untyped) if int(ty) => Some(false),
+        _ => None,
+    };
+    // This loop after an earlier one over the name, one after the other.
+    let after = |earlier: LoopKind| match (scope, earlier, kind) {
+        // `local_typed_for_each_after_module_counter_named_like_sub`.
+        (SubOverModule, Counter, Typed) if int(ty) => Some(true),
+        (Elsewhere | SubOverModule, ..) => None,
+        // `local_counter_named_like_sub_loop_again`,
+        // `process_globals_loop_named_like_sub_loop_again`.
+        (_, Counter, Counter) if int(ty) => Some(true),
+        // `local_counter_after_for_each_named_like_sub`,
+        // `process_globals_counter_after_for_each_named_like_sub`.
+        (_, Typed, Counter) if int(ty) => Some(true),
+        // `local_typed_for_each_after_counter_named_like_sub`,
+        // `process_globals_counter_named_like_sub_typed_for_each_again`.
+        (_, Counter, Typed) if int(ty) => Some(true),
+        // `local_typed_for_each_named_like_sub_loop_again`,
+        // `process_globals_for_each_named_like_sub_typed_for_each_again`.
+        (_, Typed, Typed) if int(ty) => Some(true),
+        // `local_for_each_after_counter_named_like_sub`,
+        // `process_globals_loop_named_like_sub_for_each_again`.
+        (_, Counter, Untyped) => Some(false),
+        // `local_for_each_named_like_sub_loop_again`,
+        // `process_globals_for_each_named_like_sub_for_each_again`.
+        (_, Typed, Untyped) if int(ty) => Some(false),
+        _ => None,
+    };
+    // This loop inside one over the name.
+    let inside = |outer: LoopKind| match (scope, outer, kind) {
+        // `local_typed_for_each_named_like_sub_nested`.
+        (Sub, Typed, Typed) if int(ty) => Some(true),
+        // `local_for_each_named_like_sub_nested`.
+        (Sub, Counter, Untyped) => Some(false),
+        _ => None,
+    };
+    // Every recording has at most two loops over the name: this one, and
+    // one before it or around it. Anything longer is not recorded.
+    match (before, around) {
+        ([], []) => first,
+        ([earlier], []) => after(*earlier),
+        // The loop around it is the one before it.
+        ([earlier], [outer]) if earlier == outer => inside(*outer),
+        _ => None,
+    }
+}
+
+fn loop_kind(node: &SyntaxNode) -> LoopKind {
+    match (node.kind(), child(node, TYPE_REF).is_some()) {
+        (FOR_STMT, _) => LoopKind::Counter,
+        (_, true) => LoopKind::Typed,
+        _ => LoopKind::Untyped,
+    }
+}
+
+/// Whether a declarator belongs to a `Const` statement.
+fn in_const(decl: &SyntaxNode) -> bool {
+    decl.parent()
+        .is_some_and(|dim| child(&dim, CONST_MODIFIER).is_some())
+}
+
+/// Why an assignment's target cannot be assigned, once reported.
+enum Unassignable {
+    /// A constant, or part of one, of this type: its value is still checked.
+    Const(Ty),
+    Reported,
 }
 
 /// What a `For` / `For Each` loops over.
@@ -429,6 +627,7 @@ impl Lowerer {
                     name: pname,
                     ty,
                     range: range(&param),
+                    is_const: false,
                 });
             }
         }
@@ -503,7 +702,8 @@ impl Lowerer {
                     self.declare_global(name, Ty::Error, range(&decl));
                     continue;
                 }
-                self.declare_global(name, ty, range(&decl));
+                self.declare_global(name.clone(), ty, range(&decl));
+                self.mark_const(&decl, &name);
             }
         }
     }
@@ -526,6 +726,7 @@ impl Lowerer {
                     name,
                     ty,
                     range: at,
+                    is_const: false,
                 });
             }
         }
@@ -542,14 +743,109 @@ impl Lowerer {
         let nodes = sub
             .descendants()
             .filter(|n| matches!(n.kind(), DIM_STMT | FOR_STMT | FOR_EACH_STMT));
+        // Each name's declarations: `Err` for a loop, at its name.
+        let mut declarations: HashMap<String, Vec<Result<GlobalDeclaration, TextRange>>> =
+            HashMap::new();
         for node in nodes {
             if node.kind() == DIM_STMT {
+                let direct = node.parent().and_then(|block| block.parent()).as_ref() == Some(sub);
                 for (decl, ty) in self.declarators(&node) {
                     let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
-                    self.declare_dim_global(name, ty, range(&decl));
+                    let declaration = GlobalDeclaration {
+                        range: range(&decl),
+                        at: child(&decl, NAME).map_or_else(|| range(&decl), |n| range(&n)),
+                        ty: ty.clone(),
+                        is_const: in_const(&decl),
+                        literal: exprs(&decl).first().is_some_and(|e| e.kind() == LITERAL),
+                        direct,
+                    };
+                    self.declare_dim_global(name.clone(), ty, range(&decl));
+                    self.mark_const(&decl, &name);
+                    declarations
+                        .entry(key(&name))
+                        .or_default()
+                        .push(Ok(declaration));
                 }
             } else {
                 self.declare_loop_global(&node);
+                if let Some(name) = child(&node, NAME) {
+                    declarations
+                        .entry(key(&name_of(&name)))
+                        .or_default()
+                        .push(Err(range(&name)));
+                }
+            }
+        }
+        for (k, found) in declarations {
+            let Some(&id) = self.globals.get(&k) else {
+                continue;
+            };
+            let global = self.module.global(id);
+            let (first, is_const, ty) = (global.range, global.is_const, global.ty.clone());
+            let name = global.name.clone();
+            // An `Int` declared by a `Const` and by a `Dim`, in either order,
+            // both with a literal value and statements of `Process_Globals`
+            // itself.
+            let pair = match &found[..] {
+                [Ok(a), Ok(b), ..] => {
+                    a.is_const != b.is_const
+                        && a.literal
+                        && b.literal
+                        && a.direct
+                        && b.direct
+                        && a.ty == Ty::Int
+                        && b.ty == Ty::Int
+                }
+                _ => false,
+            };
+            // Every declaration but the first: lowered for the recorded pair
+            // alone (the program has an error otherwise).
+            let again: Vec<TextRange> = found
+                .iter()
+                .flatten()
+                .map(|d| d.range)
+                .filter(|&r| r != first)
+                .collect();
+            if pair && found.len() == 2 {
+                self.module.globals[id.0 as usize].is_const = true;
+                self.const_states
+                    .insert(id, ConstState::Redeclared { reported: false });
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, true)));
+                continue;
+            }
+            if pair {
+                // The pair, then what makes it open: reported there; another
+                // type is the clash reported already.
+                match &found[2] {
+                    Ok(d) if d.ty == ty => {
+                        self.error(d.at, redeclared_const_open(&name, "may be declared again"));
+                    }
+                    Ok(_) => {}
+                    Err(at) => self.error(*at, redeclared_const_open(&name, "may be looped over")),
+                }
+                self.const_states.insert(id, ConstState::Reported);
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, false)));
+                continue;
+            }
+            // The first declaration again that is refused, reported here so
+            // that every Sub sees it refused, wherever it is; another type
+            // is the clash reported already.
+            let refused = found
+                .iter()
+                .flatten()
+                .find(|d| d.range != first && d.ty == ty && (d.is_const || is_const));
+            if let Some(d) = refused {
+                self.error(d.at, const_again_open(&name, d.is_const));
+                self.const_states.insert(id, ConstState::Reported);
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, false)));
+            } else if let [Ok(d)] = &found[..]
+                && d.is_const
+                && d.direct
+            {
+                self.const_states.insert(id, ConstState::Single);
             }
         }
     }
@@ -564,7 +860,7 @@ impl Lowerer {
             return;
         }
         if let Some(&id) = self.globals.get(&k)
-            && self.loop_declared.contains_key(&k)
+            && self.loop_declared.contains(&k)
         {
             let existing = self.module.global(id).ty.clone();
             if existing != ty && existing != Ty::Error && ty != Ty::Error {
@@ -604,7 +900,7 @@ impl Lowerer {
             // that variable, whichever declarations and in which order
             // (recorded), and another type is refused (recorded).
             let existing = self.module.global(id).ty.clone();
-            let counter_over_dim = node.kind() == FOR_STMT && !self.loop_declared.contains_key(&k);
+            let counter_over_dim = node.kind() == FOR_STMT && !self.loop_declared.contains(&k);
             if counter_over_dim || existing == ty || existing == Ty::Error || ty == Ty::Error {
                 return;
             }
@@ -620,7 +916,7 @@ impl Lowerer {
             return;
         }
         if self.loop_name_free(&text, &name) {
-            self.loop_declared.insert(k, node.kind());
+            self.loop_declared.insert(k);
             self.declare_global(text, ty, range(&name));
         }
     }
@@ -716,6 +1012,7 @@ impl Lowerer {
             .collect();
         self.ret = sub.ret.clone();
         self.sub_named_locals.clear();
+        self.sub_named_loops.clear();
         self.in_class_globals = self.class_globals == Some(id);
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
         self.loops = 0;
@@ -760,6 +1057,7 @@ impl Lowerer {
                 let existing = &self.locals[id.0 as usize].ty;
                 if *existing != ty && *existing != Ty::Error && ty != Ty::Error {
                     let existing = self.ty_name(existing);
+                    self.refused_loop_vars.insert(at);
                     self.error(
                         at,
                         format!("`{name}` is already declared as {existing} in this Sub"),
@@ -785,6 +1083,7 @@ impl Lowerer {
             name: name.to_string(),
             ty,
             range: at,
+            is_const: false,
         });
     }
 
@@ -801,12 +1100,12 @@ impl Lowerer {
                 self.push_local(name, ty, at);
             }
             // A loop of that name still means the Sub.
-            self.sub_named_locals.entry(k).or_insert(None);
+            self.sub_named_locals.entry(k).or_insert(false);
             return;
         }
         if !self.local_names.contains_key(&k) {
             if self.subs.contains_key(&k) {
-                self.sub_named_locals.insert(k, Some((at, FOR_EACH_STMT)));
+                self.sub_named_locals.insert(k, true);
             } else if let Some(&id) = self.globals.get(&k)
                 && self.module.global(id).ty == ty
             {
@@ -825,6 +1124,7 @@ impl Lowerer {
         if self.subs.contains_key(&k) {
             if typed {
                 // Whatever declared the name first (recorded without one).
+                self.refused_loop_vars.insert(at);
                 self.error(
                     at,
                     format!(
@@ -833,13 +1133,13 @@ impl Lowerer {
                     ),
                 );
                 if !declared {
-                    self.sub_named_locals.insert(k, Some((at, FOR_STMT)));
+                    self.sub_named_locals.insert(k, true);
                     self.push_local(name, ty, at);
                 }
                 return;
             }
             if !declared {
-                self.sub_named_locals.insert(k, Some((at, FOR_STMT)));
+                self.sub_named_locals.insert(k, true);
             }
         }
         self.declare_local(name, ty, at);
@@ -875,7 +1175,9 @@ impl Lowerer {
                  again as {ty}"
             )
         };
-        self.error(at, message);
+        self.refused_loop_vars.insert(at);
+        // After a constant refused, or asked about once, no error of its own.
+        self.const_error(&VarRef::Global(id), at, message);
     }
 
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
@@ -886,6 +1188,7 @@ impl Lowerer {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                         self.declare_dim_local(&name, ty, range(&decl), true);
+                        self.mark_const(&decl, &name);
                     }
                 }
                 FOR_EACH_STMT => {
@@ -949,17 +1252,14 @@ impl Lowerer {
         let push = |out: &mut Block, kind| out.push(Stmt { kind, range: at });
         match node.kind() {
             DIM_STMT => {
-                if let Some(modifier) = child(node, CONST_MODIFIER) {
-                    self.error(
-                        range(&modifier),
-                        "`Const` declarations are not supported yet",
-                    );
-                }
-                for (decl, _) in self.declarators(node) {
+                for (decl, decl_ty) in self.declarators(node) {
                     let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                     let Some((var, ty)) = self.lookup_var(&name) else {
                         continue;
                     };
+                    if !self.const_declaration(&decl, &decl_ty, &var) {
+                        continue;
+                    }
                     let bounds = child(&decl, ARRAY_BOUNDS);
                     let init = if let Some(init) = exprs(&decl).first() {
                         // `Dim days() As String = Array As String(...)`.
@@ -995,16 +1295,24 @@ impl Lowerer {
                 let (Some(target), Some(value)) = (parts.first(), parts.get(1)) else {
                     return;
                 };
-                if let Some((place, ty)) = self.place(target) {
-                    let value = self.expr(value);
-                    let value = self.coerce(value, &ty);
-                    push(
-                        out,
-                        StmtKind::Assign {
-                            target: place,
-                            value,
-                        },
-                    );
+                match self.place(target) {
+                    Ok((place, ty)) => {
+                        let value = self.expr(value);
+                        let value = self.coerce(value, &ty);
+                        push(
+                            out,
+                            StmtKind::Assign {
+                                target: place,
+                                value,
+                            },
+                        );
+                    }
+                    // Its errors are reported along with the constant's.
+                    Err(Unassignable::Const(ty)) => {
+                        let value = self.expr(value);
+                        self.coerce(value, &ty);
+                    }
+                    Err(Unassignable::Reported) => {}
                 }
             }
             EXPR_STMT => {
@@ -1078,6 +1386,7 @@ impl Lowerer {
                     self.refused_loop(node, &text, &name);
                     return;
                 };
+                self.accepted_loop(node, &name, &ty);
                 if !ty.is_numeric() && ty != Ty::Error {
                     let ty = self.ty_name(&ty);
                     self.error(
@@ -1137,6 +1446,7 @@ impl Lowerer {
                     self.refused_loop(node, &text, &name);
                     return;
                 };
+                self.accepted_loop(node, &name, &ty);
                 let Some(coll) = exprs(node).into_iter().next() else {
                     return;
                 };
@@ -1233,6 +1543,10 @@ impl Lowerer {
     /// collection, then its body. An undeclared variable is declared with
     /// the error type first, so its uses are not reported again.
     fn refused_loop(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) {
+        let k = key(text);
+        if self.subs.contains_key(&k) {
+            self.sub_named_loops.entry(k).or_default().unrecorded = true;
+        }
         for e in exprs(node) {
             self.expr(&e);
         }
@@ -1242,52 +1556,140 @@ impl Lowerer {
         self.loop_body(node);
     }
 
+    /// Notes a loop lowered past its variable, when its name is a Sub's.
+    fn accepted_loop(&mut self, node: &SyntaxNode, name: &SyntaxNode, ty: &Ty) {
+        let k = key(&name_of(name));
+        if !self.subs.contains_key(&k) {
+            return;
+        }
+        let kind = loop_kind(node);
+        let refused = self.refused_loop_already(node, name, ty);
+        let seen = self.sub_named_loops.entry(k).or_default();
+        if refused || kind == LoopKind::Untyped {
+            seen.unrecorded = true;
+        } else {
+            seen.seen.push(kind);
+        }
+    }
+
+    /// Whether a loop is refused elsewhere: where its variable is declared
+    /// (`refused_loop_vars`); over a variable of an unknown type, reported
+    /// where the type is; or, for a `For` over anything but a number or with
+    /// `As` in `Process_Globals`, when it is lowered.
+    fn refused_loop_already(&self, node: &SyntaxNode, name: &SyntaxNode, ty: &Ty) -> bool {
+        self.refused_loop_vars.contains(&range(name))
+            || *ty == Ty::Error
+            || (node.kind() == FOR_STMT
+                && (!ty.is_numeric()
+                    || (self.in_process_globals && child(node, TYPE_REF).is_some())))
+    }
+
     /// The variable a `For` / `For Each` loops over, or the loop refused
-    /// (reported and checked here). A `For` may loop over a loop variable
-    /// with a Sub's name anywhere, and must count with a number like any
-    /// other (recorded). Another `For Each` over it is refused: without
-    /// `As` where B4J's refusal is recorded ("Current declaration does not
-    /// match previous one": over a `For Each` of the same Sub, or in another
-    /// Sub over a counter of `Process_Globals`), as open anywhere else.
+    /// (reported and checked here). Over a loop variable with a Sub's name,
+    /// a loop is accepted, or refused with B4J's message, only where
+    /// `recorded_loop` lists B4J's answer; anything else is refused as
+    /// open. After a loop refused or not recorded, which is an error
+    /// already, the loops over the name are not judged.
     fn loop_variable(&mut self, node: &SyntaxNode, text: &str, name: &SyntaxNode) -> LoopVar {
         let found = self.lookup_var(text);
+        if let Some((var, ty)) = &found
+            && self.is_const(var)
+        {
+            // B4J: "Cannot modify Const variable." (recorded), for a `For`
+            // and a `For Each v As Int` in a Sub over a module `Int` `Const`.
+            let recorded = !self.in_process_globals
+                && self.recorded_const(var)
+                && *ty == Ty::Int
+                && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some());
+            let message = if recorded {
+                format!("`{text}` is a `Const`: a loop cannot loop over it")
+            } else if self.redeclared_const(var) {
+                redeclared_const_open(text, "may be looped over")
+            } else {
+                format!(
+                    "`{text}` is a `Const`: whether a loop may loop over it here is not known \
+                     yet, so use another name"
+                )
+            };
+            self.const_error(var, range(name), message);
+            self.refused_loop(node, text, name);
+            return LoopVar::Refused;
+        }
         let k = key(text);
-        if node.kind() == FOR_STMT || !self.subs.contains_key(&k) {
+        if !self.subs.contains_key(&k) {
             return LoopVar::Found(found);
         }
-        let at = range(name);
-        // What it loops over again, and whether B4J's refusal of a `For Each`
-        // without `As` there is recorded.
-        let (what, recorded) = match &found {
-            Some((VarRef::Global(id), _)) if self.module.global(*id).range != at => {
-                match self.loop_declared.get(&k) {
-                    Some(&kind) => (
-                        "a module variable",
-                        !self.in_process_globals && kind == FOR_STMT,
-                    ),
-                    None => return LoopVar::Found(found),
-                }
+        // A loop variable with a Sub's name: anything else was reported
+        // already, or is not one.
+        let (scope, ty) = match &found {
+            Some((VarRef::Global(_), ty)) if self.loop_declared.contains(&k) => {
+                let scope = if self.in_process_globals {
+                    LoopScope::ProcessGlobals
+                } else {
+                    LoopScope::Elsewhere
+                };
+                (scope, ty.clone())
             }
-            Some((VarRef::Local(_), _)) => match self.sub_named_locals.get(&k) {
-                Some(Some((declared, kind))) if *declared != at => {
-                    ("a loop variable of this Sub", *kind == FOR_EACH_STMT)
-                }
-                _ => return LoopVar::Found(found),
-            },
+            Some((VarRef::Local(_), ty)) if self.sub_named_locals.get(&k) == Some(&true) => {
+                let module_ty = self
+                    .globals
+                    .get(&k)
+                    .filter(|_| self.loop_declared.contains(&k))
+                    .map(|id| self.module.global(*id).ty.clone());
+                let scope = match module_ty {
+                    None => LoopScope::Sub,
+                    Some(module_ty) if module_ty == *ty => LoopScope::SubOverModule,
+                    // Another type than the module variable's: reported
+                    // already (recorded).
+                    Some(_) => return LoopVar::Found(found),
+                };
+                (scope, ty.clone())
+            }
             _ => return LoopVar::Found(found),
         };
-        let message = if child(node, TYPE_REF).is_some() || !recorded {
-            format!(
-                "`{text}` is {what} with the name of a Sub: whether another `For Each` may loop \
-                 over it here is not known yet, so use another name"
-            )
+        let kind = loop_kind(node);
+        let before = self.sub_named_loops.get(&k);
+        if before.is_some_and(|b| b.unrecorded) || self.refused_loop_already(node, name, &ty) {
+            return LoopVar::Found(found);
+        }
+        // Every loop over the same name around this one: more than one is
+        // open (`recorded_loop`).
+        let around: Vec<LoopKind> = node
+            .ancestors()
+            .skip(1)
+            .filter(|a| {
+                matches!(a.kind(), FOR_STMT | FOR_EACH_STMT)
+                    && child(a, NAME).is_some_and(|n| key(&name_of(&n)) == k)
+            })
+            .map(|a| loop_kind(&a))
+            .collect();
+        let seen = before.map_or(&[][..], |b| &b.seen);
+        let answer = recorded_loop(scope, kind, &ty, seen, &around);
+        if answer == Some(true) {
+            return LoopVar::Found(found);
+        }
+        let what = if matches!(scope, LoopScope::Sub | LoopScope::SubOverModule) {
+            "a loop variable of this Sub"
         } else {
+            "a module variable"
+        };
+        let message = if answer == Some(false) {
             format!(
                 "`{text}` is {what} with the name of a Sub: a `For Each` without `As` cannot \
                  loop over it again"
             )
+        } else {
+            let form = match kind {
+                LoopKind::Counter => "this `For`",
+                LoopKind::Typed => "this `For Each`",
+                LoopKind::Untyped => "a `For Each` without `As`",
+            };
+            format!(
+                "`{text}` is {what} with the name of a Sub: whether {form} may loop over it here \
+                 is not known yet, so use another name"
+            )
         };
-        self.error(at, message);
+        self.error(range(name), message);
         self.refused_loop(node, text, name);
         LoopVar::Refused
     }
@@ -1363,7 +1765,7 @@ impl Lowerer {
     }
 
     /// The target of an assignment and its type.
-    fn place(&mut self, node: &SyntaxNode) -> Option<(Place, Ty)> {
+    fn place(&mut self, node: &SyntaxNode) -> Result<(Place, Ty), Unassignable> {
         match node.kind() {
             NAME_REF => {
                 let name = name_of(node);
@@ -1372,14 +1774,25 @@ impl Lowerer {
                 // expected" inside its loop: recorded).
                 // A `Dim` with a Sub's name was reported already: assigning it
                 // is not reported again.
-                let refused_dim = matches!(self.sub_named_locals.get(&key(&name)), Some(None));
+                let refused_dim = self.sub_named_locals.get(&key(&name)) == Some(&false);
                 let found = if refused_dim {
                     self.lookup_var(&name)
                 } else {
                     self.lookup_value(&name)
                 };
                 match found {
-                    Some((var, ty)) => Some((Place::Var(var), ty)),
+                    Some((var, ty)) if !refused_dim && self.is_const(&var) => {
+                        // B4J: "Cannot modify Const variable." (recorded).
+                        let name = self.var(&var).name.clone();
+                        let message = if self.redeclared_const(&var) {
+                            redeclared_const_open(&name, "may be assigned")
+                        } else {
+                            format!("`{name}` is a `Const`: it cannot be assigned")
+                        };
+                        self.const_error(&var, range(node), message);
+                        Err(Unassignable::Const(ty))
+                    }
+                    Some((var, ty)) => Ok((Place::Var(var), ty)),
                     None => {
                         let message = if self.subs.contains_key(&key(&name)) {
                             format!("cannot assign to `{name}`: it is a Sub, not a variable")
@@ -1393,37 +1806,204 @@ impl Lowerer {
                             )
                         };
                         self.error(range(node), message);
-                        None
+                        Err(Unassignable::Reported)
                     }
                 }
             }
             CALL_EXPR | MEMBER_EXPR => {
                 let expr = self.expr(node);
+                if let Some((var, message)) = self.const_place(&expr) {
+                    self.const_error(&var, range(node), message);
+                    return Err(Unassignable::Const(expr.ty));
+                }
                 match expr.kind {
-                    ExprKind::Index { array, indices } => Some((
+                    ExprKind::Index { array, indices } => Ok((
                         Place::Index {
                             array: *array,
                             indices,
                         },
                         expr.ty,
                     )),
-                    ExprKind::Field { record, field } => Some((
+                    ExprKind::Field { record, field } => Ok((
                         Place::Field {
                             record: *record,
                             field,
                         },
                         expr.ty,
                     )),
-                    ExprKind::Error => None,
+                    ExprKind::Error => Err(Unassignable::Reported),
                     _ => {
                         self.error(range(node), "cannot assign to this expression");
-                        None
+                        Err(Unassignable::Reported)
                     }
                 }
             }
             _ => {
                 self.error(range(node), "cannot assign to this expression");
-                None
+                Err(Unassignable::Reported)
+            }
+        }
+    }
+}
+
+// Constants.
+impl Lowerer {
+    fn var(&self, var: &VarRef) -> &Var {
+        match var {
+            VarRef::Global(id) => self.module.global(*id),
+            VarRef::Local(id) => &self.locals[id.0 as usize],
+        }
+    }
+
+    fn is_const(&self, var: &VarRef) -> bool {
+        self.var(var).is_const
+    }
+
+    /// Makes the variable a declarator of a `Const` declares a constant,
+    /// when this declarator is its first declaration.
+    fn mark_const(&mut self, decl: &SyntaxNode, name: &str) {
+        if !in_const(decl) {
+            return;
+        }
+        let Some((var, _)) = self.lookup_var(name) else {
+            return;
+        };
+        let declared = match var {
+            VarRef::Global(id) => &mut self.module.globals[id.0 as usize],
+            VarRef::Local(id) => &mut self.locals[id.0 as usize],
+        };
+        if declared.range == range(decl) {
+            declared.is_const = true;
+        }
+    }
+
+    /// Whether B4J's answers recorded for a constant apply to it: one of a
+    /// main module's `Process_Globals`, declared there once, by its `Const`
+    /// alone.
+    fn recorded_const(&self, var: &VarRef) -> bool {
+        self.class_globals.is_none() && self.const_state(var) == Some(ConstState::Single)
+    }
+
+    fn const_state(&self, var: &VarRef) -> Option<ConstState> {
+        match var {
+            VarRef::Global(id) => self.const_states.get(id).copied(),
+            VarRef::Local(_) => None,
+        }
+    }
+
+    /// Reports an error about changing a constant, unless declaring it
+    /// again was refused already. Whether one declared both ways may change
+    /// is asked once: after that, the program has an error already.
+    fn const_error(&mut self, var: &VarRef, at: TextRange, message: String) {
+        match (var, self.const_state(var)) {
+            (_, Some(ConstState::Reported | ConstState::Redeclared { reported: true })) => {}
+            (VarRef::Global(id), Some(ConstState::Redeclared { reported: false })) => {
+                self.const_states
+                    .insert(*id, ConstState::Redeclared { reported: true });
+                self.error(at, message);
+            }
+            _ => self.error(at, message),
+        }
+    }
+
+    /// Whether a constant was declared again in `Process_Globals`, so that
+    /// whether it may change is not known.
+    fn redeclared_const(&self, var: &VarRef) -> bool {
+        matches!(self.const_state(var), Some(ConstState::Redeclared { .. }))
+    }
+
+    /// Checks a declarator of a `Dim` against the constants, and whether
+    /// to lower it. A `Const` must be given its value there (B4J: "Const
+    /// variable must be set in the declaration line.", recorded, with
+    /// bounds too). In `Process_Globals`, an `Int` declared by a `Const`
+    /// and by a `Dim` with a value, in either order, is built, each
+    /// declaration giving its value in turn (recorded); a `Dim` in a Sub
+    /// with the name of a module `Int` `Const`, with a value, is refused
+    /// (B4J: "Cannot redeclare a const variable.", recorded). Any other
+    /// declaration again of a constant's name, of the same type, is not
+    /// recorded; with another type, the clash is reported already.
+    fn const_declaration(&mut self, decl: &SyntaxNode, ty: &Ty, var: &VarRef) -> bool {
+        let is_const = in_const(decl);
+        let has_value = !exprs(decl).is_empty();
+        let declared = self.var(var);
+        let name = child(decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
+        let at = child(decl, NAME).map_or_else(|| range(decl), |n| range(&n));
+        let same_type = declared.ty == *ty;
+        if declared.range != range(decl) && same_type && (is_const || declared.is_const) {
+            let global = matches!(var, VarRef::Global(_));
+            // `declare_process_globals` decided, and reported, those of
+            // `Process_Globals`; any it did not is refused below.
+            if self.in_process_globals
+                && !self.in_class_globals
+                && global
+                && let Some(&lowered) = self.const_declarations.get(&range(decl))
+            {
+                return lowered;
+            }
+            let state = self.const_state(var);
+            if state == Some(ConstState::Reported) {
+                return false;
+            }
+            let message = if !self.in_process_globals
+                && self.recorded_const(var)
+                && *ty == Ty::Int
+                && !is_const
+                && has_value
+            {
+                format!("`{name}` is a `Const` of the module: a `Dim` cannot declare it again")
+            } else if self.redeclared_const(var) {
+                redeclared_const_open(&name, "may be declared again")
+            } else {
+                const_again_open(&name, is_const)
+            };
+            // Over a variable declared both ways, this asks its question.
+            self.const_error(var, at, message);
+            return false;
+        }
+        if is_const && !has_value {
+            self.error(
+                at,
+                format!("`{name}` is a `Const`: give it its value where it is declared"),
+            );
+            return false;
+        }
+        true
+    }
+
+    /// Why an item or field assignment is refused when it changes a
+    /// constant: an item of a `Const` array, or a field of a `Const` record,
+    /// is refused (B4J: "Cannot modify Const variable.", recorded); an item
+    /// of an item, a field of a field, or any part of a constant declared
+    /// again, is not recorded.
+    fn const_place(&self, expr: &Expr) -> Option<(VarRef, String)> {
+        let item = matches!(&expr.kind, ExprKind::Index { array, .. }
+            if matches!(array.kind, ExprKind::Var(_)));
+        let field = matches!(&expr.kind, ExprKind::Field { record, .. }
+            if matches!(&record.kind, ExprKind::Var(var) if self.recorded_const(var)));
+        let mut root = expr;
+        loop {
+            match &root.kind {
+                ExprKind::Index { array, .. } => root = array,
+                ExprKind::Field { record, .. } => root = record,
+                ExprKind::Var(var) if self.is_const(var) => {
+                    let name = &self.var(var).name;
+                    return Some((
+                        *var,
+                        if self.redeclared_const(var) {
+                            redeclared_const_open(name, "may change")
+                        } else if item {
+                            format!("`{name}` is a `Const`: its items cannot be assigned")
+                        } else if field {
+                            format!("`{name}` is a `Const`: its fields cannot be assigned")
+                        } else {
+                            format!(
+                                "`{name}` is a `Const`: whether this part of it may be assigned is \
+                             not known yet"
+                            )
+                        },
+                    ));
+                }
+                _ => return None,
             }
         }
     }
@@ -1631,7 +2211,7 @@ impl Lowerer {
         let k = key(name);
         let sub_named = self.subs.contains_key(&k)
             && match found.0 {
-                VarRef::Global(_) => self.loop_declared.contains_key(&k),
+                VarRef::Global(_) => self.loop_declared.contains(&k),
                 VarRef::Local(_) => self.sub_named_locals.contains_key(&k),
             };
         (!sub_named).then_some(found)

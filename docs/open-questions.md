@@ -171,6 +171,13 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       compares numerically, String vs number compares as Strings (forum).
 - [ ] `<` / `>` on Booleans or objects is a compile error.
 - [ ] `Null` compared with a number, Boolean or Char is a compile error.
+- [x] A real literal may start with its decimal point (`.08`), also with
+      an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
+      `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the
+      real-world corpus writes `Array (320000,.08, .05, .03)`). After an
+      operand or a dot, a `.` stays a member access's (`a.5` is an error).
+- [x] Its type is `Double`, as `0.08`'s (recording:
+      `level0/real_leading_point_type`).
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
       `Int` is a `Long`.
@@ -210,8 +217,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (recordings: `level0/process_globals_loop_named_like_sub_loop_elsewhere`,
       `level0/process_globals_loop_named_like_sub_args`,
       `level0/process_globals_loop_named_like_sub_assign_inside`).
-- [x] A `For` may loop over that name again anywhere, whichever loop
-      declares it (recordings:
+- [x] A `For` may loop over that name again, after a `For` or a
+      `For Each v As Int`, in a Sub or in `Process_Globals`, and in
+      another Sub over a loop variable of `Process_Globals` (recordings:
       `level0/process_globals_loop_named_like_sub_loop_again`,
       `level0/process_globals_for_each_named_like_sub_loop_elsewhere`,
       `level0/local_counter_named_like_sub_loop_again`,
@@ -221,22 +229,77 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       recording:
       `level0/process_globals_string_loop_named_like_sub_counter_elsewhere`).
 - [x] Another `For Each` without `As` over that name is refused ("Current
-      declaration does not match previous one") in another Sub over a
-      counter of `Process_Globals`, and in a Sub over its own `For Each`
-      variable (recordings:
+      declaration does not match previous one"): in a Sub after a loop over
+      its own `For Each` variable or `For` counter, or inside a `For` over
+      it;
+      in another Sub over a counter or `For Each` variable of
+      `Process_Globals`; and in `Process_Globals` after its own counter or
+      typed `For Each` (recordings:
+      `level0/local_for_each_named_like_sub_loop_again`,
+      `level0/local_for_each_after_counter_named_like_sub`,
+      `level0/local_for_each_named_like_sub_nested`,
       `level0/process_globals_loop_named_like_sub_for_each_elsewhere`,
-      `level0/local_for_each_named_like_sub_loop_again`).
-- [ ] The same elsewhere: in a Sub over its own `For` counter, in
-      `Process_Globals` over its own loop variable, and in another Sub over
-      a `For Each` variable of `Process_Globals`. FerroBASIC refuses them
-      (tests: `level0/local_for_each_after_counter_named_like_sub`,
+      `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`,
       `level0/process_globals_loop_named_like_sub_for_each_again`,
-      `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`).
-- [ ] Another `For Each v As T` of the same type over that name in the
-      same Sub: accepted, as a `For` is? FerroBASIC refuses it (test:
-      `level0/local_typed_for_each_named_like_sub_loop_again`). In another
-      Sub over a loop variable of `Process_Globals` it is a `For Each` over
-      a module variable of type `T`, accepted as recorded below.
+      `level0/process_globals_for_each_named_like_sub_for_each_again`).
+- [ ] The same as the first loop over that name, which only a later
+      `For Each v As T` can declare, in a Sub or in `Process_Globals`, and
+      nested in a loop of `Process_Globals`. FerroBASIC refuses it as open
+      (`level0/local_for_each_named_like_sub_before_typed`,
+      `level0/process_globals_for_each_named_like_sub_before_typed`,
+      `level0/process_globals_for_each_named_like_sub_nested`).
+- [x] Another `For Each v As T` over that name is accepted after typed
+      `For Each` loops or an `Int` counter over it, one after the other, in
+      a Sub or in `Process_Globals`, and inside a typed `For Each` of a Sub
+      over it, and reading it still calls the Sub (recordings:
+      `level0/local_typed_for_each_named_like_sub_loop_again`,
+      `level0/local_typed_for_each_after_counter_named_like_sub`,
+      `level0/local_typed_for_each_after_module_counter_named_like_sub`,
+      `level0/local_typed_for_each_named_like_sub_nested`,
+      `level0/process_globals_counter_named_like_sub_typed_for_each_again`,
+      `level0/process_globals_for_each_named_like_sub_typed_for_each_again`).
+      After a `For` of a Sub over a counter of `Process_Globals`, the
+      recording shows the program builds and the name calls the Sub; which
+      of the two variables that `For` counts it cannot show, as every read
+      of the name calls the Sub (FerroBASIC: the Sub's own, which the
+      `For Each` declares).
+- [ ] The same with another type than `Int` after a counter of the Sub,
+      which would make the counter that type
+      (`level0/local_typed_for_each_other_type_after_counter_named_like_sub`),
+      and inside a `For` over it, which would share its counter
+      (`level0/local_typed_for_each_in_counter_named_like_sub`), and inside
+      a typed `For Each` of `Process_Globals`, whose variable is a module
+      variable (`level0/process_globals_typed_for_each_named_like_sub_nested`).
+      FerroBASIC refuses them as open.
+- [ ] A `For` over that name after a `For Each v As T` of another number
+      type than `Int` declared it, before it, inside it or after it, in a
+      Sub or from another Sub: does it count as that type? FerroBASIC
+      refuses it as open
+      (`level0/local_counter_after_double_for_each_named_like_sub`).
+- [ ] Every other loop over that name. FerroBASIC settles only the
+      recorded combinations, which `recorded_loop` in
+      `crates/hir/src/lower.rs` lists, and refuses any other as open:
+      - a `For` inside a loop over it, in a Sub or in `Process_Globals`
+        (`level0/local_counter_in_loop_named_like_sub`,
+        `level0/process_globals_counter_in_loop_named_like_sub`);
+      - a `For Each v As T` of another type than `Int` again
+        (`level0/local_typed_for_each_double_loop_again_named_like_sub`,
+        `level0/process_globals_typed_for_each_double_loop_again_named_like_sub`),
+        or in another Sub where a loop variable of `Process_Globals` has
+        the name (`level0/local_typed_for_each_double_over_module_variable_named_like_sub`);
+      - in another Sub over a loop variable of `Process_Globals`, a loop
+        after another one over the name
+        (`level0/process_globals_loop_named_like_sub_loop_elsewhere_again`,
+        `level0/local_typed_for_each_over_module_variable_loop_again_named_like_sub`);
+      - a third loop over it, one after the other or nested, as every
+        recording has at most two
+        (`level0/local_counter_named_like_sub_loop_three_times`,
+        `level0/process_globals_loop_named_like_sub_loop_three_times`,
+        `level0/local_typed_for_each_counter_typed_named_like_sub`,
+        `level0/local_typed_for_each_named_like_sub_nested_three_deep`).
+- [x] A `For Each v As T` in another Sub over a loop variable of
+      `Process_Globals` is a `For Each` over a module variable of type
+      `T`, accepted as recorded below.
 - [x] A `For Each v As T` of a Sub whose name is a Sub's and a module
       variable's of the same type is accepted, and reading it calls the
       Sub (recording:
@@ -276,6 +339,73 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [x] A comment may follow a line continuation, with or without a space
       before the `'` (recordings: `level0/continuation_comment`,
       `level0/continuation_comment_tight`).
+- [x] `Const` ([#33](https://github.com/FeliceMente/ferrobasic/issues/33);
+      sources in [research](research/level0-semantics.md#constants-docs-forum-recorded)),
+      recorded with B4J 10.70, one test per question:
+  - [x] the booklet's example, `Private Const Size As Int = 10` and
+        `Public Const ItemNumber As Int = 100` (`level0/const_forms`);
+  - [x] other types: `Long` (`level0/const_long`), `Double`
+        (`level0/const_double`), `String` (`level0/const_string`),
+        `Boolean` (`level0/const_boolean`); with no `As` it is a `String`
+        (`level0/const_no_as`), as a `Dim` with no `As` provisionally is
+        (open, above);
+  - [x] forms from real projects: lower-case `const`
+        (`level0/const_lower_case`), the value before `As`
+        (`level0/const_value_before_as`);
+  - [x] `Dim Const` in `Process_Globals` (`level0/const_dim_module`), with
+        several names (`level0/const_dim_several`), and inside a Sub
+        (`level0/const_dim_in_sub`);
+  - [x] assigning one is refused: "Cannot modify Const variable."
+        (`level0/const_assign`);
+  - [x] one with no value is refused: "Const variable must be set in the
+        declaration line." (`level0/const_no_value`);
+  - [x] any expression as the value: arithmetic on literals
+        (`level0/const_literal_arithmetic`), a concatenation
+        (`level0/const_concatenation`), another constant
+        (`level0/const_from_const`), a call (`level0/const_from_call`), a
+        member of a literal (`level0/const_from_member`);
+  - [x] a variable initialised from a constant declared after it reads it
+        before it is set, `0`: constants are not inlined
+        (`level0/const_used_before`);
+  - [x] a constant as a `Select Case` label (`level0/const_select_case`);
+  - [x] a `For` over an `Int` constant, and a `For Each v As Int` in a
+        Sub over a module one, are refused: "Cannot modify Const
+        variable." (`level0/const_for_counter`,
+        `level0/const_for_each_variable`); so is assigning a field of a
+        constant record (`level0/const_record_field`);
+  - [x] a `Dim` in a Sub with a module `Int` constant's name, with a
+        value, is refused: "Cannot redeclare a const variable."
+        (`level0/const_local_dim`);
+  - [x] a `Const` array with bounds and no value is refused as a `Const`
+        without a value is (`level0/const_array_bounds`);
+  - [x] in `Process_Globals`, a `Dim` of an `Int` constant's name after it,
+        and a `Const` of a variable's name after its `Dim`, both with a
+        literal value, build: each sets its value in turn (`level0/const_dim_after`
+        prints 3, `level0/const_after_dim` prints 10);
+  - [x] constants of type `List` (`level0/const_list`), `Map`
+        (`level0/const_map`) and an array (`level0/const_array`); a `List`
+        or `Map` constant's contents may change (`level0/const_list_mutate`,
+        `level0/const_map_mutate`), an array constant's items may not:
+        "Cannot modify Const variable." (`level0/const_array_mutate`).
+- [ ] What `Const` leaves open. FerroBASIC refuses each until it is
+      recorded:
+  - [ ] whether a variable declared both by a `Const` and by a `Dim` in
+        `Process_Globals` may then be assigned, in either order
+        (`level0/const_dim_after_assign`, `level0/const_after_dim_assign`);
+        FerroBASIC refuses any change to it, a loop over it or an item;
+  - [ ] a `Dim` with no value after a constant of its name: built, and
+        which value it keeps (`level0/const_dim_after_no_value`);
+  - [ ] the same with another type than `Int`
+        (`level0/const_dim_after_string`), with the `Dim` inside an `If`
+        (`level0/const_dim_after_in_if`), or with a value that reads the
+        constant (`level0/const_dim_after_from_const`);
+  - [ ] a `Dim` with no value in a Sub with a module constant's name
+        (`level0/const_local_dim_no_value`);
+  - [ ] a `For Each` without `As` over a constant
+        (`level0/const_for_each_untyped`), and two `Const`s of one name
+        (`level0/const_twice`); like them, any other loop over a constant
+        (in `Process_Globals`, over a local constant, of another type than
+        `Int`) or declaration again of its name (a third one).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
       comment after `#If Java` or `#End If`, and whether an `#If` inside the
       block nests. FerroBASIC accepts the comments and ends the block at the

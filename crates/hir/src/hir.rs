@@ -67,6 +67,8 @@ pub struct Var {
     pub name: String,
     pub ty: Ty,
     pub range: TextRange,
+    /// Declared by a `Const`: it cannot be assigned.
+    pub is_const: bool,
 }
 
 #[derive(Debug, Clone)]

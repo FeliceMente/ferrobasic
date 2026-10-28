@@ -9,7 +9,7 @@ const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 
 const PROGRAM: &str = "\
 Sub Process_Globals
-\tPrivate Const Size As Int = 10
+\tPrivate Size As Int = 10
 End Sub
 
 Sub AppStart (Args() As String)
@@ -24,9 +24,6 @@ public static int twice(int x) { return 2 * x; }
 ";
 
 const EXPECTED: &str = "\
-later.bas:2:10: error: `Const` declarations are not supported yet
-  \tPrivate Const Size As Int = 10
-  \t        ^
 later.bas:7:5: error: type tests (`Is`) are not supported yet
   \tIf o Is Int Then Log(o)
   \t   ^
@@ -36,7 +33,7 @@ later.bas:8:2: error: `Wait For` is not supported at Level 0: it needs resumable
 later.bas:11:1: error: inline Java (`#If Java`) is not supported at Level 0: it needs Java interop (Level 3)
   #If Java
   ^
-4 error(s)
+3 error(s)
 ";
 
 #[test]

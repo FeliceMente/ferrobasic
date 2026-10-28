@@ -247,10 +247,6 @@ fn later_constructs_get_one_precise_error() {
         assert_eq!(d, [message], "{text}");
     };
     only(
-        "Sub Process_Globals\n\tPrivate Const Size As Int = 10\nEnd Sub\nSub AppStart (Args() As String)\n\tLog(Size)\nEnd Sub\n",
-        "`Const` declarations are not supported yet",
-    );
-    only(
         &program("Dim o As Object = 1\nIf o Is Int Then Log(1)"),
         "type tests (`Is`) are not supported yet",
     );
@@ -261,6 +257,411 @@ fn later_constructs_get_one_precise_error() {
     only(
         "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n#If Java\npublic static void x() { }\n#End If\n",
         "inline Java (`#If Java`) is not supported at Level 0: it needs Java interop (Level 3)",
+    );
+}
+
+/// `Const` declares a variable that cannot be assigned (#33).
+#[test]
+fn constants() {
+    let module = |globals: &str, body: &str| {
+        format!(
+            "Sub Process_Globals\n    Type Point (X As Int)\n{globals}\nEnd Sub\nSub AppStart (Args() As String)\n{body}\nEnd Sub\nSub NewPoint As Point\n    Dim q As Point\n    q.Initialize\n    Return q\nEnd Sub\n"
+        )
+    };
+    // Every form and type, with any value, in `Process_Globals` or a Sub;
+    // the contents of a `List` or `Map` may change (recorded).
+    for (globals, body) in [
+        ("    Private Const Size As Int = 10", "    Log(Size)"),
+        ("    Public const Size = 3 As Int", "    Log(Size)"),
+        (
+            "    Dim Const First = 1, Second = 2 As Int",
+            "    Log(First + Second)",
+        ),
+        ("    Private Const Size = 10", "    Log(GetType(Size))"),
+        ("    Private Const Pick As Int = Rnd(1, 2)", "    Log(Pick)"),
+        (
+            "    Private Const Names As List = Array(\"a\")",
+            "    Names.Set(0, \"z\")",
+        ),
+        (
+            "    Private Const Push As Int = 1",
+            "    Select 1\n        Case Push\n            Log(1)\n    End Select",
+        ),
+        ("", "    Dim Const Size As Int = 5\n    Log(Size * 2)"),
+    ] {
+        ok(&module(globals, body));
+    }
+    // Refused (B4J: "Cannot modify Const variable.", "Const variable must
+    // be set in the declaration line.", recorded).
+    for (globals, body, message) in [
+        (
+            "    Private Const Size As Int = 10",
+            "    Size = 11",
+            "`Size` is a `Const`: it cannot be assigned",
+        ),
+        (
+            "",
+            "    Dim Const Size As Int = 5\n    Size = 6",
+            "`Size` is a `Const`: it cannot be assigned",
+        ),
+        (
+            "    Private Const Days() As String = Array As String(\"Mon\")",
+            "    Days(0) = \"Sun\"",
+            "`Days` is a `Const`: its items cannot be assigned",
+        ),
+        (
+            "    Private Const Size As Int",
+            "",
+            "`Size` is a `Const`: give it its value where it is declared",
+        ),
+        (
+            "    Dim Const First = 1, Second As Int",
+            "",
+            "`Second` is a `Const`: give it its value where it is declared",
+        ),
+    ] {
+        assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
+    }
+    // In `Process_Globals`, an `Int` declared by a `Const` and by a `Dim`
+    // with a value, in either order, builds (recorded).
+    for globals in [
+        "    Private Const Size As Int = 10\n    Private Size As Int = 3",
+        "    Private Size As Int = 3\n    Private Const Size As Int = 10",
+    ] {
+        ok(&module(globals, "    Log(Size)"));
+    }
+    // Refused (B4J: "Cannot modify Const variable.", "Cannot redeclare a
+    // const variable.", "Const variable must be set in the declaration
+    // line.", recorded).
+    let size = "    Private Const Size As Int = 10";
+    for (globals, body, message) in [
+        (
+            size,
+            "    For Size = 1 To 2\n    Next",
+            "`Size` is a `Const`: a loop cannot loop over it",
+        ),
+        (
+            size,
+            "    For Each Size As Int In Array As Int(1)\n    Next",
+            "`Size` is a `Const`: a loop cannot loop over it",
+        ),
+        (
+            size,
+            "    Dim Size As Int = 4",
+            "`Size` is a `Const` of the module: a `Dim` cannot declare it again",
+        ),
+        (
+            "    Private Const P As Point = NewPoint",
+            "    P.X = 4",
+            "`P` is a `Const`: its fields cannot be assigned",
+        ),
+        (
+            "    Private Const A(3) As Int",
+            "",
+            "`A` is a `Const`: give it its value where it is declared",
+        ),
+    ] {
+        assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
+    }
+    // Not recorded: any other loop over it or declaration again of its
+    // name, and whether one declared again may change.
+    let open_loop = "`Size` is a `Const`: whether a loop may loop over it here is not known \
+                     yet, so use another name";
+    let open_again = "`Size` is a `Const`: whether another declaration may declare it again \
+                      here is not known yet, so use another name";
+    let open_const = "`Size` is already declared: whether a `Const` may declare it again here \
+                      is not known yet, so use another name";
+    let redeclared = |what: &str| {
+        format!(
+            "`Size` is declared both by a `Const` and by a `Dim`: whether it {what} is not \
+             known yet"
+        )
+    };
+    let dim_after = "    Private Const Size As Int = 10\n    Private Size As Int = 3";
+    let after_dim = "    Private Size As Int = 3\n    Private Const Size As Int = 10";
+    for (globals, body, message) in [
+        (
+            size,
+            "    For Each Size In Array As Int(1)\n    Next",
+            open_loop.to_string(),
+        ),
+        (
+            &format!("{size}\n    For Size = 1 To 2\n    Next"),
+            "",
+            open_loop.to_string(),
+        ),
+        (
+            "    Private Const Size As Double = 10",
+            "    For Size = 1 To 2\n    Next",
+            open_loop.to_string(),
+        ),
+        (
+            "",
+            "    Dim Const Size As Int = 5\n    For Size = 1 To 2\n    Next",
+            open_loop.to_string(),
+        ),
+        (size, "    Dim Size As Int", open_again.to_string()),
+        (
+            "    Private Const Size As Int = 10\n    Private Size As Int",
+            "",
+            open_again.to_string(),
+        ),
+        (
+            "    Private Const Size As String = \"a\"\n    Private Size As String = \"b\"",
+            "",
+            open_again.to_string(),
+        ),
+        (
+            "    Private Const Size As Int = 10\n    Private Const Size As Int = 11",
+            "",
+            open_const.to_string(),
+        ),
+        (
+            &format!("{dim_after}\n    Private Size As Int = 4"),
+            "",
+            redeclared("may be declared again"),
+        ),
+        (
+            &format!("{after_dim}\n    Private Const Size As Int = 4"),
+            "",
+            redeclared("may be declared again"),
+        ),
+        (dim_after, "    Size = 5", redeclared("may be assigned")),
+        (after_dim, "    Size = 5", redeclared("may be assigned")),
+        (
+            after_dim,
+            "    For Size = 1 To 2\n    Next",
+            redeclared("may be looped over"),
+        ),
+        (
+            dim_after,
+            "    Dim Size As Int = 4",
+            redeclared("may be declared again"),
+        ),
+        // The pair, then a loop of `Process_Globals`: open on the loop.
+        (
+            &format!("{dim_after}\n    For Size = 1 To 2\n    Next"),
+            "",
+            redeclared("may be looped over"),
+        ),
+        // Not declared once by a `Const` alone, as recorded: inside an `If`.
+        (
+            "    If True Then\n        Private Const Size As Int = 10\n    End If",
+            "    Dim Size As Int = 4",
+            open_again.to_string(),
+        ),
+        (
+            "    If True Then\n        Private Const Size As Int = 10\n    End If",
+            "    For Size = 1 To 2\n    Next",
+            open_loop.to_string(),
+        ),
+        (
+            "    Private Const Ps() As Point = Array As Point(NewPoint)",
+            "    Ps(0).X = 4",
+            "`Ps` is a `Const`: whether this part of it may be assigned is not known yet"
+                .to_string(),
+        ),
+    ] {
+        assert_eq!(errors(&module(globals, body)), [message], "{globals}{body}");
+    }
+    // A `Const` after two declarations is a third: open.
+    assert_eq!(
+        errors(&module(
+            "    Private Size As Int = 3\n    Private Size As Int = 4\n    Private Const Size As Int = 10",
+            ""
+        )),
+        [open_const]
+    );
+    // After a declaration again refused, the program has an error already:
+    // the uses of the name are refused with no error of their own.
+    for body in [
+        "    Size = 5",
+        "    For Size = 1 To 2\n    Next",
+        "    Dim Size As Int = 4",
+    ] {
+        assert_eq!(
+            errors(&module(
+                "    Private Const Size As Int = 10\n    Private Size As Int",
+                body
+            )),
+            [open_again],
+            "{body}"
+        );
+    }
+    // The same answers with the Sub before `Process_Globals`, and with a
+    // statement between the two declarations of `Process_Globals`.
+    let sub_first = |body: &str, globals: &str| {
+        format!(
+            "Sub AppStart (Args() As String)\n{body}\nEnd Sub\n\nSub Process_Globals\n{globals}\nEnd Sub\n"
+        )
+    };
+    for (body, globals, message) in [
+        ("    Size = 5", after_dim, redeclared("may be assigned")),
+        ("    Size = 5", dim_after, redeclared("may be assigned")),
+        (
+            "    Dim Size As Int = 4",
+            size,
+            "`Size` is a `Const` of the module: a `Dim` cannot declare it again".to_string(),
+        ),
+        (
+            "",
+            "    Private Size As Int = 3\n    Size = 4\n    Private Const Size As Int = 10",
+            redeclared("may be assigned"),
+        ),
+        // A loop between them makes the `Const` a third declaration.
+        (
+            "",
+            "    Private Size As Int = 3\n    For Size = 1 To 2\n    Next\n    Private Const Size As Int = 10",
+            open_const.to_string(),
+        ),
+    ] {
+        assert_eq!(
+            errors(&sub_first(body, globals)),
+            [message],
+            "{body}{globals}"
+        );
+    }
+    // A declaration inside a block of `Process_Globals` is not the recorded
+    // pair.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10\n    If True Then\n        Private Size As Int = 3\n    End If",
+            ""
+        )),
+        [open_again]
+    );
+    // After a declaration again of `Process_Globals` refused as open, a use
+    // in a Sub has no error of its own, before or after it; after a `Dim`
+    // of a Sub refused, a use keeps its recorded error, in any order.
+    for (globals, body, other, message) in [
+        (
+            "    Private Const Size As Int = 10\n    Private Size As Int",
+            "    Size = 5",
+            "",
+            open_again.to_string(),
+        ),
+        (
+            size,
+            "    Dim Size As Int = 4",
+            "    Size = 5",
+            "`Size` is a `Const` of the module: a `Dim` cannot declare it again".to_string(),
+        ),
+    ] {
+        let pg = format!("Sub Process_Globals\n    Type Point (X As Int)\n{globals}\nEnd Sub\n");
+        let subs = format!(
+            "Sub AppStart (Args() As String)\n{body}\nEnd Sub\nSub Other\n{other}\nEnd Sub\nSub NewPoint As Point\n    Dim q As Point\n    q.Initialize\n    Return q\nEnd Sub\n"
+        );
+        let mut expected = vec![message];
+        if !other.is_empty() {
+            expected.push("`Size` is a `Const`: it cannot be assigned".to_string());
+        }
+        for program in [format!("{pg}{subs}"), format!("{subs}{pg}")] {
+            let mut found = errors(&program);
+            found.sort();
+            let mut want = expected.clone();
+            want.sort();
+            assert_eq!(found, want, "{program}");
+        }
+    }
+    // Nor with a loop of `Process_Globals` over it: both loops are open.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10\n    For Each Size In Array As Int(1)\n    Next",
+            "    For Size = 1 To 2\n    Next"
+        )),
+        [open_loop, open_loop]
+    );
+    // The recorded pair has literal values: one reading the name is open.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10\n    Private Size As Int = Size + 1",
+            ""
+        )),
+        [open_again]
+    );
+    // The recorded field answer is for a constant of `Process_Globals`
+    // declared once: a local one is open.
+    assert_eq!(
+        errors(&module(
+            "",
+            "    Private Const P As Point = NewPoint\n    P.X = 4"
+        )),
+        ["`P` is a `Const`: whether this part of it may be assigned is not known yet"]
+    );
+    // A typed `For` in a Sub over a constant refused, or asked about, has
+    // no error of its own.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10\n    Private Const Size As Int = 11",
+            "    For Size As Int = 1 To 2\n    Next"
+        )),
+        [open_const]
+    );
+    assert_eq!(
+        errors(&module(
+            after_dim,
+            "    For Size As Int = 1 To 2\n    Next\n    Size = 4"
+        ))
+        .len(),
+        1
+    );
+    // Whether it may change is asked once.
+    assert_eq!(
+        errors(&module(after_dim, "    Size = 5\n    Size = 6")),
+        [redeclared("may be assigned")]
+    );
+    assert_eq!(
+        errors(&module(after_dim, "    Dim Size As Int = 4\n    Size = 6")),
+        [redeclared("may be declared again")]
+    );
+    // Another type is the clash already reported, alone.
+    assert_eq!(
+        errors(&module(
+            "    Private Size As Int = 3\n    Private Const Size As String = \"a\"",
+            ""
+        )),
+        ["`Size` is already declared with another type"]
+    );
+    assert_eq!(
+        errors(
+            "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub F (X As Int)\n    Dim Const X As String = \"a\"\nEnd Sub\n"
+        ),
+        ["`X` is already declared as Int in this Sub"]
+    );
+    // The value assigned to a constant is still checked.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10",
+            "    Size = Foo"
+        )),
+        [
+            "`Size` is a `Const`: it cannot be assigned",
+            "`Foo` is not declared",
+        ]
+    );
+    // Empty parentheses are no bounds: the recorded refusal.
+    assert_eq!(
+        errors(&module("    Dim Const A() As Int", "")),
+        ["`A` is a `Const`: give it its value where it is declared"]
+    );
+    // A `Dim` refused for a Sub's name is not reported again.
+    assert_eq!(
+        errors(&module(
+            "",
+            "    Dim Const NewPoint As Int = 1\n    NewPoint = 2"
+        )),
+        ["a variable cannot have the name of a Sub: `NewPoint` is a Sub"]
+    );
+    // The value is converted to the constant's type, and checked.
+    assert_eq!(
+        errors(&module(
+            "    Private Const S As Int = 1",
+            "    Dim m As Map\n    m.Initialize\n    S = m"
+        )),
+        [
+            "`S` is a `Const`: it cannot be assigned",
+            "cannot convert Map to Int"
+        ]
     );
     // A variable named `Const` is still a variable.
     ok(&program("Dim Const As Int = 1\nLog(Const)"));
@@ -704,16 +1105,13 @@ fn loops_in_process_globals() {
         &format!("{each}        Log(Bump.Length)\n    Next"),
     ));
     assert_eq!(diags, ["Int has no member `Length` at Level 0"]);
-    // A `For` may loop over it wherever a `For Each` declares it, in either
-    // order (recorded).
+    // A `For` may loop over it after a `For Each` declares it, in a Sub or
+    // in `Process_Globals` (recorded). The other order in a Sub is open
+    // (below).
     for (body, app) in [
         (
             "",
             "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
-        ),
-        (
-            "",
-            "    For Bump = 1 To 2\n    Next\n    For Each Bump As Int In Array As Int(1)\n        Log(Bump)\n    Next",
         ),
         (
             "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Bump = 1 To 2\n        Log(Bump)\n    Next",
@@ -731,66 +1129,242 @@ fn loops_in_process_globals() {
         "    For Bump = 1 To 2\n    Next",
     ));
     assert_eq!(diags, ["a `For` counter must be a number, not String"]);
-    // Another `For Each` without `As` over it is refused (B4J: "Current
-    // declaration does not match previous one", recorded); with `As` it is
-    // open.
-    for (body, app, what) in [
+    // Loops over a loop variable with a Sub's name, one row per recorded
+    // answer of `recorded_loop` (in `Process_Globals`, `body`, or in a
+    // Sub, `app`): accepted, and the name still calls the Sub, or refused
+    // with B4J's message.
+    let refused = |what: &str| {
+        format!(
+            "`Bump` is {what} with the name of a Sub: a `For Each` without `As` cannot loop \
+             over it again"
+        )
+    };
+    let (sub_var, module) = ("a loop variable of this Sub", "a module variable");
+    let counter = "    For Bump = 1 To 2\n    Next\n";
+    let typed = "    For Each Bump As Int In Array As Int(1)\n    Next\n";
+    let typed_string = "    For Each Bump As String In Array As String(\"x\")\n    Next\n";
+    let untyped = "    For Each Bump In Array As Int(5)\n    Next\n";
+    let log = "    Log(Bump)\n";
+    for (body, app) in [
+        // The first loop: a counter, or a typed `For Each` of any type.
+        (String::new(), format!("{counter}{log}")),
+        (String::new(), format!("{typed}{log}")),
+        (String::new(), format!("{typed_string}{log}")),
+        (counter.to_string(), log.to_string()),
+        (typed.to_string(), log.to_string()),
+        (typed_string.to_string(), String::new()),
+        // In another Sub: a counter, or a typed `For Each` of `Int`, over a
+        // loop variable of `Process_Globals`, then a typed one after a
+        // counter.
+        (counter.to_string(), format!("{counter}{log}")),
+        (typed.to_string(), format!("{counter}{log}")),
+        (counter.to_string(), format!("{typed}{log}")),
+        (typed.to_string(), format!("{typed}{log}")),
+        (counter.to_string(), format!("{counter}{typed}{log}")),
+        // One after the other, in a Sub and in `Process_Globals`: a counter
+        // or a typed `For Each` of `Int` after either.
+        (String::new(), format!("{counter}{counter}{log}")),
+        (String::new(), format!("{typed}{counter}{log}")),
+        (String::new(), format!("{counter}{typed}{log}")),
+        (String::new(), format!("{typed}{typed}{log}")),
+        (format!("{counter}{counter}"), log.to_string()),
+        (format!("{typed}{counter}"), log.to_string()),
+        (format!("{counter}{typed}"), log.to_string()),
+        (format!("{typed}{typed}"), log.to_string()),
+        // A typed `For Each` of `Int` inside one, in a Sub.
         (
-            "    For Bump = 1 To 2\n    Next",
-            "    For Each Bump In Array As Int(1)\n    Next",
-            "a module variable",
-        ),
-        (
-            "",
-            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
-            "a loop variable of this Sub",
+            String::new(),
+            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(5)\n            Log(Bump)\n        Next\n    Next\n"
+                .to_string(),
         ),
     ] {
-        let diags = errors(&sub(body, app));
-        assert_eq!(
-            diags,
-            [format!(
-                "`Bump` is {what} with the name of a Sub: a `For Each` without `As` cannot loop \
-                 over it again"
-            )],
-            "{body}{app}"
-        );
+        let module_ = ok(&sub(&body, &app));
+        if app.contains("Log(Bump)") {
+            assert!(
+                format!("{:?}", app_start(&module_).body).contains("Call"),
+                "{body}{app}: {:?}",
+                app_start(&module_).body
+            );
+        }
     }
-    // Where B4J's refusal is not recorded, another `For Each` is open: with
-    // `As`, without `As` over a `For` counter of the same Sub, and over a
-    // loop variable of `Process_Globals` in it or over its `For Each` one.
     for (body, app, what) in [
+        // A `For Each` without `As` after a counter or a typed `For Each`
+        // of `Int`, in a Sub or in `Process_Globals`.
+        (String::new(), format!("{counter}{untyped}"), sub_var),
+        (String::new(), format!("{typed}{untyped}"), sub_var),
+        (format!("{counter}{untyped}"), String::new(), module),
+        (format!("{typed}{untyped}"), String::new(), module),
+        // In another Sub, over a loop variable of `Process_Globals`.
+        (counter.to_string(), untyped.to_string(), module),
+        (typed.to_string(), untyped.to_string(), module),
+        // Inside a `For` of a Sub.
         (
-            "",
-            "    For Each Bump As Int In Array As Int(1)\n    Next\n    For Each Bump As Int In Array As Int(2)\n    Next",
-            "a loop variable of this Sub",
-        ),
-        (
-            "",
-            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
-            "a loop variable of this Sub",
-        ),
-        (
-            "    For Bump = 1 To 2\n    Next\n    For Each Bump In Array As Int(2)\n    Next",
-            "",
-            "a module variable",
-        ),
-        (
-            "    For Each Bump As Int In Array As Int(1)\n    Next",
-            "    For Each Bump In Array As Int(2)\n    Next",
-            "a module variable",
+            String::new(),
+            "    For Bump = 1 To 2\n        For Each Bump In Array As Int(5)\n        Next\n    Next\n"
+                .to_string(),
+            sub_var,
         ),
     ] {
-        let diags = errors(&sub(body, app));
+        assert_eq!(errors(&sub(&body, &app)), [refused(what)], "{body}{app}");
+    }
+    // Anything else is open, with a message for the loop that asks the
+    // question; a pending test asks B4J each time.
+    let open = |what: &str, form: &str| {
+        format!(
+            "`Bump` is {what} with the name of a Sub: whether {form} may loop over it here is \
+             not known yet, so use another name"
+        )
+    };
+    let (open_for, open_typed, open_untyped) =
+        ("this `For`", "this `For Each`", "a `For Each` without `As`");
+    let double = "    For Each Bump As Double In Array As Double(1.5)\n    Next\n";
+    let counter_half = "    For Bump = 0 To 1 Step 0.5\n    Next\n";
+    for (body, app, what, form) in [
+        // A `For Each` without `As` as the first loop, which only a later
+        // typed `For Each` declares.
+        (String::new(), format!("{untyped}{typed}"), sub_var, open_untyped),
+        (format!("{untyped}{typed}"), String::new(), module, open_untyped),
+        // A `For` over a variable that a `For Each` of another number type
+        // declares, before it or after it, in a Sub or from another Sub.
+        (String::new(), format!("{counter_half}{double}"), sub_var, open_for),
+        (String::new(), format!("{double}{counter_half}"), sub_var, open_for),
+        (double.to_string(), counter_half.to_string(), module, open_for),
+        // A typed `For Each` of another type than `Int` after a typed one,
+        // or in another Sub with the name of a loop variable of
+        // `Process_Globals` (FerroBASIC: its own local).
+        (String::new(), format!("{double}{double}"), sub_var, open_typed),
+        (double.to_string(), double.to_string(), sub_var, open_typed),
+        // Nested other than recorded: a `For Each` with `As` inside a `For`,
+        // a `For` inside a loop, any loop nested in `Process_Globals`, one
+        // of another type than `Int`.
+        (
+            String::new(),
+            "    For Bump = 1 To 3\n        For Each Bump As Int In Array As Int(7)\n        Next\n    Next\n".to_string(),
+            sub_var,
+            open_typed,
+        ),
+        (
+            String::new(),
+            "    For Each Bump As Int In Array As Int(1)\n        For Bump = 1 To 2\n        Next\n    Next\n".to_string(),
+            sub_var,
+            open_for,
+        ),
+        (
+            String::new(),
+            "    For Bump = 1 To 2\n        For Bump = 1 To 2\n        Next\n    Next\n".to_string(),
+            sub_var,
+            open_for,
+        ),
+        (
+            "    For Bump = 1 To 2\n        For Each Bump In Array As Int(5)\n        Next\n    Next\n".to_string(),
+            String::new(),
+            module,
+            open_untyped,
+        ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n        Next\n    Next\n".to_string(),
+            String::new(),
+            module,
+            open_typed,
+        ),
+        (
+            String::new(),
+            "    For Each Bump As Long In Array As Long(1)\n        For Each Bump As Long In Array As Long(2)\n        Next\n    Next\n".to_string(),
+            sub_var,
+            open_typed,
+        ),
+    ] {
+        assert_eq!(errors(&sub(&body, &app)), [open(what, form)], "{body}{app}");
+    }
+    // Every recording has at most two loops over the name: a third, one
+    // after the other or nested, is open on the third loop.
+    for (body, app, what, form) in [
+        (String::new(), format!("{counter}{counter}{counter}"), sub_var, open_for),
+        (format!("{counter}{counter}{counter}"), String::new(), module, open_for),
+        (String::new(), format!("{typed}{counter}{typed}"), sub_var, open_typed),
+        (
+            String::new(),
+            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n            For Each Bump As Int In Array As Int(5)\n            Next\n        Next\n    Next\n".to_string(),
+            sub_var,
+            open_typed,
+        ),
+    ] {
+        assert_eq!(errors(&sub(&body, &app)), [open(what, form)], "{body}{app}");
+    }
+    // After a refused loop, the program has an error already: the loops
+    // after it are not judged, so no error follows from them.
+    for (body, app) in [
+        (format!("{counter}{untyped}{typed}{untyped}"), String::new()),
+        (String::new(), format!("{counter}{untyped}{typed}")),
+        // A `For` over anything but a number, refused when lowered.
+        (String::new(), format!("{typed_string}{counter}{untyped}")),
+    ] {
+        assert_eq!(errors(&sub(&body, &app)).len(), 1, "{body}{app}");
+    }
+    // A loop over a variable of an unknown type has its error where the
+    // type is: two loops give the two, and nothing else.
+    let bogus = "    For Each Bump As Bogus In Array As Int(1)\n    Next\n";
+    for (body, app) in [
+        (String::new(), format!("{bogus}{bogus}")),
+        (bogus.to_string(), bogus.to_string()),
+    ] {
+        let diags = errors(&sub(&body, &app));
+        assert_eq!(diags.len(), 2, "{body}{app}: {diags:?}");
+        assert!(diags.iter().all(|d| d.contains("Bogus")), "{diags:?}");
+    }
+    // A `For` with `As` in `Process_Globals` gets the message about `As`,
+    // however many loops came before it.
+    for before in [counter, &format!("{counter}{counter}")] {
         assert_eq!(
-            diags,
-            [format!(
-                "`Bump` is {what} with the name of a Sub: whether another `For Each` may loop \
-                 over it here is not known yet, so use another name"
-            )],
-            "{body}{app}"
+            errors(&sub(
+                &format!("{before}    For Bump As Int = 1 To 2\n    Next\n"),
+                ""
+            )),
+            [
+                "declaring the `For` variable `Bump` in the loop is not supported in `Process_Globals` yet: `Bump` is already declared, so write the loop without `As`"
+            ],
+            "{before}"
         );
     }
+    // So is a `For Each v As T` refused for another type than the
+    // variable's.
+    let diags = errors(&sub(
+        "",
+        &format!(
+            "{typed}    For Each Bump As String In Array As String(\"x\")\n    Next\n{untyped}"
+        ),
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    // A `For Each` without `As` in another Sub over a loop variable of
+    // `Process_Globals` of another type than `Int` is open: only `Int` was
+    // recorded.
+    assert_eq!(
+        errors(&sub(
+            typed_string,
+            "    For Each Bump In Array As String(\"b\")\n    Next"
+        )),
+        [open(module, open_untyped)]
+    );
+    let diags = errors(&sub(
+        "",
+        "    For Bump As Int = 1 To 2\n    Next\n    For Each Bump In Array As Int(5)\n    Next",
+    ));
+    assert_eq!(
+        diags,
+        [
+            "`Bump` is a Sub: a `For` counter with its name cannot be declared with `As`, so loop \
+          without `As`"
+        ]
+    );
+    // A refused `Dim` with a Sub's name is not a loop variable: a typed
+    // `For Each` over it gets no loop error of its own.
+    assert_eq!(
+        errors(&sub(
+            "",
+            "    Dim Bump As Int\n    For Bump = 1 To 2\n        For Each Bump As Int In Array As Int(5)\n        Next\n    Next"
+        )),
+        ["a variable cannot have the name of a Sub: `Bump` is a Sub"]
+    );
     // A `For Each v As T` in another Sub over a module variable of type `T`
     // is the recorded `local_for_each_named_like_sub_over_module_variable`,
     // whichever loop of `Process_Globals` declares it.

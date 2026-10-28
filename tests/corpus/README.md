@@ -10,7 +10,8 @@ them:
 
 ```sh
 cargo run -p ferro-corpus --bin ferro-corpus-fetch       # into target/corpus
-cargo test -p ferro-syntax --test projects -- --ignored  # the tests that need them
+cargo test -p ferro-syntax --test projects -- --ignored   # the tests that need them
+cargo test -p ferro-project --test projects -- --ignored
 ```
 
 `ferro-corpus-fetch` downloads each file with `curl` from
@@ -48,8 +49,11 @@ needs; a `repository` of the form `https://github.com/<owner>/<repo>`, with
 product; folder and file names that mean the same in a URL and on every file
 system the tests run on (letters, digits, `.`, `-`, `_` and spaces, no
 Windows device names), with no two files whose names differ only in case;
-64-digit hashes. Today every project's `.b4j` and `.bas` files must round-trip through the
-lossless syntax tree (`crates/syntax/tests/projects.rs`).
+64-digit hashes. Today every project's `.b4j` and `.bas` files must
+round-trip through the lossless syntax tree
+(`crates/syntax/tests/projects.rs`), and every project, module and
+`.b4j.meta` file through `ferro-project`, with each project finding the
+modules it names (`crates/project/tests/projects.rs`).
 
 ## Projects
 
@@ -59,5 +63,5 @@ lossless syntax tree (`crates/syntax/tests/projects.rs`).
 | [`helloworld`](https://github.com/rwbl/b4j-howtos) | GPL-3.0-or-later | hello world with the date | `DateTime` |
 | [`console-read-input`](https://github.com/pyhoon/console-read-input-b4j) | MIT | reads lines typed on the console | `JavaObject` |
 | [`vcardsplitter`](https://github.com/axtens/vcardsplitter) | MIT | splits a file of vCards into one file per card | a module, jStringFunctions, jStringUtils |
-| [`mteeval-buildlib`](https://github.com/macthomasengineering/MteEVAL-b4x-library) | BSD-3-Clause | an expression compiler and its tests | four modules, a class; `.08` number literals |
+| [`mteeval-buildlib`](https://github.com/macthomasengineering/MteEVAL-b4x-library) | BSD-3-Clause | an expression compiler and its tests | four modules, a class |
 | [`jsonwebtoken`](https://github.com/pyhoon/jsonwebtoken-b4j) | MIT | a JSON Web Token class | a class, `JavaObject`, jStringUtils, the java-jwt and Jackson jars |

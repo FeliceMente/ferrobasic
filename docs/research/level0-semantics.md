@@ -432,15 +432,41 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `process_globals_string_loop_named_like_sub_counter_elsewhere`,
   `process_globals_loop_named_like_sub_for_each_elsewhere`,
   `local_for_each_named_like_sub_loop_again`,
-  `local_for_each_named_like_sub_other_type`); a `Dim` with a Sub's name is
-  refused: "Variable name cannot be the same as a sub name" (**recorded**:
-  `module_variable_named_like_sub`). Not recorded: another `For Each`
-  with `As` over such a variable in the same Sub, another without `As`
-  anywhere else, and a `Dim` of `Class_Globals` with a Sub's name (*open*:
-  `local_typed_for_each_named_like_sub_loop_again`,
+  `local_for_each_named_like_sub_other_type`,
   `local_for_each_after_counter_named_like_sub`,
-  `process_globals_loop_named_like_sub_for_each_again`,
-  `process_globals_for_each_named_like_sub_for_each_elsewhere`).
+  `process_globals_for_each_named_like_sub_for_each_elsewhere`,
+  `process_globals_loop_named_like_sub_for_each_again`), also inside a
+  `For` of a Sub over it and in `Process_Globals` after a typed `For Each`
+  (**recorded**: `local_for_each_named_like_sub_nested`,
+  `process_globals_for_each_named_like_sub_for_each_again`); another `For
+  Each v As T` is accepted after typed `For Each` loops or an `Int`
+  counter over it, one after the other, in a Sub or in `Process_Globals`,
+  and inside a typed `For Each` of a Sub over it (**recorded**:
+  `local_typed_for_each_named_like_sub_loop_again`,
+  `local_typed_for_each_after_counter_named_like_sub`,
+  `local_typed_for_each_after_module_counter_named_like_sub`,
+  `local_typed_for_each_named_like_sub_nested`,
+  `process_globals_counter_named_like_sub_typed_for_each_again`,
+  `process_globals_for_each_named_like_sub_typed_for_each_again`); a
+  `Dim` with a Sub's name is refused: "Variable name cannot be the same as
+  a sub name" (**recorded**: `module_variable_named_like_sub`). Not
+  recorded (*open*): a `For Each` without `As` as the first loop over the
+  name, which only a later typed `For Each` can declare
+  (`local_for_each_named_like_sub_before_typed`,
+  `process_globals_for_each_named_like_sub_before_typed`), or nested in a
+  loop of `Process_Globals` (`process_globals_for_each_named_like_sub_nested`);
+  a `For Each v As T` of another type after a counter of the Sub
+  (`local_typed_for_each_other_type_after_counter_named_like_sub`) or
+  inside a `For` over it (`local_typed_for_each_in_counter_named_like_sub`),
+  or nested in `Process_Globals`
+  (`process_globals_typed_for_each_named_like_sub_nested`); a `For` over
+  a loop variable that a `For Each v As T` of another number type than
+  `Int` declared (`local_counter_after_double_for_each_named_like_sub`);
+  any other combination of loops over the name, as FerroBASIC settles only
+  the recorded ones (`recorded_loop` in `crates/hir/src/lower.rs`, and
+  the pending tests listed in [open-questions.md](../open-questions.md));
+  and a `Dim` of
+  `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,
@@ -499,6 +525,61 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   an IDE warning
   ([forum](https://www.b4x.com/android/forum/threads/can-you-use-a-variable-without-declaring.27855/)).
   **open**; current compilers may reject them.
+
+### Constants (docs, forum, recorded)
+
+Implemented as recorded with B4J 10.70 (run 12,
+[#33](https://github.com/FeliceMente/ferrobasic/issues/33)); the rules are in
+[level0.md](../spec/level0.md#declarations-and-scope).
+
+- `Private Const Size As Int = 10` and `Public Const ItemNumber As Int =
+  100` declare constants, "which cannot be changed anywhere in the code"
+  (**docs**, booklet §2.3.3). The `Dim` syntax shows `Dim [Const]
+  variable1 [= expression], variable2 [= expression], ..., [As type]`
+  (**docs**, booklet §4.2).
+- `Dim Const` arrived with B4A 4.00 (December 2014): "constant variables
+  are assigned when declared, and their value cannot be later changed",
+  which the compiler enforces (**forum**, Erel,
+  [release notes](https://www.b4x.com/android/forum/threads/b4a-v4-00-has-been-released.48027/page-2)).
+  Older threads saying there are no constants predate it
+  ([forum](https://b4x.com/android/forum/threads/constants.23418),
+  [forum](https://www.b4x.com/android/forum/threads/constants.35383)).
+- Assigning one is "Cannot set a Const variable" in B4A, and a `Dim
+  Const` inside a Sub is accepted (**forum**: a 2014 bug report, fixed
+  by Erel, [thread](https://www.b4x.com/android/forum/threads/constants-leak.47798/)).
+- B4R treats every global non-primitive variable as a constant
+  ([forum](https://www.b4x.com/android/forum/threads/unable-to-change-string-variable.147844/)):
+  a B4R rule, not part of the B4J profile.
+- Real projects write `Public Const NAME = value As Int` (value before
+  `As`), also `Private const` in lower case, of types `Int`, `String` and
+  `Boolean`, in `Process_Globals` and `Class_Globals` (`mteeval-buildlib`
+  in the real-world corpus, about 100 constants).
+- **recorded**: every form above, of any type (`List`, `Map` and arrays
+  included), with any expression as its value, in `Process_Globals` and in
+  a Sub (`const_*`). Without `As` it is a `String` (`const_no_as`). It is
+  set in declaration order, not inlined: a variable declared before it
+  and initialised from it reads `0` (`const_used_before`). B4J refuses
+  assigning one or an item of an array constant ("Cannot modify Const
+  variable.": `const_assign`, `const_array_mutate`) and one without a
+  value ("Const variable must be set in the declaration line.":
+  `const_no_value`, and with bounds, `const_array_bounds`); `List.Set`
+  and `Map.Put` on one are accepted (`const_list_mutate`,
+  `const_map_mutate`). Run 13 (2026-10-27) refused a `For` over an `Int`
+  constant and a `For Each Size As Int` in a Sub over a module one, and a
+  field of a constant record ("Cannot modify Const variable.":
+  `const_for_counter`, `const_for_each_variable`, `const_record_field`),
+  and a `Dim Size As Int = 4` in a Sub with a module constant's name
+  ("Cannot redeclare a const variable.": `const_local_dim`). In
+  `Process_Globals` it built a `Dim` of an `Int` constant's name after it
+  and a `Const` of a variable's name after its `Dim`, both with a literal
+  value:
+  each declaration sets its value in turn, so the program prints the
+  last one, `3` and `10` (`const_dim_after`, `const_after_dim`).
+- **open**: any other loop over a constant or declaration again of its
+  name (without a value, of another type than `Int`, a third one), and
+  whether a variable declared both by a `Const` and by a `Dim` may then
+  change, each with a pending test
+  ([open-questions.md](../open-questions.md)).
 
 ### Keywords used as names (generated)
 
