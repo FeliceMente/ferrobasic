@@ -571,7 +571,8 @@ Implemented as recorded with B4J 10.70 (run 12,
   and a `Dim Size As Int = 4` in a Sub with a module constant's name
   ("Cannot redeclare a const variable.": `const_local_dim`). In
   `Process_Globals` it built a `Dim` of an `Int` constant's name after it
-  and a `Const` of a variable's name after its `Dim`, both with a value:
+  and a `Const` of a variable's name after its `Dim`, both with a literal
+  value:
   each declaration sets its value in turn, so the program prints the
   last one, `3` and `10` (`const_dim_after`, `const_after_dim`).
 - **open**: any other loop over a constant or declaration again of its
