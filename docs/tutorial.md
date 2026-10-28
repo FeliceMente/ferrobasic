@@ -22,7 +22,7 @@ by its full path. The examples below just write `ferro`.
 
 ```console
 $ ferro version
-ferro 0.0.5-dev (linux-x64)
+ferro 0.0.5 (linux-x64)
 ```
 
 The part in brackets is the platform `ferro` was built for, for example
@@ -402,7 +402,7 @@ $ echo $?
 - Output and exit codes are the same as `ferro run`'s, runtime errors included.
 
 The executable needs neither FerroBASIC nor a JVM. It is `ferro` itself, with
-the checked program appended (about 1.6 MB). You can copy it to another machine
+the checked program appended (about 1.7 MB). You can copy it to another machine
 with the same OS and architecture.
 
 > **Note:** `ferro bundle` does not compile. The executable is the `ferro`
@@ -491,7 +491,7 @@ Hello, Ada!
 - On Windows the program is `Greeter\Greeter.exe`.
 - `-o` puts it elsewhere: `ferro bundle Greeter -o dist/greeter` writes
   `dist/greeter`. The `dist` folder must already exist.
-- The program is a file of about 1.6 MB inside your project's folder. If the
+- The program is a file of about 1.7 MB inside your project's folder. If the
   project is under version control, add it to `.gitignore` (here
   `Greeter/Greeter`), or bundle it elsewhere with `-o`.
 - A single module is not a project: `ferro bundle greet.bas` still writes
