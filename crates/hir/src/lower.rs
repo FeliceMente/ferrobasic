@@ -51,11 +51,8 @@ struct Lowerer {
     /// their first declaration: the program has an error already, so their
     /// uses are refused with no error of their own.
     refused_consts: HashSet<TextRange>,
-    /// The declarators lowered so far with no value, by their range.
-    declared_without_value: HashSet<TextRange>,
-    /// How many declarations of each module variable `Process_Globals` has
-    /// lowered so far, by the range of its first one.
-    globals_declared: HashMap<TextRange, u32>,
+    /// How many declarations and loops of each name `Process_Globals` has.
+    process_globals_declarations: HashMap<String, u32>,
     /// The current Sub's locals with a Sub's name: `true` for a loop
     /// variable, `false` for a refused `Dim`. Their uses mean the Sub
     /// (recorded).
@@ -186,6 +183,14 @@ fn typed_loop_variable(name: &str, statement: &str, globals: &str) -> String {
         "declaring the `{statement}` variable `{name}` in the loop is not supported in \
          `{globals}` yet: `{name}` is already declared, so write the loop without `As`"
     )
+}
+
+/// A declarator of `Process_Globals`, as `declare_process_globals` sees it.
+#[derive(Clone, Copy)]
+struct GlobalDeclaration {
+    is_const: bool,
+    has_value: bool,
+    int: bool,
 }
 
 /// A module variable declared both by a `Const` and by a `Dim`: whether it
@@ -705,16 +710,54 @@ impl Lowerer {
         let nodes = sub
             .descendants()
             .filter(|n| matches!(n.kind(), DIM_STMT | FOR_STMT | FOR_EACH_STMT));
+        // Each name's declarations, `None` for a loop.
+        let mut declarations: HashMap<String, Vec<Option<GlobalDeclaration>>> = HashMap::new();
         for node in nodes {
             if node.kind() == DIM_STMT {
                 for (decl, ty) in self.declarators(&node) {
                     let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
+                    let int = ty == Ty::Int;
                     self.declare_dim_global(name.clone(), ty, range(&decl));
                     self.mark_const(&decl, &name);
+                    let declaration = GlobalDeclaration {
+                        is_const: in_const(&decl),
+                        has_value: !exprs(&decl).is_empty(),
+                        int,
+                    };
+                    declarations
+                        .entry(key(&name))
+                        .or_default()
+                        .push(Some(declaration));
                 }
             } else {
                 self.declare_loop_global(&node);
+                if let Some(name) = child(&node, NAME) {
+                    declarations
+                        .entry(key(&name_of(&name)))
+                        .or_default()
+                        .push(None);
+                }
             }
+        }
+        // An `Int` declared by a `Const` and by a `Dim` with a value, in
+        // either order, and nothing else, builds (recorded); whether it may
+        // then change is not known.
+        for (k, found) in declarations {
+            let recorded = match found[..] {
+                [Some(a), Some(b)] => {
+                    a.is_const != b.is_const && a.has_value && b.has_value && a.int && b.int
+                }
+                _ => false,
+            };
+            if let Some(&id) = self.globals.get(&k)
+                && recorded
+            {
+                let global = &mut self.module.globals[id.0 as usize];
+                global.is_const = true;
+                self.redeclared_consts.insert(global.range);
+            }
+            self.process_globals_declarations
+                .insert(k, found.len() as u32);
         }
     }
 
@@ -1465,7 +1508,6 @@ impl Lowerer {
             // B4J: "Cannot modify Const variable." (recorded), for a `For`
             // and a `For Each v As Int` in a Sub over a module `Int` `Const`.
             let recorded = !self.in_process_globals
-                && !self.in_class_globals
                 && matches!(var, VarRef::Global(_))
                 && !self.redeclared_const(var)
                 && *ty == Ty::Int
@@ -1747,9 +1789,16 @@ impl Lowerer {
     }
 
     /// Reports an error about changing a constant, unless declaring it
-    /// again was refused already.
+    /// again was refused already. Whether one declared both ways may change
+    /// is asked once: after that, the program has an error already.
     fn const_error(&mut self, var: &VarRef, at: TextRange, message: String) {
-        if !self.refused_consts.contains(&self.var(var).range) {
+        let first = self.var(var).range;
+        let reported = if self.redeclared_const(var) {
+            !self.refused_consts.insert(first)
+        } else {
+            self.refused_consts.contains(&first)
+        };
+        if !reported {
             self.error(at, message);
         }
     }
@@ -1773,42 +1822,28 @@ impl Lowerer {
     fn const_declaration(&mut self, decl: &SyntaxNode, ty: &Ty, var: &VarRef) -> bool {
         let is_const = in_const(decl);
         let has_value = !exprs(decl).is_empty();
-        if !has_value {
-            self.declared_without_value.insert(range(decl));
-        }
-        let first = self.var(var).range;
-        let in_globals = self.in_process_globals && matches!(var, VarRef::Global(_));
-        let before = if in_globals {
-            let count = self.globals_declared.entry(first).or_default();
-            *count += 1;
-            *count - 1
-        } else {
-            self.globals_declared.get(&first).copied().unwrap_or(0)
-        };
         let declared = self.var(var);
+        let first = declared.range;
         let name = child(decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
         let at = child(decl, NAME).map_or_else(|| range(decl), |n| range(&n));
         let same_type = declared.ty == *ty;
         if declared.range != range(decl) && same_type && (is_const || declared.is_const) {
-            let int = *ty == Ty::Int;
             let global = matches!(var, VarRef::Global(_));
-            // The one declaration of `Process_Globals` before this one.
-            let once = before == 1 && !self.redeclared_consts.contains(&first);
-            // The `Dim`: this one, or the first declaration.
-            let dim_has_value = if is_const {
-                !self.declared_without_value.contains(&first)
-            } else {
-                has_value
-            };
-            if in_globals && int && once && is_const != declared.is_const && dim_has_value {
-                if let VarRef::Global(id) = var {
-                    self.module.globals[id.0 as usize].is_const = true;
-                }
-                self.redeclared_consts.insert(first);
+            // The second declaration of the pair `declare_process_globals`
+            // found.
+            if self.in_process_globals && self.redeclared_const(var) {
                 return true;
             }
-            let in_sub = !self.in_process_globals && !self.in_class_globals;
-            let message = if in_sub && global && int && once && !is_const && has_value {
+            // Declared once in `Process_Globals`, by the `Const` alone.
+            let once = global
+                && !self.redeclared_const(var)
+                && self.process_globals_declarations.get(&key(&declared.name)) == Some(&1);
+            let message = if !self.in_process_globals
+                && once
+                && *ty == Ty::Int
+                && !is_const
+                && has_value
+            {
                 format!("`{name}` is a `Const` of the module: a `Dim` cannot declare it again")
             } else if is_const {
                 format!(
