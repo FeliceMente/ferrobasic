@@ -462,6 +462,9 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   (`process_globals_typed_for_each_named_like_sub_nested`); a `For` over
   a loop variable that a `For Each v As T` of another number type than
   `Int` declared (`local_counter_after_double_for_each_named_like_sub`);
+  any other combination of loops over the name, as FerroBASIC settles only
+  the recorded ones (`recorded_loop` in `crates/hir/src/lower.rs`, and
+  the pending tests listed in [open-questions.md](../open-questions.md));
   and a `Dim` of
   `Class_Globals` with a Sub's name.
   With the same type, a counter and a
