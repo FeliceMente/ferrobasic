@@ -547,6 +547,10 @@ fn constants() {
         errors(&module(after_dim, "    Size = 5\n    Size = 6")),
         [redeclared("may be assigned")]
     );
+    assert_eq!(
+        errors(&module(after_dim, "    Dim Size As Int = 4\n    Size = 6")),
+        [open_again]
+    );
     // Another type is the clash already reported, alone.
     assert_eq!(
         errors(&module(
