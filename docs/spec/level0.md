@@ -158,14 +158,22 @@ End Sub
   (below). Its value is
   computed where it is declared, in order, as a `Dim`'s: a module variable
   initialised from a constant declared after it reads `0` (recorded).
-  Assigning a constant, or an item of a constant array, is an error (B4J:
-  "Cannot modify Const variable.", recorded); calls that change a `List`
-  or `Map` constant's contents are not (`Set`, `Put`, recorded). A
-  constant may be a `Select Case` label (recorded). A loop over a
-  constant, another declaration of its name (a later `Dim`, or a `Dim` of
-  a Sub), a `Const` of a name declared before, a `Const` array with bounds
-  and no value, and assigning a field of a constant record are *(open)*,
-  so compile errors.
+  A `Const` array with bounds must be given its value too (recorded).
+  Assigning a constant, an item of a constant array or a field of a
+  constant record is an error, and so are a `For` over an `Int` constant
+  and a `For Each v As Int` in a Sub over a module one (B4J: "Cannot
+  modify Const variable.", recorded); calls that change a `List` or `Map`
+  constant's contents are not (`Set`, `Put`, recorded). A `Dim` in a Sub
+  with a module `Int` constant's name, with a value, is an error (B4J:
+  "Cannot redeclare a const variable.", recorded). In `Process_Globals`,
+  an `Int` declared by a `Const` and by a `Dim` with a value, in either
+  order, is one variable: each declaration sets its value in turn
+  (recorded); whether it may then change is *(open)*, so assigning it,
+  a loop over it or assigning an item of it are compile errors. A
+  constant may be a `Select Case` label (recorded). Any other loop over a
+  constant or declaration again of its name is *(open)*, so a compile
+  error; after it, the program has an error already, and the uses of the
+  name are refused with no error of their own.
 - `Dim`, `Private` and `Public` in a Sub all declare a local. In
   `Process_Globals` they declare module variables. `Private` and `Public` only
   matter with several modules (Level 1).

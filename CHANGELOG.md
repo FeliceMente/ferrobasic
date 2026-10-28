@@ -12,10 +12,14 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   value before `As`, lower-case `const`), of any type, with any value, in
   `Process_Globals` or in a Sub. Assigning a constant, or an item of an
   array constant, and a constant without a value are errors, as in B4J.
-  Without `As` a constant is a `String`. Still refused until recorded: a
-  loop over a constant, another declaration of its name, an array constant
-  with bounds and no value, and assigning a field of a constant record
-  (new pending tests).
+  Without `As` a constant is a `String`. Recording run 13 settles more:
+  a loop over an `Int` constant, assigning a field of a record constant,
+  an array constant with bounds and no value, and a `Dim` in a Sub with a
+  module constant's name are errors with B4J's answer, and in
+  `Process_Globals` an `Int` declared by a `Const` and by a `Dim` with a
+  value, in either order, builds, each setting its value in turn. Still
+  refused until recorded: changing such a variable, and any other loop
+  over a constant or declaration again of its name (new pending tests).
 - Recording runs 12 and 13 settle loops over a variable named like a
   Sub, and FerroBASIC now settles only the combinations they recorded,
   refusing any other as open until it is recorded (new pending tests).
