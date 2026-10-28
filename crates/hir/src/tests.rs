@@ -467,6 +467,44 @@ fn constants() {
             "{body}"
         );
     }
+    // The same answers with the Sub before `Process_Globals`, and with a
+    // statement between the two declarations of `Process_Globals`.
+    let sub_first = |body: &str, globals: &str| {
+        format!(
+            "Sub AppStart (Args() As String)\n{body}\nEnd Sub\n\nSub Process_Globals\n{globals}\nEnd Sub\n"
+        )
+    };
+    for (body, globals, message) in [
+        ("    Size = 5", after_dim, redeclared("may be assigned")),
+        ("    Size = 5", dim_after, redeclared("may be assigned")),
+        (
+            "    Dim Size As Int = 4",
+            size,
+            "`Size` is a `Const` of the module: a `Dim` cannot declare it again".to_string(),
+        ),
+        (
+            "",
+            "    Private Size As Int = 3\n    Size = 4\n    Private Const Size As Int = 10",
+            redeclared("may be assigned"),
+        ),
+        // A loop between them makes the `Const` a third declaration.
+        (
+            "",
+            "    Private Size As Int = 3\n    For Size = 1 To 2\n    Next\n    Private Const Size As Int = 10",
+            open_const.to_string(),
+        ),
+    ] {
+        assert_eq!(
+            errors(&sub_first(body, globals)),
+            [message],
+            "{body}{globals}"
+        );
+    }
+    // Whether it may change is asked once.
+    assert_eq!(
+        errors(&module(after_dim, "    Size = 5\n    Size = 6")),
+        [redeclared("may be assigned")]
+    );
     // Another type is the clash already reported, alone.
     assert_eq!(
         errors(&module(
