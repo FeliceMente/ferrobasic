@@ -571,6 +571,40 @@ fn constants() {
         )),
         [open_loop, open_loop]
     );
+    // The recorded pair has literal values: one reading the name is open.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10\n    Private Size As Int = Size + 1",
+            ""
+        )),
+        [open_again]
+    );
+    // The recorded field answer is for a constant of `Process_Globals`
+    // declared once: a local one is open.
+    assert_eq!(
+        errors(&module(
+            "",
+            "    Private Const P As Point = NewPoint\n    P.X = 4"
+        )),
+        ["`P` is a `Const`: whether this part of it may be assigned is not known yet"]
+    );
+    // A typed `For` in a Sub over a constant refused, or asked about, has
+    // no error of its own.
+    assert_eq!(
+        errors(&module(
+            "    Private Const Size As Int = 10\n    Private Const Size As Int = 11",
+            "    For Size As Int = 1 To 2\n    Next"
+        )),
+        [open_const]
+    );
+    assert_eq!(
+        errors(&module(
+            after_dim,
+            "    For Size As Int = 1 To 2\n    Next\n    Size = 4"
+        ))
+        .len(),
+        1
+    );
     // Whether it may change is asked once.
     assert_eq!(
         errors(&module(after_dim, "    Size = 5\n    Size = 6")),

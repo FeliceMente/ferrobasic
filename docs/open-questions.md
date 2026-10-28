@@ -380,7 +380,7 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         without a value is (`level0/const_array_bounds`);
   - [x] in `Process_Globals`, a `Dim` of an `Int` constant's name after it,
         and a `Const` of a variable's name after its `Dim`, both with a
-        value, build: each sets its value in turn (`level0/const_dim_after`
+        literal value, build: each sets its value in turn (`level0/const_dim_after`
         prints 3, `level0/const_after_dim` prints 10);
   - [x] constants of type `List` (`level0/const_list`), `Map`
         (`level0/const_map`) and an array (`level0/const_array`); a `List`
@@ -396,8 +396,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
   - [ ] a `Dim` with no value after a constant of its name: built, and
         which value it keeps (`level0/const_dim_after_no_value`);
   - [ ] the same with another type than `Int`
-        (`level0/const_dim_after_string`), or with the `Dim` inside an `If`
-        (`level0/const_dim_after_in_if`);
+        (`level0/const_dim_after_string`), with the `Dim` inside an `If`
+        (`level0/const_dim_after_in_if`), or with a value that reads the
+        constant (`level0/const_dim_after_from_const`);
   - [ ] a `Dim` with no value in a Sub with a module constant's name
         (`level0/const_local_dim_no_value`);
   - [ ] a `For Each` without `As` over a constant

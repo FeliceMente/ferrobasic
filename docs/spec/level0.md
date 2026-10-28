@@ -166,8 +166,8 @@ End Sub
   constant's contents are not (`Set`, `Put`, recorded). A `Dim` in a Sub
   with a module `Int` constant's name, with a value, is an error (B4J:
   "Cannot redeclare a const variable.", recorded). In `Process_Globals`,
-  an `Int` declared by a `Const` and by a `Dim` with a value, in either
-  order, both statements of `Process_Globals` itself (not inside an `If`
+  an `Int` declared by a `Const` and by a `Dim`, each with a literal
+  value, in either order, both statements of `Process_Globals` itself (not inside an `If`
   or a loop), with no other declaration of or loop over its name there, is
   one variable: each declaration sets its value in turn (recorded); whether
   it may change is *(open)*, so assigning it anywhere, a loop over it or

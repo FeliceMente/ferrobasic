@@ -44,8 +44,12 @@ struct Lowerer {
     /// another type than its variable's.
     refused_loop_vars: HashSet<TextRange>,
     /// What `declare_process_globals` found about the constants of
-    /// `Process_Globals`, by the range of their first declaration.
+    /// `Process_Globals`.
     const_states: HashMap<GlobalId, ConstState>,
+    /// Whether to lower each declaration again of a constant's name in
+    /// `Process_Globals`, as `declare_process_globals` decided, by the range
+    /// of its declarator.
+    const_declarations: HashMap<TextRange, bool>,
     /// The current Sub's locals with a Sub's name: `true` for a loop
     /// variable, `false` for a refused `Dim`. Their uses mean the Sub
     /// (recorded).
@@ -185,7 +189,8 @@ struct GlobalDeclaration {
     at: TextRange,
     ty: Ty,
     is_const: bool,
-    has_value: bool,
+    /// Its value is a literal, as recorded.
+    literal: bool,
     /// A statement of `Process_Globals` itself, not inside a block.
     direct: bool,
 }
@@ -751,7 +756,7 @@ impl Lowerer {
                         at: child(&decl, NAME).map_or_else(|| range(&decl), |n| range(&n)),
                         ty: ty.clone(),
                         is_const: in_const(&decl),
-                        has_value: !exprs(&decl).is_empty(),
+                        literal: exprs(&decl).first().is_some_and(|e| e.kind() == LITERAL),
                         direct,
                     };
                     self.declare_dim_global(name.clone(), ty, range(&decl));
@@ -778,13 +783,14 @@ impl Lowerer {
             let global = self.module.global(id);
             let (first, is_const, ty) = (global.range, global.is_const, global.ty.clone());
             let name = global.name.clone();
-            // An `Int` declared by a `Const` and by a `Dim` with a value, in
-            // either order, both statements of `Process_Globals` itself.
+            // An `Int` declared by a `Const` and by a `Dim`, in either order,
+            // both with a literal value and statements of `Process_Globals`
+            // itself.
             let pair = match &found[..] {
                 [Ok(a), Ok(b), ..] => {
                     a.is_const != b.is_const
-                        && a.has_value
-                        && b.has_value
+                        && a.literal
+                        && b.literal
                         && a.direct
                         && b.direct
                         && a.ty == Ty::Int
@@ -792,10 +798,20 @@ impl Lowerer {
                 }
                 _ => false,
             };
+            // Every declaration but the first: lowered for the recorded pair
+            // alone (the program has an error otherwise).
+            let again: Vec<TextRange> = found
+                .iter()
+                .flatten()
+                .map(|d| d.range)
+                .filter(|&r| r != first)
+                .collect();
             if pair && found.len() == 2 {
                 self.module.globals[id.0 as usize].is_const = true;
                 self.const_states
                     .insert(id, ConstState::Redeclared { reported: false });
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, true)));
                 continue;
             }
             if pair {
@@ -809,18 +825,22 @@ impl Lowerer {
                     Err(at) => self.error(*at, redeclared_const_open(&name, "may be looped over")),
                 }
                 self.const_states.insert(id, ConstState::Reported);
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, false)));
                 continue;
             }
             // The first declaration again that is refused, reported here so
             // that every Sub sees it refused, wherever it is; another type
             // is the clash reported already.
-            let again = found
+            let refused = found
                 .iter()
                 .flatten()
                 .find(|d| d.range != first && d.ty == ty && (d.is_const || is_const));
-            if let Some(d) = again {
+            if let Some(d) = refused {
                 self.error(d.at, const_again_open(&name, d.is_const));
                 self.const_states.insert(id, ConstState::Reported);
+                self.const_declarations
+                    .extend(again.iter().map(|&r| (r, false)));
             } else if let [Ok(d)] = &found[..]
                 && d.is_const
                 && d.direct
@@ -1156,7 +1176,8 @@ impl Lowerer {
             )
         };
         self.refused_loop_vars.insert(at);
-        self.error(at, message);
+        // After a constant refused, or asked about once, no error of its own.
+        self.const_error(&VarRef::Global(id), at, message);
     }
 
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
@@ -1577,8 +1598,7 @@ impl Lowerer {
             // B4J: "Cannot modify Const variable." (recorded), for a `For`
             // and a `For Each v As Int` in a Sub over a module `Int` `Const`.
             let recorded = !self.in_process_globals
-                && self.class_globals.is_none()
-                && self.const_state(var) == Some(ConstState::Single)
+                && self.recorded_const(var)
                 && *ty == Ty::Int
                 && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some());
             let message = if recorded {
@@ -1857,6 +1877,13 @@ impl Lowerer {
         }
     }
 
+    /// Whether B4J's answers recorded for a constant apply to it: one of a
+    /// main module's `Process_Globals`, declared there once, by its `Const`
+    /// alone.
+    fn recorded_const(&self, var: &VarRef) -> bool {
+        self.class_globals.is_none() && self.const_state(var) == Some(ConstState::Single)
+    }
+
     fn const_state(&self, var: &VarRef) -> Option<ConstState> {
         match var {
             VarRef::Global(id) => self.const_states.get(id).copied(),
@@ -1905,16 +1932,20 @@ impl Lowerer {
         if declared.range != range(decl) && same_type && (is_const || declared.is_const) {
             let global = matches!(var, VarRef::Global(_));
             // `declare_process_globals` decided, and reported, those of
-            // `Process_Globals`.
-            if self.in_process_globals && !self.in_class_globals && global {
-                return self.redeclared_const(var);
+            // `Process_Globals`; any it did not is refused below.
+            if self.in_process_globals
+                && !self.in_class_globals
+                && global
+                && let Some(&lowered) = self.const_declarations.get(&range(decl))
+            {
+                return lowered;
             }
             let state = self.const_state(var);
             if state == Some(ConstState::Reported) {
                 return false;
             }
             let message = if !self.in_process_globals
-                && state == Some(ConstState::Single)
+                && self.recorded_const(var)
                 && *ty == Ty::Int
                 && !is_const
                 && has_value
@@ -1947,10 +1978,8 @@ impl Lowerer {
     fn const_place(&self, expr: &Expr) -> Option<(VarRef, String)> {
         let item = matches!(&expr.kind, ExprKind::Index { array, .. }
             if matches!(array.kind, ExprKind::Var(_)));
-        // Recorded in a main module only.
-        let field = self.class_globals.is_none()
-            && matches!(&expr.kind, ExprKind::Field { record, .. }
-                if matches!(record.kind, ExprKind::Var(_)));
+        let field = matches!(&expr.kind, ExprKind::Field { record, .. }
+            if matches!(&record.kind, ExprKind::Var(var) if self.recorded_const(var)));
         let mut root = expr;
         loop {
             match &root.kind {

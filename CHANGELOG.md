@@ -16,8 +16,8 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   a loop over an `Int` constant, assigning a field of a record constant,
   an array constant with bounds and no value, and a `Dim` in a Sub with a
   module constant's name are errors with B4J's answer, and in
-  `Process_Globals` an `Int` declared by a `Const` and by a `Dim` with a
-  value, in either order, builds, each setting its value in turn. Still
+  `Process_Globals` an `Int` declared by a `Const` and by a `Dim`, each
+  with a literal value, in either order, builds, each setting its value in turn. Still
   refused until recorded: changing such a variable, and any other loop
   over a constant or declaration again of its name (new pending tests).
 - Recording runs 12 and 13 settle loops over a variable named like a
