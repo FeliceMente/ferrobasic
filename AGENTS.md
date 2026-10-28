@@ -14,11 +14,12 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   -> `mir` (typed IR) -> `interp` | `backend-java` | `backend-llvm`.
 - Language: Rust (stable, edition 2024). Workspace in `crates/`, one crate per
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
-- Current milestone: **M0 → M1** — lexer, parser, lossless CST, then the
-  Level 0 interpreter, `ferro run` and standalone `ferro bundle` (see
-  `docs/spec/cli.md`). The Level 0 corpus is recorded with B4J 10.70 on a
-  Windows machine by `tools/recorder`; new pending tests go into the next
-  recording run. See `docs/roadmap.md`.
+- Current milestone: **M1** (M0 is complete). Done: the Level 0
+  interpreter, `ferro check`, `ferro run` and standalone `ferro bundle` (see
+  `docs/spec/cli.md`). Next: the REPL and the Language Server with
+  diagnostics. The Level 0 corpus is recorded with B4J 10.70 on a Windows
+  machine by `tools/recorder`; new pending tests go into the next recording
+  run. See `docs/roadmap.md`.
 
 ## Read before working
 
@@ -96,7 +97,8 @@ cargo run -p ferro-recorder -- --dry-run          # tests the recorder would rec
 cargo run -p ferro-difftest                       # compare against recordings: the report
 cargo build -p ferro-cli && cargo run -p ferro-difftest -- --target standalone
 cargo run -p ferro-corpus --bin ferro-corpus-fetch    # download the real-world corpus
-cargo test -p ferro-syntax --test projects -- --ignored  # tests that need it
+cargo test -p ferro-syntax --test projects -- --ignored   # tests that need it
+cargo test -p ferro-project --test projects -- --ignored
 ```
 
 ## Before closing a task

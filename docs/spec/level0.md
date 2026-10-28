@@ -70,14 +70,29 @@ End Sub
   followed by '=' expected", recorded). Every use of such a name in an
   expression, bare, with arguments or as a statement, calls the Sub,
   whatever the loop variable's type, and assigning it is an error,
-  wherever it is (recorded). A `For` may loop over it again anywhere,
-  whichever loop declares it, and counts with a number as any `For` does
-  (B4J: "Loop iterator should be a numeric variable", recorded). Another
-  `For Each` without `As` over it is an error in a Sub over its own
-  `For Each` variable, and in another Sub over a counter of
-  `Process_Globals` (B4J: "Current declaration does not match previous
-  one", recorded); anywhere else, and with `As` in the same Sub, it is
-  *(open)*. A
+  wherever it is (recorded). A loop over such a name is settled only
+  where B4J's answer is recorded, as listed below and in `recorded_loop`
+  (`crates/hir/src/lower.rs`); any other loop over it is *(open)*, so a
+  compile error. Accepted, and the name still calls the Sub (recorded):
+  - the first loop over it in a Sub or in `Process_Globals`: a `For`, or a
+    `For Each v As T` of any type, which declares it; in another Sub, over
+    a loop variable of `Process_Globals`, a `For`, or a `For Each v As
+    Int`, which declares its own variable (only `Int` is recorded there);
+  - in a Sub or in `Process_Globals`, one after the other: a `For` after a
+    `For` or a `For Each v As Int`, and a `For Each v As Int` after
+    either; in another Sub, a `For Each v As Int` after a `For`;
+  - inside a `For Each v As Int` of a Sub, a `For Each v As Int`.
+
+  A `For` counts with a number as any `For` does (B4J: "Loop iterator
+  should be a numeric variable", recorded). A `For Each` without `As`
+  over it is an error (B4J: "Current declaration does not match previous
+  one", recorded): in a Sub or in `Process_Globals` after a `For` or a
+  `For Each v As Int` over it, inside a `For` of a Sub over it, and as the
+  first loop of another Sub over a loop variable of `Process_Globals`.
+  Every recording has at most two loops over the name, so a third, one
+  after the other or nested, is *(open)* too. After a refused or open loop
+  over it, the program has an error already, and the loops after it are
+  not judged. A
   `For Each v As T` of a Sub may have the name of a Sub and of a module
   variable of type `T`, and with another type it is an error as for any
   other name (recorded). In `Class_Globals`, a `Dim` with a Sub's
@@ -104,8 +119,8 @@ End Sub
 - Unsupported constructs get a diagnostic naming the construct and the level
   that adds it. Examples are `Class_Globals`, `Wait For`, `Sleep`, `#If`,
   inline Java (`#If Java`), and a library other than the core one. A
-  construct no level adds yet says so: `Const` declarations and type tests
-  (`x Is T`). Each gets one error, without follow-on errors.
+  construct no level adds yet says so: type tests (`x Is T`). Each gets one
+  error, without follow-on errors.
 
 ## Types
 
@@ -134,6 +149,34 @@ End Sub
 
 ## Declarations and scope
 
+- `Const` after `Dim`, `Private` or `Public` (in any letter case) makes
+  every name of the statement a constant, in `Process_Globals` or in a Sub,
+  of any type, `List`, `Map` and arrays included, with any expression as
+  its value (recorded). Each must be given its value there (B4J: "Const
+  variable must be set in the declaration line.", recorded). Without `As`
+  it is a `String` (recorded), as a `Dim` without `As` provisionally is
+  (below). Its value is
+  computed where it is declared, in order, as a `Dim`'s: a module variable
+  initialised from a constant declared after it reads `0` (recorded).
+  A `Const` array with bounds must be given its value too (recorded).
+  Assigning a constant, an item of a constant array or a field of a
+  constant record is an error, and so are a `For` over an `Int` constant
+  and a `For Each v As Int` in a Sub over a module one (B4J: "Cannot
+  modify Const variable.", recorded); calls that change a `List` or `Map`
+  constant's contents are not (`Set`, `Put`, recorded). A `Dim` in a Sub
+  with a module `Int` constant's name, with a value, is an error (B4J:
+  "Cannot redeclare a const variable.", recorded). In `Process_Globals`,
+  an `Int` declared by a `Const` and by a `Dim`, each with a literal
+  value, in either order, both statements of `Process_Globals` itself (not inside an `If`
+  or a loop), with no other declaration of or loop over its name there, is
+  one variable: each declaration sets its value in turn (recorded); whether
+  it may change is *(open)*, so assigning it anywhere, a loop over it or
+  assigning an item of it is a compile error, reported once. A
+  constant may be a `Select Case` label (recorded). Any other loop over a
+  constant or declaration again of its name is *(open)*, so a compile
+  error. After a declaration again in `Process_Globals` refused so, the
+  program has an error already: the uses of the name are refused with no
+  error of their own, wherever the Subs are.
 - `Dim`, `Private` and `Public` in a Sub all declare a local. In
   `Process_Globals` they declare module variables. `Private` and `Public` only
   matter with several modules (Level 1).

@@ -53,9 +53,10 @@ wait_for_stmt = "Wait" , "For" , REST_OF_STATEMENT ;
 (* A declarator without As takes the type of the next "As" to its right    *)
 (* in the same statement. With no As at all (Dim x, Dim x = 5) the type   *)
 (* is open: String by old docs, maybe inferred from the initializer.       *)
-(* "Const" is recognised only to be reported (not supported yet). It is  *)
-(* a name, not a keyword: it is the modifier only when a name follows,    *)
-(* so "Dim Const As Int" declares a variable named Const.                 *)
+(* "Const" makes every declarator a constant, which must have its value   *)
+(* there and cannot be assigned (level0.md, "Declarations and scope").   *)
+(* It is a name, not a keyword: it is the modifier only when a name       *)
+(* follows, so "Dim Const As Int" declares a variable named Const.        *)
 dim_stmt      = ( "Dim" | "Private" | "Public" ) , [ "Const" ] ,
                 declarator , { "," , declarator } ;
 declarator    = IDENT , [ "(" , [ expr_list ] , ")" ] ,
@@ -116,8 +117,12 @@ expr_list     = expr , { "," , expr } ;
 literal       = INT | REAL | STRING | "True" | "False" | "Null" ;
 IDENT         = ( letter | "_" ) , { letter | digit | "_" } ;
 INT           = digit , { digit } | "0x" , hex , { hex } ;
-REAL          = digit , { digit } , "." , digit , { digit } ,
-                [ ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit } ] ;
+REAL          = ( digit , { digit } , "." , digit , { digit }
+                | "." , digit , { digit } ) , [ exponent ]
+              | digit , { digit } , exponent ;
+exponent      = ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit } ;
+(* A REAL starts with "." only where an operand may start: after an       *)
+(* operand or a ".", the "." is a member access's ("a.5" is an error).    *)
 STRING        = '"' , { any_char - '"' } , '"' ;   (* no escapes; may span lines *)
 (* Placeholder: "$" [formatter] "{" expr "}". formatter is empty, digits   *)
 (* "N" or "N.M", or a name (date, time, datetime, xml), case-insensitive.  *)

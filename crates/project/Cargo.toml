@@ -13,3 +13,6 @@ workspace = true
 
 [dependencies]
 ferro-syntax = { path = "../syntax" }
+
+[dev-dependencies]
+ferro-corpus = { path = "../corpus" }

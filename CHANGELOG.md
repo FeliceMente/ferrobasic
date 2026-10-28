@@ -5,6 +5,59 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## 0.0.5 (pre-alpha)
+
+### Language, as in B4J
+
+- `Const` declarations are supported, as recorded from B4J (#33): every
+  form (`Private Const`, `Public Const`, `Dim Const`, several names, the
+  value before `As`, lower-case `const`), of any type, with any value, in
+  `Process_Globals` or in a Sub. Assigning a constant, or an item of an
+  array constant, and a constant without a value are errors, as in B4J.
+  Without `As` a constant is a `String`. Recording run 13 settles more:
+  a loop over an `Int` constant, assigning a field of a record constant,
+  an array constant with bounds and no value, and a `Dim` in a Sub with a
+  module constant's name are errors with B4J's answer, and in
+  `Process_Globals` an `Int` declared by a `Const` and by a `Dim`, each
+  with a literal value, in either order, builds, each setting its value
+  in turn. Still refused until recorded: changing such a variable, and any
+  other loop over a constant or declaration again of its name (new
+  pending tests).
+- A real literal may start with its decimal point (`.08`), as in
+  `MteBuildLib.b4j` of the real-world corpus, which B4J builds. Before, it
+  was a syntax error. After an operand the dot is still a member access's
+  (`a.5` is an error about the member name).
+
+### Recorded from B4J
+
+- Recording runs 12 and 13 (B4J 10.70) settle loops over a variable named
+  like a Sub, and FerroBASIC now settles only the combinations they
+  recorded, refusing any other as open until it is recorded (new pending
+  tests). Accepted, as in B4J, and the name still calls the Sub: another
+  `For Each v As Int` after a `For` or a `For Each v As Int` over the
+  name, in a Sub or in `Process_Globals`, or inside a `For Each v As Int`
+  of a Sub; these were refused until recorded. Refused with the settled
+  message: one without `As` after such a loop, or inside a `For` of a Sub
+  over the name. Now refused as open, though accepted before: a `For`
+  inside a loop over the name; a `For` over a variable that a `For Each`
+  of another number type than `Int` declares; a `For Each` of another
+  type than `Int` again, or in another Sub over a name that a loop of
+  `Process_Globals` declares; a second loop in another Sub over a loop
+  variable of `Process_Globals`; and a third loop over the name, one after
+  the other or nested, as no recording has more than two. After a loop
+  refused or open, the loops over the name after it get no error of their
+  own.
+- The leading-point reals are recorded as FerroBASIC runs them, and are
+  `Double`s.
+
+### Projects
+
+- `ferro-project` reads a whole project: its project file, its `.b4j.meta`
+  file and the modules it names, local or `|relative|`, also when a
+  module's file is named in another letter case than in the project file,
+  as on Windows. Each file writes back byte for byte. `ferro check`, `run`
+  and `bundle` still accept only a project with no module (Level 0).
+
 ## 0.0.4 (pre-alpha)
 
 ### Recorded from B4J
