@@ -1056,6 +1056,31 @@ fn loops_in_process_globals() {
     ] {
         assert_eq!(errors(&sub(&body, &app)).len(), 1, "{body}{app}");
     }
+    // A loop over a variable of an unknown type has its error where the
+    // type is: two loops give the two, and nothing else.
+    let bogus = "    For Each Bump As Bogus In Array As Int(1)\n    Next\n";
+    for (body, app) in [
+        (String::new(), format!("{bogus}{bogus}")),
+        (bogus.to_string(), bogus.to_string()),
+    ] {
+        let diags = errors(&sub(&body, &app));
+        assert_eq!(diags.len(), 2, "{body}{app}: {diags:?}");
+        assert!(diags.iter().all(|d| d.contains("Bogus")), "{diags:?}");
+    }
+    // A `For` with `As` in `Process_Globals` gets the message about `As`,
+    // however many loops came before it.
+    for before in [counter, &format!("{counter}{counter}")] {
+        assert_eq!(
+            errors(&sub(
+                &format!("{before}    For Bump As Int = 1 To 2\n    Next\n"),
+                ""
+            )),
+            [
+                "declaring the `For` variable `Bump` in the loop is not supported in `Process_Globals` yet: `Bump` is already declared, so write the loop without `As`"
+            ],
+            "{before}"
+        );
+    }
     // So is a `For Each v As T` refused for another type than the
     // variable's.
     let diags = errors(&sub(

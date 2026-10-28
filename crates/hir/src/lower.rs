@@ -182,7 +182,7 @@ fn variable_named_like_sub(name: &str) -> String {
 }
 
 /// The loops of a Sub so far over a name with a Sub's name.
-#[derive(Default, Clone)]
+#[derive(Default)]
 struct LoopsBefore {
     /// The accepted loops, in order: all over the same variable.
     seen: Vec<LoopKind>,
@@ -1417,12 +1417,16 @@ impl Lowerer {
         }
     }
 
-    /// Whether a loop is refused elsewhere, as B4J refuses it (recorded):
-    /// where its variable is declared (`refused_loop_vars`), or, for a `For`
-    /// over anything but a number, when it is lowered.
+    /// Whether a loop is refused elsewhere: where its variable is declared
+    /// (`refused_loop_vars`); over a variable of an unknown type, reported
+    /// where the type is; or, for a `For` over anything but a number or with
+    /// `As` in `Process_Globals`, when it is lowered.
     fn refused_loop_already(&self, node: &SyntaxNode, name: &SyntaxNode, ty: &Ty) -> bool {
         self.refused_loop_vars.contains(&range(name))
-            || (node.kind() == FOR_STMT && !ty.is_numeric())
+            || *ty == Ty::Error
+            || (node.kind() == FOR_STMT
+                && (!ty.is_numeric()
+                    || (self.in_process_globals && child(node, TYPE_REF).is_some())))
     }
 
     /// The variable a `For` / `For Each` loops over, or the loop refused
@@ -1483,7 +1487,8 @@ impl Lowerer {
         if before.is_some_and(|b| b.unrecorded) || self.refused_loop_already(node, name, &ty) {
             return LoopVar::Found(found);
         }
-        // The innermost loop over the same name around this one.
+        // Every loop over the same name around this one: more than one is
+        // open (`recorded_loop`).
         let around: Vec<LoopKind> = node
             .ancestors()
             .skip(1)
