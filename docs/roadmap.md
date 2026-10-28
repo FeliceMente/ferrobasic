@@ -15,7 +15,7 @@ B4X; M3 is the first milestone where real B4J projects build unchanged.
 | **M5 · Microcontrollers** | Embedded profile, Raspberry Pi Pico first | GPIO and serial working on the board |
 | **M6 · User interface** | B4X layouts and designer scripts, preview in VS Code | B4XPages projects run unchanged on desktop, Android, web |
 
-## M0 task breakdown
+## M0 task breakdown (complete)
 
 Order changed: the interpreter comes right after the parser, and recording
 came later, with `.provisional` outputs standing in
@@ -70,4 +70,17 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
       ([compatibility-testing.md](compatibility-testing.md#the-report)).
 - [x] `Const` declarations at Level 0
       ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)), as
-      recording run 12 settled them.
+      recording runs 12 and 13 settled them.
+
+## M1 task breakdown (second part)
+
+The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs-code).
+
+- [ ] `ferro repl` on the interpreter: accepts statements and whole Subs, and
+      keeps state between inputs. Its behaviour goes into `docs/spec/cli.md`
+      first.
+- [ ] Language Server with diagnostics: the same errors as `ferro check`,
+      published as the user types, on the lossless CST.
+- [ ] Gate: the conformance tests pass in the interpreter and as standalone
+      binaries. On 2026-10-28 none fails on either target; 27 tests are
+      pending until recording run 14 answers them.
