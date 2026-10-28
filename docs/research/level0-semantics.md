@@ -562,11 +562,23 @@ Implemented as recorded with B4J 10.70 (run 12,
   assigning one or an item of an array constant ("Cannot modify Const
   variable.": `const_assign`, `const_array_mutate`) and one without a
   value ("Const variable must be set in the declaration line.":
-  `const_no_value`); `List.Set` and `Map.Put` on one are accepted
-  (`const_list_mutate`, `const_map_mutate`).
-- **open**: loops over a constant, other declarations of its name, a
-  `Const` array with bounds and no value, and assigning a field of a
-  constant record, each with a pending test
+  `const_no_value`, and with bounds, `const_array_bounds`); `List.Set`
+  and `Map.Put` on one are accepted (`const_list_mutate`,
+  `const_map_mutate`). Run 13 (2026-10-27) refused a `For` over an `Int`
+  constant and a `For Each Size As Int` in a Sub over a module one, and a
+  field of a constant record ("Cannot modify Const variable.":
+  `const_for_counter`, `const_for_each_variable`, `const_record_field`),
+  and a `Dim Size As Int = 4` in a Sub with a module constant's name
+  ("Cannot redeclare a const variable.": `const_local_dim`). In
+  `Process_Globals` it built a `Dim` of an `Int` constant's name after it
+  and a `Const` of a variable's name after its `Dim`, both with a literal
+  value:
+  each declaration sets its value in turn, so the program prints the
+  last one, `3` and `10` (`const_dim_after`, `const_after_dim`).
+- **open**: any other loop over a constant or declaration again of its
+  name (without a value, of another type than `Int`, a third one), and
+  whether a variable declared both by a `Const` and by a `Dim` may then
+  change, each with a pending test
   ([open-questions.md](../open-questions.md)).
 
 ### Keywords used as names (generated)
