@@ -310,7 +310,12 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `Map.Values` in order (insertion order for a `Map`). A `List` that grows
   while it is iterated is iterated over the items it had when the loop
   began (recorded: `list_modified_in_for_each`); changing a `Map` while
-  iterating it is *(open)*.
+  iterating it is *(open)*. Without `As`, `x` cannot be a local declared
+  before the loop, whatever its type (B4J: "Current declaration does not
+  match previous one", recorded: `for_each_untyped_local`,
+  `for_each_untyped_other_type`); over a local `Object`, a module variable,
+  in `Process_Globals` or over an undeclared name it is *(open)*, so an
+  error. In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing

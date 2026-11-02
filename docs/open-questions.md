@@ -371,11 +371,17 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       over a Sub's name, as the only loop over it, builds, and reading the
       name calls the Sub (recording:
       `level0/process_globals_typed_for_each_double_named_like_sub`).
-- [ ] A `For Each` without `As` over a variable declared with `Dim`, of
-      the items' type or of another one, is refused ("Current declaration
-      does not match previous one", recordings:
-      `level0/for_each_untyped_local`, `level0/for_each_untyped_other_type`);
-      FerroBASIC still accepts it (`ferro-compare` found it).
+- [x] A `For Each` without `As` over a local declared before it, of the
+      items' type or of another one, is refused ("Current declaration does
+      not match previous one", recordings: `level0/for_each_untyped_local`,
+      `level0/for_each_untyped_other_type`). `ferro-compare` found that
+      FerroBASIC accepted it.
+- [ ] The same over a local `Object`, over a module variable from a Sub,
+      or in `Process_Globals` over a variable declared there, and over a
+      name never declared (`level0/for_each_untyped_object`,
+      `level0/for_each_untyped_module_variable`,
+      `level0/process_globals_for_each_untyped`,
+      `level0/for_each_untyped_undeclared`). FerroBASIC refuses them.
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls

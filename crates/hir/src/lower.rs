@@ -352,6 +352,25 @@ fn recorded_loop(
     }
 }
 
+/// A `For Each` without `As` over a variable declared before it. B4J
+/// refuses it over a local of a Sub, of a type other than `Object`
+/// (recorded: `for_each_untyped_local`, `for_each_untyped_other_type`), as
+/// over a constant or a loop variable named like a Sub; over an `Object`
+/// or a module variable it is not recorded.
+fn untyped_for_each(name: &str, var: &VarRef, ty: &Ty) -> String {
+    if matches!(var, VarRef::Local(_)) && *ty != Ty::Object {
+        format!(
+            "`{name}` is already declared: a `For Each` without `As` cannot loop over it; \
+             write `For Each {name} As <type> In ...`"
+        )
+    } else {
+        format!(
+            "`{name}` is already declared: whether a `For Each` without `As` may loop over it \
+             here is not known yet, so write `For Each {name} As <type> In ...`"
+        )
+    }
+}
+
 fn loop_kind(node: &SyntaxNode) -> LoopKind {
     match (node.kind(), child(node, TYPE_REF).is_some()) {
         (FOR_STMT, _) => LoopKind::Counter,
@@ -1456,6 +1475,19 @@ impl Lowerer {
                     self.refused_loop(node, &text, &name);
                     return;
                 };
+                // Outside `Class_Globals`, where a loop must use a variable
+                // declared with `Dim`, a `For Each` without `As` cannot loop
+                // over a variable declared before it. A Sub's name was
+                // judged by `loop_variable`, which lets one through only
+                // after the program has an error over it already.
+                if child(node, TYPE_REF).is_none()
+                    && !self.in_class_globals
+                    && !self.subs.contains_key(&key(&text))
+                {
+                    self.error(range(&name), untyped_for_each(&text, &var, &ty));
+                    self.refused_loop(node, &text, &name);
+                    return;
+                }
                 self.accepted_loop(node, &name, &ty);
                 let Some(coll) = exprs(node).into_iter().next() else {
                     return;
