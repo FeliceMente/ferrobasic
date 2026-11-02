@@ -3,22 +3,27 @@
 # (AGENTS.md, "Before closing a task"): CI runs only on pull requests into
 # `main`. Stops at the first failure, naming the step.
 #
-#   scripts/check-all.sh [--offline]
+#   scripts/check-all.sh [--offline] [--quick]
 #
 # Clippy runs for every platform CI tests, this machine's own included; the
 # others need `rustup target add <target>`. The corpus step downloads the
 # real-world corpus the first time (tests/corpus): `--offline` skips the
 # download, and the corpus tests too when the corpus is not there yet. The
-# static Linux build of CI's static-linux job runs only on Linux x86_64 with
-# the x86_64-unknown-linux-musl target. A skipped step is named at the end.
+# static Linux binary (scripts/check-static-linux.sh, as CI's static-linux
+# job) runs only on Linux x86_64 with the x86_64-unknown-linux-musl target
+# and the `file` command; `--quick` skips it, as its release build is slow.
+# A skipped step is named at the end.
 set -euo pipefail
 
 offline=false
+quick=false
 for arg in "$@"; do
   case "$arg" in
     --offline) offline=true ;;
+    --quick) quick=true ;;
     -h | --help)
-      sed -n '2,13s/^# \{0,1\}//p' "$0"
+      # The header: the comment lines after the first one.
+      sed -n '2,/^[^#]/{/^#/s/^# \{0,1\}//p;}' "$0"
       exit 0
       ;;
     *)
@@ -28,12 +33,17 @@ for arg in "$@"; do
   esac
 done
 
-# The checkout: the current one, or else the one holding this script.
-root=$(git rev-parse --show-toplevel 2>/dev/null) || root=""
-if [ -z "$root" ] || [ ! -f "$root/scripts/check-all.sh" ]; then
-  root=$(cd "$(dirname "$0")/.." && pwd)
-fi
-cd "$root"
+# The checkout holding this script, through any symlinks to it.
+script=$0
+while [ -L "$script" ]; do
+  link=$(readlink "$script")
+  case "$link" in
+    /*) script=$link ;;
+    *) script=$(dirname "$script")/$link ;;
+  esac
+done
+cd "$(dirname "$script")/.."
+target_dir=${CARGO_TARGET_DIR:-target}
 
 # The platforms CI tests (.github/workflows/ci.yml).
 ci_targets="x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin"
@@ -97,7 +107,7 @@ step "real-world corpus"
 if [ "$offline" = false ]; then
   cargo run -q -p ferro-corpus --bin ferro-corpus-fetch || fail "fetching the corpus"
 fi
-if [ "$offline" = true ] && [ ! -d target/corpus ]; then
+if [ "$offline" = true ] && [ ! -d "$target_dir/corpus" ]; then
   skip "real-world corpus (--offline, and not downloaded yet)"
 else
   cargo test -p ferro-syntax --test projects -- --ignored || fail "corpus: syntax"
@@ -106,21 +116,16 @@ fi
 
 step "static Linux binary"
 musl=x86_64-unknown-linux-musl
-if [ "$host" != x86_64-unknown-linux-gnu ]; then
+if [ "$quick" = true ]; then
+  skip "static Linux binary (--quick)"
+elif [ "$host" != x86_64-unknown-linux-gnu ]; then
   skip "static Linux binary (CI only: it needs Linux x86_64)"
 elif ! grep -qx "$musl" <<<"$installed"; then
   skip "static Linux binary (rustup target add $musl to run it)"
+elif ! command -v file >/dev/null 2>&1; then
+  skip "static Linux binary (it needs the file command)"
 else
-  # As CI's static-linux job does.
-  cargo build -q --release -p ferro-cli --target "$musl" || fail "static Linux binary: build"
-  work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
-  "target/$musl/release/ferro" bundle tests/conformance/level0/prices_map.bas \
-    -o "$work/prices_map" || fail "static Linux binary: bundle"
-  file "$work/prices_map" | grep -Eq 'statically linked|static-pie linked' ||
-    fail "static Linux binary: the bundled program is not static"
-  "$work/prices_map" | diff - tests/conformance/level0/prices_map.expected ||
-    fail "static Linux binary: the bundled program's output"
+  scripts/check-static-linux.sh || fail "static Linux binary"
 fi
 
 if [ -n "$skipped" ]; then
