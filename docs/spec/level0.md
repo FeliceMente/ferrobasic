@@ -288,7 +288,10 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
     errors (recorded: `chained_comparison_less`,
     `chained_comparison_equal`), while `x = a = b` assigns one comparison;
-  - a Char on the left of `=` next to a number is *(open)*.
+  - a Char `=` an `Int` converts the `Int` to a Char, the first character
+    of its text, so `"A" = 65` is `False` (recorded: `char_number_compare`);
+    the number on the left, or another number type, is *(open)*, so an
+    error.
 
 ## Statements
 

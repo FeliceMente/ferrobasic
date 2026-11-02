@@ -201,11 +201,14 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (`level0/return_value_untyped_sub`).
 - [x] A parameter without `As` is a `String` (recording:
       `level0/parameter_without_as`).
-- [ ] A `Char` `=` a number builds, and `c = 65` with `c` holding `"A"` is
-      `False` (recording: `level0/char_number_compare`): compared as
-      Strings, as the left operand deciding would give? FerroBASIC still
-      refuses it until B4J's generated code shows how it converts. A
-      `Char` with `<` is refused ("Cannot cast type: {Type=Char,…} to:
+- [x] A `Char` `=` an `Int` converts the `Int` to a `Char`, the first
+      character of its text: B4J generates `_c==BA.ObjectToChar(65)`, and
+      jCore's `ObjectToChar` takes `"65".charAt(0)`, `'6'`, so `"A" = 65` is
+      `False` (recording and generated code: `level0/char_number_compare`).
+- [ ] The number on the left (`65 = c`), and a `Char` `=` a `Double`,
+      whose Java text (`1.0E-5`) can start with another character than
+      B4J's (`0.00001`) (`level0/number_eq_char`, `level0/char_eq_double`).
+      A `Char` with `<` is refused ("Cannot cast type: {Type=Char,…} to:
       number", recording: `level0/char_string_compare`), next to a String
       at least; between two Chars it is open (`level0/char_less_char`).
 - [ ] `<` between a String and a Boolean, which FerroBASIC refuses as it
