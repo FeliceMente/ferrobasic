@@ -87,6 +87,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 ## Commands
 
 ```sh
+scripts/check-all.sh                              # every check below a PR into dev needs
 cargo build --workspace
 cargo test --workspace
 cargo fmt --all
@@ -103,11 +104,13 @@ cargo test -p ferro-project --test projects -- --ignored
 
 ## Before closing a task
 
-1. `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
-   `cargo test --workspace` all pass. CI (`.github/workflows/ci.yml`) runs
-   them on Linux, Windows and macOS only for pull requests into `main` and
-   on demand (see `docs/compatibility-testing.md`, "CI"), so run clippy for
-   the other targets locally too when touching platform-specific code.
+1. `scripts/check-all.sh` passes: format, clippy for Linux, Windows and
+   macOS, the tests, the conformance tests in the interpreter and as
+   standalone binaries, the recorder's dry run, the real-world corpus and,
+   on Linux x86_64, the static Linux binary.
+   CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for
+   pull requests into `main` and on demand (see
+   `docs/compatibility-testing.md`, "CI").
 2. New behaviour has conformance tests; open questions and deviations are recorded.
 3. Docs in `docs/` reflect any design change; `docs/tutorial.md` shows real
    `ferro` output, so re-run its examples when CLI behaviour changes.
