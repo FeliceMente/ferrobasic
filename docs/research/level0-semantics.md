@@ -357,8 +357,8 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
 The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
 `Floor(a / b)`. Division by zero in Double is not an error (`Infinity`/`NaN`;
 [forum](https://www.b4x.com/android/forum/threads/divide-by-zero-not-an-error.142795/)).
-**open**: the exact rule for converting a Double back to `Int`
-(truncation toward zero is Java's `(int)` cast, as reported on the forum).
+Converting a Double back to `Int` truncates toward zero, as Java's `(int)`
+cast does and the forum reported (**recorded**: `double_to_int_assign`).
 
 ### Statements
 

@@ -216,7 +216,7 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 | From → to | Rule |
 | --- | --- |
 | number → wider number | Java widening. Exact for Byte/Short/Int → Int/Long/Double, Float → Double and every integer → Float/Double whose value fits the mantissa; otherwise rounded to nearest (Int 16777217 → Float 16777216, Long 9007199254740993 → Double 9007199254740992). |
-| number → narrower integer | Java narrowing. Double → Int truncates toward zero *(open: forum level)*; out-of-range values follow Java rules (NaN → 0, saturating). Long → Int keeps the low 32 bits. |
+| number → narrower integer | Java narrowing. Double → Int truncates toward zero (recorded: `double_to_int_assign`); out-of-range values follow Java rules (NaN → 0, saturating). Long → Int keeps the low 32 bits. |
 | number → String | `NumberToString`, see below |
 | Boolean → String | `true` / `false` (lower case) |
 | String → number | parsed as a Java `double` literal, then narrowed. An unparsable string raises `NumberFormatException`. |

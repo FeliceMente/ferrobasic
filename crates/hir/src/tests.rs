@@ -1480,28 +1480,25 @@ fn loops_in_process_globals() {
              known yet, so use another name"
         ]
     );
-    // A `Type`, `Bit` or a keyword is refused once, and the loop's body is
+    // `Bit` (recorded), a `Type` or a keyword (open) is refused once, and the loop's body is
     // still checked, without reporting the variable again.
     for (body, what) in [
         (
             "    For Bit = 1 To 2\n        Log(Bit)\n    Next\n    For Bit = 1 To 2\n    Next",
-            "the `Bit` object",
+            "cannot have the name of the `Bit` object",
         ),
         (
             "    For Each Abs As Int In Array As Int(1)\n    Next",
-            "a keyword",
+            "has the name of a keyword",
         ),
         (
             "    Type Point (X As Int)\n    For Point = 1 To 2\n    Next",
-            "a `Type`",
+            "has the name of a `Type`",
         ),
     ] {
         let diags = errors(&globals(body, "    Log(Abs(-1))"));
         assert_eq!(diags.len(), 1, "{body}: {diags:?}");
-        assert!(
-            has(&diags, &format!("has the name of {what}")),
-            "{body}: {diags:?}"
-        );
+        assert!(has(&diags, what), "{body}: {diags:?}");
     }
     let diags = errors(&globals(
         "    For Bit = Unknown To 2\n        Log(Missing)\n    Next\n    For Each Bit As Int In Other\n    Next",

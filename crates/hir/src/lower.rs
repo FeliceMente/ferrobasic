@@ -922,15 +922,25 @@ impl Lowerer {
     }
 
     /// Whether a loop variable that `Process_Globals` declares may take this
-    /// name. A Sub's may (recorded: `lookup_value`); whether the
-    /// module variable hides a
-    /// `Type`, `Bit` or a keyword of the same name is not recorded, so it is
-    /// refused, once.
+    /// name. A Sub's may (recorded: `lookup_value`). `Bit` may not: B4J's
+    /// compiler fails on it (recorded:
+    /// `process_globals_loop_named_like_bit`). Whether the module variable
+    /// hides a `Type` or a keyword of the same name is not recorded, so it
+    /// is refused, once.
     fn loop_name_free(&mut self, text: &str, name: &SyntaxNode) -> bool {
+        if text.eq_ignore_ascii_case("Bit") {
+            self.refused_loop_names.insert(key(text));
+            self.error(
+                range(name),
+                format!(
+                    "the loop variable `{text}` of `Process_Globals` cannot have the name of \
+                     the `Bit` object: use another name"
+                ),
+            );
+            return false;
+        }
         let what = if self.records.contains_key(&key(text)) {
             "a `Type`"
-        } else if text.eq_ignore_ascii_case("Bit") {
-            "the `Bit` object"
         } else if builtins::lookup(Owner::Global, text).is_some() {
             "a keyword"
         } else {

@@ -33,8 +33,9 @@ related tests stay `pending-recording`.
       ([docs](research/level0-semantics.md#statements)).
 - [x] `/` between two integers returns a Double
       ([forum, Erel](research/level0-semantics.md#division-forum-erel)).
-- [ ] Double-to-Int conversion on assignment: truncation toward zero (forum) or rounding
-      (`level0/double_to_int_assign`).
+- [x] Double-to-Int conversion on assignment truncates toward zero: 2.7,
+      2.5 and 3.5 give 2, 2 and 3, -2.7 and -2.5 give -2 (recording:
+      `level0/double_to_int_assign`).
 - [x] A variable declared inside a block is visible in the whole Sub; the
       declaration is hoisted and re-running it resets the variable
       ([forum](research/level0-semantics.md#declarations-and-scope)).
@@ -52,48 +53,58 @@ related tests stay `pending-recording`.
       and recording: `level0/number_parsing`).
 - [x] A `String` holding `"null"` is not `Null` (`s = Null` is `False`);
       an unset `String` field is (recording: `level0/string_null_compare`).
-- [ ] Which keywords besides `In` are also accepted as names (`Step`, `To`,
-      `Each`, `Until`, `Type`, …): `In` is
-      ([generated](research/level0-semantics.md#keywords-used-as-names-generated));
-      `level0/keyword_name_step`, `_to`, `_each`, `_until`, `_type`.
-- [ ] Whether a line break inside parentheses continues the line without ` _`
-      (`level0/paren_line_break`).
+- [ ] Which keywords besides `In` are also accepted as names: `In` is
+      ([generated](research/level0-semantics.md#keywords-used-as-names-generated)),
+      and so is `Each` (recording: `level0/keyword_name_each`; FerroBASIC
+      refuses it until it is implemented). `Step`, `To`, `Type` and `Until`
+      are not (recordings: `level0/keyword_name_step`, `_to`, `_type`,
+      `_until`). The other keywords are open.
+- [x] A line break inside parentheses does not continue the line: B4J
+      says "Invalid number of parentheses." (recording:
+      `level0/paren_line_break`).
 - [ ] Whether chained comparisons (`a < b < c`, `If a = b = c`) compile, and
       how they group. The parser accepts them left-associatively for now.
       Settled part: `x = a = b` as a statement assigns the comparison `a = b`
       ([generated](research/level0-semantics.md#operators-and-precedence-docs-forum-open));
-      `level0/chained_comparison_less`, `level0/chained_comparison_equal`.
-- [ ] Which boxed type a numeric literal gets when stored as `Object`
-      (matters for `Map` keys: `Int` 1 and `Double` 1.0 are different keys;
-      `level0/literal_boxed_type`).
-- [ ] `For`: whether the limit and step are evaluated once, and the value of
-      the loop variable after the loop (`level0/for_limit_evaluated_once`,
-      `level0/for_counter_after_loop`).
+      `Log(3 < 2 < 1)` does not compile (") expected", recording:
+      `level0/chained_comparison_less`), nor does `If a = b = c Then`
+      ("'Then' expected", recording: `level0/chained_comparison_equal`),
+      which FerroBASIC still accepts.
+- [x] A numeric literal stored as `Object` is an `Integer`, or a `Double`
+      with a point, so `Int` 1 and `Double` 1.0 are different `Map` keys
+      (recording: `level0/literal_boxed_type`).
+- [x] `For` evaluates its limit and step once; after the loop the counter
+      holds the first value past the limit, or the start when the loop never
+      ran (recordings: `level0/for_limit_evaluated_once`,
+      `level0/for_counter_after_loop`). A `Double` counter with a fractional
+      step works (recording: `level0/for_double_counter`).
 - [ ] Undeclared variables other than `For` counters: implicit `String` (old
       forum posts) or a compile error (`level0/undeclared_variable`).
-- [ ] Type of a variable declared without `As` (`Dim x`, `Dim x = 5`): `String`, or inferred
-      (`level0/dim_without_as`).
-- [ ] Two `Dim`s of the same name in one Sub, with the same or different types
-      (`level0/dim_twice_same_type`, `level0/dim_twice_other_type`), and in
-      `Process_Globals` with the same type, the second with or without a
-      value (`level0/process_globals_dim_twice`,
-      `level0/process_globals_dim_twice_no_value`). FerroBASIC accepts the
-      same type in either place, though no recording settles it
-      (`ferro-compare` found it).
-- [ ] Return value of a typed Sub that ends without `Return`
-      (`level0/typed_sub_without_return`,
+- [x] A variable declared without `As` (`Dim x`, `Dim x = 5`) is a `String`
+      (recording: `level0/dim_without_as`).
+- [x] Two `Dim`s of the same name and type in one Sub are one variable,
+      and the second resets it; with different types they are refused
+      ("Current declaration does not match previous one"). In
+      `Process_Globals` two `Dim`s of one name and type are one variable
+      too, set by each in turn: to 0 by one without a value (recordings:
+      `level0/dim_twice_same_type`, `level0/dim_twice_other_type`,
+      `level0/process_globals_dim_twice`,
+      `level0/process_globals_dim_twice_no_value`).
+- [x] A typed Sub that ends without `Return` returns its type's default:
+      0, or an empty `String` (recordings: `level0/typed_sub_without_return`,
       `level0/typed_string_sub_without_return`).
 - [ ] Comparing Strings with `<` / `>`, and comparing a String with a number
       (`level0/string_compare_less`, `level0/mixed_compare_number_left`,
       `level0/mixed_compare_string_left`).
-- [ ] Changing a `List` or `Map` while iterating it with `For Each`
-      (`level0/list_modified_in_for_each`).
+- [ ] Changing a `Map` while iterating it with `For Each`. A `List` that
+      grows inside its `For Each` is iterated only over the items it had
+      when the loop began (recording: `level0/list_modified_in_for_each`).
 - [x] Output and exit code of a B4J non-UI program that stops on an uncaught
       error: what it logged so far, then exit code 1, with the error on stderr
       (recording: `level0/uncaught_error`).
 - [x] `AppType` value of a non-UI `.b4j` project: `StandardJava`
       ([public samples](spec/project-files.md#sources)).
-- [ ] Whether `LogDebug` prints in release mode (provisionally not;
+- [x] `LogDebug` prints nothing in release mode (recording:
       `level0/log_debug`).
 - [ ] Exact text of JDK-generated exception messages seen through
       `LastException.Message` (index and number-parse errors), and which JDK.
@@ -138,9 +149,11 @@ needs a recorded test):
       and a line break after every third field (recording:
       `level0/record_printing`).
 - [ ] `GetType` of a record (`level0/record_get_type`).
-- [ ] How a variable of type `Exception` and an array print
-      (`level0/exception_printing`; an array prints its identity hash,
-      which a recording cannot settle).
+- [x] A variable of type `Exception` prints as `(<Class>) <toString>` once
+      caught, and as `(Exception) Not initialized` when never set
+      (recording: `level0/exception_printing`).
+- [ ] How an array prints: its identity hash, which a recording cannot
+      settle.
 - [ ] `Sin`, `Cos`, `Tan`, `Power` and `Logarithm` call `Math` methods that
       HotSpot replaces with CPU intrinsics, whose last bit may depend on the
       JVM and CPU; FerroBASIC uses the platform's maths library. On the
@@ -184,20 +197,21 @@ needs a recorded test):
 
 Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 
-- [ ] Calling a member on an `Object` (`o.Size`) is a compile error: the value
-      must first be assigned to a typed variable or cast with `.As(T)`
-      (`level0/member_on_object`).
+- [x] Calling a member on an `Object` (`o.Size`) is a compile error: B4J
+      says "Unknown type: Object" (recording: `level0/member_on_object`).
 - [ ] `Return <value>` in a Sub declared without `As` is a compile error
       (`level0/return_value_untyped_sub`).
-- [ ] A parameter without `As` is a `String` (`level0/parameter_without_as`).
+- [x] A parameter without `As` is a `String` (recording:
+      `level0/parameter_without_as`).
 - [ ] Comparing a `Char` with a number is a compile error; `Char` with a
       `String` compares as Strings (`level0/char_number_compare`,
       `level0/char_string_compare`).
 - [ ] In a mixed comparison the left operand decides: number vs String
       compares numerically, String vs number compares as Strings (forum;
       `level0/mixed_compare_number_left`, `level0/mixed_compare_string_left`).
-- [ ] `<` / `>` on Booleans or objects is a compile error
-      (`level0/boolean_less`).
+- [x] `<` / `>` on Booleans is a compile error: "Cannot cast type:
+      {Type=Boolean,…} to: number." (recording: `level0/boolean_less`). On
+      objects it is still open.
 - [ ] `Null` compared with a number, Boolean or Char is a compile error
       (`level0/null_number_compare`).
 - [x] A real literal may start with its decimal point (`.08`), also with
@@ -207,9 +221,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       operand or a dot, a `.` stays a member access's (`a.5` is an error).
 - [x] Its type is `Double`, as `0.08`'s (recording:
       `level0/real_leading_point_type`).
-- [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
+- [x] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
-      `Int` is a `Long` (`level0/hex_literal`,
+      `Int` is a `Long` (recordings: `level0/hex_literal`,
       `level0/decimal_literal_over_int`).
 - [x] A `For` with an undeclared counter inside `Process_Globals` runs,
       and the counter is a module variable: `AppStart` reads it, and the
@@ -272,10 +286,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_for_each_named_like_sub_for_each_elsewhere`,
       `level0/process_globals_loop_named_like_sub_for_each_again`,
       `level0/process_globals_for_each_named_like_sub_for_each_again`).
-- [ ] The same as the first loop over that name, which only a later
-      `For Each v As T` can declare, in a Sub or in `Process_Globals`, and
-      nested in a loop of `Process_Globals`. FerroBASIC refuses it as open
-      (`level0/local_for_each_named_like_sub_before_typed`,
+- [x] So is one as the first loop over that name, which only a later
+      `For Each v As T` declares, in a Sub or in `Process_Globals`, and one
+      nested in a loop of `Process_Globals` over it (recordings:
+      `level0/local_for_each_named_like_sub_before_typed`,
       `level0/process_globals_for_each_named_like_sub_before_typed`,
       `level0/process_globals_for_each_named_like_sub_nested`).
 - [x] Another `For Each v As T` over that name is accepted after typed
@@ -347,21 +361,21 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] A `Dim` of `Class_Globals` with a Sub's name: refused as in
       `Process_Globals`? FerroBASIC refuses it. Classes arrive at Level 1,
       so it needs a class module in the corpus to record.
-- [ ] A loop variable of `Process_Globals` named like a `Type`, `Bit` or a
-      keyword: FerroBASIC refuses it
-      (`level0/process_globals_loop_named_like_type`,
-      `level0/process_globals_loop_named_like_bit`,
-      `level0/process_globals_loop_named_like_keyword`).
-- [ ] A `For Each v As T` of another type than `Int` in `Process_Globals`,
-      over a Sub's name, as the only loop over it: only `Int` is recorded
-      there, yet FerroBASIC accepts it (`ferro-compare` found it;
+- [ ] A loop variable of `Process_Globals` named like a `Type`: B4J builds
+      it (recording: `level0/process_globals_loop_named_like_type`), which
+      FerroBASIC still refuses. Named `Bit` or `Until`, B4J's compiler
+      fails (recordings: `level0/process_globals_loop_named_like_bit`,
+      `level0/process_globals_loop_named_like_keyword`); other keywords and
+      built-in names are open.
+- [x] A `For Each v As T` of another type than `Int` in `Process_Globals`,
+      over a Sub's name, as the only loop over it, builds, and reading the
+      name calls the Sub (recording:
       `level0/process_globals_typed_for_each_double_named_like_sub`).
 - [ ] A `For Each` without `As` over a variable declared with `Dim`, of
-      the items' type or of another one (`level0/for_each_untyped_local`,
-      `level0/for_each_untyped_other_type`), and a `For` over a `Double`
-      variable with a fractional step (`level0/for_double_counter`).
-      FerroBASIC accepts them, though no recording settles them
-      (`ferro-compare` found them).
+      the items' type or of another one, is refused ("Current declaration
+      does not match previous one", recordings:
+      `level0/for_each_untyped_local`, `level0/for_each_untyped_other_type`);
+      FerroBASIC still accepts it (`ferro-compare` found it).
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls
@@ -433,19 +447,24 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] What `Const` leaves open. FerroBASIC refuses each until it is
       recorded:
   - [ ] whether a variable declared both by a `Const` and by a `Dim` in
-        `Process_Globals` may then be assigned, in either order
-        (`level0/const_dim_after_assign`, `level0/const_after_dim_assign`);
-        FerroBASIC refuses any change to it, a loop over it or an item;
+        `Process_Globals` may then be assigned, in either order: with the
+        `Dim` last it may (recording: `level0/const_dim_after_assign`,
+        which FerroBASIC still refuses), with the `Const` last it may not
+        ("Cannot modify Const variable.", recording:
+        `level0/const_after_dim_assign`); a loop over it or an item is
+        open;
   - [ ] a `Dim` with no value after a constant of its name: built, and
         which value it keeps (`level0/const_dim_after_no_value`);
   - [ ] the same with another type than `Int`
         (`level0/const_dim_after_string`), with the `Dim` inside an `If`
         (`level0/const_dim_after_in_if`), or with a value that reads the
         constant (`level0/const_dim_after_from_const`);
-  - [ ] a `Dim` with no value in a Sub with a module constant's name
-        (`level0/const_local_dim_no_value`);
-  - [ ] a `For Each` without `As` over a constant
-        (`level0/const_for_each_untyped`), and two `Const`s of one name
+  - [x] a `Dim` with no value in a Sub with a module constant's name is
+        refused: "Cannot redeclare a const variable." (recording:
+        `level0/const_local_dim_no_value`);
+  - [ ] a `For Each` without `As` over a constant is refused ("Current
+        declaration does not match previous one", recording:
+        `level0/const_for_each_untyped`); two `Const`s of one name
         (`level0/const_twice`); like them, any other loop over a constant
         (in `Process_Globals`, over a local constant, of another type than
         `Int`) or declaration again of its name (a third one).
