@@ -299,7 +299,9 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `If c Then a : b`, only `a` is conditional.
 - **`If`**: single line `If c Then s [Else s]`, or the block form with `Else If`
   (two words) and `Else`.
-- **`Select expr`**: each `Case` holds a list of expressions, compared in order.
+- **`Select expr`**: each `Case` holds a list of expressions. The scrutinee
+  is evaluated, then every `Case` value, in order, then they are compared
+  in order (recorded: `case_values_evaluated`).
   - Numbers match by numeric value (as Double), also when an `Object` holds
     the number; other values match with `equals` on the boxed values, so
     String "1" does not match `Case 1`. If an `Object` scrutinee holds a
@@ -313,9 +315,9 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   - There are no ranges. `Select True` with `Case cond` is the idiom for conditions.
 - **`For i = a To b [Step s]`**:
   - `a`, `b` and `s` are evaluated once, before the first iteration
-    (recorded: `for_limit_evaluated_once`); in which order is recorded too
-    (`for_evaluation_order`: `s`, then `b`, then `a`), which FerroBASIC
-    does not follow yet;
+    (recorded: `for_limit_evaluated_once`): `s` first, then `b`, then `a`,
+    which is assigned to `i` last (recorded: `for_evaluation_order`), so `b`
+    reading `i` reads its value before the loop;
     `s` defaults to 1;
   - the loop runs while `i <= b` (positive step) or `i >= b` (negative step);
   - after `Next`, `i` is incremented by `s`;

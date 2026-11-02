@@ -83,8 +83,8 @@ The "not yet" rows come from the
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `If … Then … Else If … Else … End If`, single-line `If` | ✅ | [level0.md](spec/level0.md#statements); test `control_flow` |
-| `Select … Case … Case Else … End Select`, `Select True` | ✅ | tests `select_range`, `exit_in_select` |
-| `For … To … Step … Next`, `For Each … In … Next` | ✅ | over arrays, `List`, `Map.Keys`, `Map.Values` |
+| `Select … Case … Case Else … End Select`, `Select True` | ✅ | every `Case` value is evaluated before matching; tests `select_range`, `exit_in_select`, `case_values_evaluated` |
+| `For … To … Step … Next`, `For Each … In … Next` | ✅ | over arrays, `List`, `Map.Keys`, `Map.Values`; `For` evaluates its step, limit and start in that order, once (tests `for_evaluation_order`, `for_limit_evaluated_once`) |
 | `Do While … Loop`, `Do Until … Loop` | ✅ | `Loop While`/`Loop Until` are syntax errors, as in B4X; test `do_loop_while` |
 | `Exit`, `Continue`, `Return` | ✅ | `Exit` also leaves a `Select` |
 | `Try … Catch … End Try`, `LastException` | ✅ | a `Catch` sees the innermost cause; JDK messages are *(open)*; tests `uncaught_error`, `list_sort_type_errors` |

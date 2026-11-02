@@ -124,10 +124,11 @@ related tests stay `pending-recording`.
 Provisional runtime behaviour in `crates/mir` and `crates/interp` (each
 needs a recorded test):
 
-- [ ] `For` evaluation order: FerroBASIC assigns the start value, then
-      evaluates the limit, then the step. B4J's generated Java may evaluate
-      limit and step first; it only matters when they read the counter or
-      have side effects (`level0/for_evaluation_order`).
+- [x] `For` evaluates the step, then the limit, then the start (recording:
+      `level0/for_evaluation_order`). That the start is assigned after the
+      limit is evaluated, so a limit reading the counter reads its old
+      value, follows, and `level0/for_limit_reads_counter` asks the next run
+      to confirm it.
 - [ ] Call depth before `java.lang.StackOverflowError` (FerroBASIC: 10,000
       frames). The error is not caught by `Try`, as Java `Error`s escape the
       generated `catch (Exception e)`.
@@ -168,10 +169,10 @@ needs a recorded test):
 - [x] The type of `IIf`'s result, and so how it converts when assigned or
       printed: the chosen value keeps its own type, so `Log(IIf(True, 3,
       4.5))` prints `3` (recording: `level0/iif_branches`).
-- [ ] Whether all `Case` values are evaluated before matching, as they would
-      be if the compiler passes them to `BA.switchObjectToInt` as arguments;
-      FerroBASIC evaluates them in order until one matches. It only matters
-      for cases with side effects (`level0/case_values_evaluated`).
+- [x] Every `Case` value is evaluated, in order, before any is compared, as
+      when they are passed to `BA.switchObjectToInt` (recording:
+      `level0/case_values_evaluated`); `level0/case_values_evaluated_else`
+      asks the next run to confirm it when `Case Else` runs.
 - [ ] Exact texts of JDK-generated messages (`ClassCastException`,
       `IndexOutOfBoundsException`, …) seen through `LastException.Message`.
       `SortType`'s wrapped `IllegalArgumentException` (an item of another
