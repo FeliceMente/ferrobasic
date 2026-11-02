@@ -381,7 +381,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       name never declared (`level0/for_each_untyped_object`,
       `level0/for_each_untyped_module_variable`,
       `level0/process_globals_for_each_untyped`,
-      `level0/for_each_untyped_undeclared`). FerroBASIC refuses them.
+      `level0/for_each_untyped_undeclared`). FerroBASIC refuses them. Over
+      an undeclared name B4J likely builds it: `JSONWebToken.bas` in the
+      real-world corpus loops `For Each Key In Claims.Keys` with `Key`
+      declared nowhere.
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls

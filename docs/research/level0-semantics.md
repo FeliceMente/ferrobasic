@@ -390,7 +390,10 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   a module variable, in `Process_Globals` or over an undeclared name it is
   **open** (pending: `for_each_untyped_object`,
   `for_each_untyped_module_variable`, `process_globals_for_each_untyped`,
-  `for_each_untyped_undeclared`).
+  `for_each_untyped_undeclared`). Over an undeclared name B4J likely builds
+  it: the real-world corpus's `JSONWebToken.bas` (`setClaims`) loops
+  `For Each Key In Claims.Keys` with `Key` declared nowhere; which type it
+  gives `Key` is what the pending test asks.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
   is implicitly declared as `Int` (**docs**, coreref), in `Process_Globals`
   too, where it is a module variable: AppStart reads it (4 after
