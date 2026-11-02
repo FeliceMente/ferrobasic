@@ -2714,8 +2714,8 @@ impl Lowerer {
             (Error, _) | (_, Error) => return error_expr(at),
             // `n = Null`: B4J converts the `Null` with `BA.ObjectToNumber`,
             // which parses its text, `"null"`: a `NumberFormatException`
-            // when it runs (recorded: `null_number_compare`).
-            (l, Null) if l.is_numeric() && !ordering => {
+            // when it runs (recorded with an `Int`: `null_number_compare`).
+            (Int, Null) if !ordering => {
                 let right = self.coerce(right, &String);
                 let left = self.coerce(left, &Double);
                 let right = self.coerce(right, &Double);
@@ -2730,6 +2730,24 @@ impl Lowerer {
                     at,
                     "a Char cannot be compared with `<`, `>`, `<=` or `>=`: those compare \
                      numbers, and a Char does not convert to one",
+                );
+                return error_expr(at);
+            }
+            (Boolean, _) | (_, Boolean) if ordering => {
+                self.error(
+                    at,
+                    "a Boolean cannot be compared with `<`, `>`, `<=` or `>=`: those compare \
+                     numbers, and a Boolean does not convert to one",
+                );
+                return error_expr(at);
+            }
+            // Not recorded: B4J parses a String for `<`, and how it converts
+            // an `Object` there is not known.
+            (String, Object) | (Object, String) if ordering => {
+                self.error(
+                    at,
+                    "whether `<`, `>`, `<=` or `>=` can compare a String with an Object is not \
+                     known yet: assign the Object to a number first",
                 );
                 return error_expr(at);
             }

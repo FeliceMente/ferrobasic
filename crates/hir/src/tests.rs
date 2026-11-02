@@ -204,6 +204,25 @@ fn ordering_compares_numbers() {
     assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
     let d = errors(&program("Dim n As Int\nDim b As Boolean = n < Null"));
     assert!(has(&d, "cannot compare Int with Null"), "{d:?}");
+    // Only an `Int` was recorded next to `Null`.
+    let d = errors(&program("Dim n As Double\nDim b As Boolean = n = Null"));
+    assert!(has(&d, "cannot compare Double with Null"), "{d:?}");
+    // A Boolean does not convert to a number either (recorded:
+    // `boolean_less`), next to a String too.
+    for expr in ["\"a\" < True", "True > \"a\"", "False < True"] {
+        let d = errors(&program(&format!("Dim b As Boolean = {expr}")));
+        assert!(
+            has(&d, "a Boolean cannot be compared with `<`"),
+            "{expr}: {d:?}"
+        );
+    }
+    // A String next to an Object with `<` is not recorded.
+    for expr in ["\"10\" < o", "o >= \"10\""] {
+        let d = errors(&program(&format!(
+            "Dim o As Object = \"5\"\nDim b As Boolean = {expr}"
+        )));
+        assert!(has(&d, "is not known yet"), "{expr}: {d:?}");
+    }
 }
 
 #[test]

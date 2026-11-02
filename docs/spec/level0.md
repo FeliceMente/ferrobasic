@@ -279,15 +279,16 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   - `<`, `>`, `<=` and `>=` always compare numbers, as Double: a String
     operand is parsed, so `"a" < "b"` raises `NumberFormatException`
     (recorded: `string_compare_less`); a Boolean or a Char operand is an
-    error (recorded: `boolean_less`, `char_string_compare`);
-  - `x = Null` / `x <> Null` test for null; with a number on the left, the
+    error (recorded: `boolean_less`, `char_string_compare`); a String next
+    to an `Object` is *(open)*, so an error;
+  - `x = Null` / `x <> Null` test for null; with an `Int` on the left, the
     `Null` is converted as its text, `"null"`, which raises
-    `NumberFormatException` (recorded: `null_number_compare`);
+    `NumberFormatException` (recorded: `null_number_compare`); with another
+    number type it is *(open)*, so an error;
   - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
     errors (recorded: `chained_comparison_less`,
     `chained_comparison_equal`), while `x = a = b` assigns one comparison;
-  - a Char on the left of `=` next to a number, and a String next to an
-    `Object` with `<`, are *(open)*.
+  - a Char on the left of `=` next to a number is *(open)*.
 
 ## Statements
 

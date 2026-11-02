@@ -206,8 +206,10 @@ cargo run -p ferro-compare -- --list             # the families
   stopped (Ctrl-C) is taken over.
 - Each family covers one area with every combination of a few building
   blocks: `const` (declarations of one name in `Process_Globals`, then each
-  use of it, in several layouts) and `sub-named-loops` (one to three loops
-  over a variable named like a Sub). The programs are written under
+  use of it, in several layouts), `sub-named-loops` (one to three loops
+  over a variable named like a Sub) and `comparisons` (each operator
+  between operands of each type, and two comparisons in a row). The
+  programs are written under
   `target/compare/programs`, to read or re-run one by hand.
 - The programs run several at a time (`--jobs`, by default one per
   processor), each for at most 30 seconds (`--timeout`): about 67,000

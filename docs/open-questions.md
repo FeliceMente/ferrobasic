@@ -208,6 +208,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `Char` with `<` is refused ("Cannot cast type: {Type=Char,…} to:
       number", recording: `level0/char_string_compare`), next to a String
       at least; between two Chars it is open (`level0/char_less_char`).
+- [ ] `<` between a String and a Boolean, which FerroBASIC refuses as it
+      refuses two Booleans (recorded: `level0/boolean_less`), and between
+      a String and an `Object`, which it refuses as open
+      (`level0/string_less_boolean`, `level0/string_less_object`).
 - [x] With `=` and `<>` the left operand decides: number vs String
       compares numerically (`10 = "10.0"` is `True`), String vs number as
       Strings (`"10.0" = 10` is `False`); with `<` and `>` both compare
@@ -216,10 +220,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [x] `<` / `>` on Booleans is a compile error: "Cannot cast type:
       {Type=Boolean,…} to: number." (recording: `level0/boolean_less`). On
       objects it is still open.
-- [ ] `Null` compared with a Boolean or a Char, or with a number on its
-      left or with `<`, is a compile error. A number `=` `Null` builds and
-      raises `NumberFormatException` when it runs, as `BA.ObjectToNumber`
-      parses `"null"` (recording: `level0/null_number_compare`).
+- [ ] `Null` compared with a Boolean or a Char, with `<`, or written on
+      the left of a number (`Null = n`), is a compile error. An `Int` `=`
+      `Null` builds and raises `NumberFormatException` when it runs, as
+      `BA.ObjectToNumber` parses `"null"` (recording:
+      `level0/null_number_compare`); with another number type it is open
+      (`level0/double_eq_null`).
 - [x] A real literal may start with its decimal point (`.08`), also with
       an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
       `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the

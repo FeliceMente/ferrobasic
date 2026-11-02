@@ -2,6 +2,7 @@
 //! language with every combination of a few building blocks, so that a
 //! change to how that area is checked shows in which programs it changes.
 
+mod comparisons;
 mod consts;
 mod sub_named_loops;
 
@@ -34,6 +35,14 @@ pub const FAMILIES: &[Family] = &[
                 several types) over a variable named like a Sub, one after \
                 the other or nested, in a Sub, in Process_Globals or in both",
         generate: sub_named_loops::programs,
+    },
+    Family {
+        name: "comparisons",
+        about: "each comparison operator between operands of each type \
+                (numbers, String, Char, Boolean, Object, Null, List), in \
+                `Log` and in `If`; and two comparisons in a row, bare or \
+                with the first in parentheses",
+        generate: comparisons::programs,
     },
 ];
 
