@@ -10,6 +10,7 @@ Sub AppStart (Args() As String)
     Catch
         Dim e As Exception = LastException
         Log(e.IsInitialized)
+        Log(e)
     End Try
     Dim Unset As Exception
     Log(Unset)

@@ -17,7 +17,7 @@ Sub AppStart (Args() As String)
     d = 3.5
     i = d
     Log(i)
-    d = -0.5
+    d = -2.5
     i = d
     Log(i)
 End Sub

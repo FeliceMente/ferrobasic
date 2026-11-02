@@ -8,8 +8,6 @@ Sub AppStart (Args() As String)
     Log(GetType(o))
     o = 1.0
     Log(GetType(o))
-    o = 3000000000
-    Log(GetType(o))
     Dim m As Map
     m.Initialize
     m.Put(1, "int")

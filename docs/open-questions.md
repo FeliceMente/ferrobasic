@@ -81,7 +81,8 @@ related tests stay `pending-recording`.
       same type in either place, though no recording settles it
       (`ferro-compare` found it).
 - [ ] Return value of a typed Sub that ends without `Return`
-      (`level0/typed_sub_without_return`).
+      (`level0/typed_sub_without_return`,
+      `level0/typed_string_sub_without_return`).
 - [ ] Comparing Strings with `<` / `>`, and comparing a String with a number
       (`level0/string_compare_less`, `level0/mixed_compare_number_left`,
       `level0/mixed_compare_string_left`).
@@ -208,7 +209,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/real_leading_point_type`).
 - [ ] A hex literal up to `0xFFFFFFFF` is an `Int` (so `0xFF000000` is
       -16777216, as the forum shows); a decimal literal that does not fit an
-      `Int` is a `Long` (`level0/hex_literal`).
+      `Int` is a `Long` (`level0/hex_literal`,
+      `level0/decimal_literal_over_int`).
 - [x] A `For` with an undeclared counter inside `Process_Globals` runs,
       and the counter is a module variable: `AppStart` reads it, and the
       undeclared counters of the same name in other Subs share it
@@ -347,7 +349,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       so it needs a class module in the corpus to record.
 - [ ] A loop variable of `Process_Globals` named like a `Type`, `Bit` or a
       keyword: FerroBASIC refuses it
-      (`level0/process_globals_loop_named_like_type`).
+      (`level0/process_globals_loop_named_like_type`,
+      `level0/process_globals_loop_named_like_bit`,
+      `level0/process_globals_loop_named_like_keyword`).
 - [ ] A `For Each v As T` of another type than `Int` in `Process_Globals`,
       over a Sub's name, as the only loop over it: only `Int` is recorded
       there, yet FerroBASIC accepts it (`ferro-compare` found it;
