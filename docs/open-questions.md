@@ -376,15 +376,18 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       not match previous one", recordings: `level0/for_each_untyped_local`,
       `level0/for_each_untyped_other_type`). `ferro-compare` found that
       FerroBASIC accepted it.
-- [ ] The same over a local `Object`, over a module variable from a Sub,
-      or in `Process_Globals` over a variable declared there, and over a
-      name never declared (`level0/for_each_untyped_object`,
+- [ ] The same over a local `Object`, a parameter, a local that a `Dim`
+      declares only after the loop, a module variable from a Sub, a
+      variable of `Process_Globals` there, and a name never declared
+      (`level0/for_each_untyped_object`, `level0/for_each_untyped_parameter`,
+      `level0/for_each_untyped_declared_after`,
       `level0/for_each_untyped_module_variable`,
       `level0/process_globals_for_each_untyped`,
       `level0/for_each_untyped_undeclared`). FerroBASIC refuses them. Over
-      an undeclared name B4J likely builds it: `JSONWebToken.bas` in the
-      real-world corpus loops `For Each Key In Claims.Keys` with `Key`
-      declared nowhere.
+      an undeclared name B4J likely builds it, in a class module at least:
+      `JSONWebToken.bas`, a class of the real-world corpus, loops
+      `For Each Key In Claims.Keys` with `Key` declared nowhere; the
+      pending test asks in the main module.
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls

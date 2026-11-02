@@ -60,6 +60,8 @@ struct Lowerer {
     /// In `Process_Globals` or `Class_Globals`.
     in_process_globals: bool,
     in_class_globals: bool,
+    /// How many of `locals` are the Sub's parameters.
+    params: usize,
     /// `Class_Globals`: rejected, but its variables are still declared so a
     /// class gets one diagnostic instead of one per use of its fields.
     class_globals: Option<SubId>,
@@ -352,13 +354,14 @@ fn recorded_loop(
     }
 }
 
-/// A `For Each` without `As` over a variable declared before it. B4J
-/// refuses it over a local of a Sub, of a type other than `Object`
-/// (recorded: `for_each_untyped_local`, `for_each_untyped_other_type`), as
-/// over a constant or a loop variable named like a Sub; over an `Object`
-/// or a module variable it is not recorded.
-fn untyped_for_each(name: &str, var: &VarRef, ty: &Ty) -> String {
-    if matches!(var, VarRef::Local(_)) && *ty != Ty::Object {
+/// A `For Each` without `As` over a declared variable. B4J refuses it over
+/// a local of a Sub declared before the loop, of a type other than `Object`
+/// (`recorded`: `for_each_untyped_local`, `for_each_untyped_other_type`),
+/// as over a constant or a loop variable named like a Sub; over an
+/// `Object`, a parameter, a local declared after the loop (declarations
+/// are hoisted) or a module variable it is not recorded.
+fn untyped_for_each(name: &str, recorded: bool) -> String {
+    if recorded {
         format!(
             "`{name}` is already declared: a `For Each` without `As` cannot loop over it; \
              write `For Each {name} As <type> In ...`"
@@ -1046,9 +1049,10 @@ impl Lowerer {
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
         self.loops = 0;
         self.exits = 0;
+        self.params = self.module.sub(id).params as usize;
         if !self.in_process_globals {
             // B4J: "Parameter name cannot hide global variable name" (recorded).
-            let count = self.module.sub(id).params as usize;
+            let count = self.params;
             let clashes: Vec<(TextRange, String)> = self.locals[..count]
                 .iter()
                 .filter(|p| {
@@ -1479,12 +1483,22 @@ impl Lowerer {
                 // declared with `Dim`, a `For Each` without `As` cannot loop
                 // over a variable declared before it. A Sub's name was
                 // judged by `loop_variable`, which lets one through only
-                // after the program has an error over it already.
+                // after the program has an error over it already, and so
+                // has a variable of an unknown type.
                 if child(node, TYPE_REF).is_none()
                     && !self.in_class_globals
                     && !self.subs.contains_key(&key(&text))
+                    && ty != Ty::Error
                 {
-                    self.error(range(&name), untyped_for_each(&text, &var, &ty));
+                    let recorded = match var {
+                        VarRef::Local(id) => {
+                            id.0 as usize >= self.params
+                                && ty != Ty::Object
+                                && self.locals[id.0 as usize].range.end() <= range(&name).start()
+                        }
+                        VarRef::Global(_) => false,
+                    };
+                    self.error(range(&name), untyped_for_each(&text, recorded));
                     self.refused_loop(node, &text, &name);
                     return;
                 }

@@ -387,13 +387,17 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   whatever its type: "Current declaration does not match previous one"
   (**recorded**: `for_each_untyped_local`, over an `Int` and `Int` items;
   `for_each_untyped_other_type`, over a `String`). Over a local `Object`,
-  a module variable, in `Process_Globals` or over an undeclared name it is
-  **open** (pending: `for_each_untyped_object`,
+  a parameter, a local declared only after the loop (declarations are
+  hoisted), a module variable, in `Process_Globals` or over an undeclared
+  name it is **open** (pending: `for_each_untyped_object`,
+  `for_each_untyped_parameter`, `for_each_untyped_declared_after`,
   `for_each_untyped_module_variable`, `process_globals_for_each_untyped`,
   `for_each_untyped_undeclared`). Over an undeclared name B4J likely builds
-  it: the real-world corpus's `JSONWebToken.bas` (`setClaims`) loops
-  `For Each Key In Claims.Keys` with `Key` declared nowhere; which type it
-  gives `Key` is what the pending test asks.
+  it, in a class module at least: the real-world corpus's
+  `JSONWebToken.bas`, a class, loops `For Each Key In Claims.Keys` in
+  `setClaims` with `Key` declared nowhere. Classes are Level 1 and may
+  differ; the pending test asks in the main module, and which type `Key`
+  gets.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
   is implicitly declared as `Int` (**docs**, coreref), in `Process_Globals`
   too, where it is a module variable: AppStart reads it (4 after

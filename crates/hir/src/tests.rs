@@ -1662,12 +1662,17 @@ fn for_each_without_as_over_a_declared_variable() {
             "{body}"
         );
     }
-    // Not recorded: over a local Object, over a module variable from a Sub,
-    // and in `Process_Globals`.
+    // Not recorded: over a local Object, a local declared after the loop
+    // (declarations are hoisted), a module variable from a Sub, and in
+    // `Process_Globals`.
     for (pg, body) in [
         (
             "",
             "    Dim n As Object\n    For Each n In Array As Int(5)\n    Next\n",
+        ),
+        (
+            "",
+            "    For Each n In Array As Int(5)\n    Next\n    Dim n As Int\n",
         ),
         (
             "    Private n As Int\n",
@@ -1682,6 +1687,20 @@ fn for_each_without_as_over_a_declared_variable() {
         assert_eq!(diags.len(), 1, "{pg}{body}: {diags:?}");
         assert!(has(&diags, "is not known yet"), "{pg}{body}: {diags:?}");
     }
+    // Nor over a parameter.
+    let diags = errors(
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Show(\"a\")\nEnd Sub\n\n\
+         Sub Show (s As String)\n    For Each s In Array As String(\"x\")\n    Next\nEnd Sub\n",
+    );
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "is not known yet"), "{diags:?}");
+    // A variable of an unknown type has its error where the type is.
+    let diags = errors(&app(
+        "",
+        "    Dim n As Bogus\n    For Each n In Array As Int(5)\n    Next\n",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "`Bogus`"), "{diags:?}");
     // The body of a refused loop is still checked.
     let diags = errors(&app(
         "",
