@@ -189,9 +189,11 @@ The two targets also run as tests: `crates/difftest` on the interpreter, and
 It runs on pull requests into `main` (releases) and on demand ("Run
 workflow"), not on pull requests into `dev`: the repository is private, so
 every minute comes out of the owner's Actions allowance, and macOS minutes
-count ten times. Pull requests into `dev` are checked locally (AGENTS.md):
-`fmt`, `clippy` (also for `x86_64-pc-windows-gnu`, `aarch64-apple-darwin` and
-`x86_64-apple-darwin`) and the tests. Run the workflow by hand before a
+count ten times. Pull requests into `dev` are checked locally (AGENTS.md)
+with `scripts/check-all.sh`: `fmt`, `clippy` (also for
+`x86_64-pc-windows-gnu`, `aarch64-apple-darwin` and `x86_64-apple-darwin`),
+the tests, `ferro-difftest` on both targets, the recorder's dry run and the
+real-world corpus. Run the workflow by hand before a
 release, and after a change to platform-specific code (`ferro bundle`, files,
 the command line). A release is merged only with the workflow green.
 
