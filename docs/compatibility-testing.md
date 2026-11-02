@@ -192,9 +192,10 @@ every minute comes out of the owner's Actions allowance, and macOS minutes
 count ten times. Pull requests into `dev` are checked locally (AGENTS.md)
 with `scripts/check-all.sh`: `fmt`, `clippy` for every platform CI tests,
 the tests, `ferro-difftest` on both targets, the recorder's dry run, the
-real-world corpus, and on Linux x86_64 the static Linux binary
-(`--offline` skips the corpus download; a skipped step is named at the
-end). Run the workflow by hand before a release, and after a change to
+real-world corpus, and on Linux x86_64 the static Linux binary, with
+`scripts/check-static-linux.sh` as CI's static-linux job (`--offline` skips
+the corpus download, `--quick` the static binary; a skipped step is named
+at the end). Run the workflow by hand before a release, and after a change to
 platform-specific code (`ferro bundle`, files, the command line). A release
 is merged only with the workflow green.
 
