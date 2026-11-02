@@ -62,14 +62,11 @@ related tests stay `pending-recording`.
 - [x] A line break inside parentheses does not continue the line: B4J
       says "Invalid number of parentheses." (recording:
       `level0/paren_line_break`).
-- [ ] Whether chained comparisons (`a < b < c`, `If a = b = c`) compile, and
-      how they group. The parser accepts them left-associatively for now.
-      Settled part: `x = a = b` as a statement assigns the comparison `a = b`
-      ([generated](research/level0-semantics.md#operators-and-precedence-docs-forum-open));
-      `Log(3 < 2 < 1)` does not compile (") expected", recording:
-      `level0/chained_comparison_less`), nor does `If a = b = c Then`
-      ("'Then' expected", recording: `level0/chained_comparison_equal`),
-      which FerroBASIC still accepts.
+- [x] Chained comparisons do not compile: `Log(3 < 2 < 1)` gives ")
+      expected" and `If a = b = c Then` "'Then' expected" (recordings:
+      `level0/chained_comparison_less`, `level0/chained_comparison_equal`).
+      `x = a = b` as a statement assigns the comparison `a = b`
+      ([generated](research/level0-semantics.md#operators-and-precedence-docs-forum-open)).
 - [x] A numeric literal stored as `Object` is an `Integer`, or a `Double`
       with a point, so `Int` 1 and `Double` 1.0 are different `Map` keys
       (recording: `level0/literal_boxed_type`).
@@ -93,8 +90,9 @@ related tests stay `pending-recording`.
 - [x] A typed Sub that ends without `Return` returns its type's default:
       0, or an empty `String` (recordings: `level0/typed_sub_without_return`,
       `level0/typed_string_sub_without_return`).
-- [ ] Comparing Strings with `<` / `>`, and comparing a String with a number
-      (`level0/string_compare_less`, `level0/mixed_compare_number_left`,
+- [x] `<` / `>` compare numbers, also on Strings, which are parsed: `"a" <
+      "b"` raises `NumberFormatException`, and `"10" < 9` is `False`
+      (recordings: `level0/string_compare_less`,
       `level0/mixed_compare_string_left`).
 - [ ] Changing a `Map` while iterating it with `For Each`. A `List` that
       grows inside its `For Each` is iterated only over the items it had
@@ -203,17 +201,25 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       (`level0/return_value_untyped_sub`).
 - [x] A parameter without `As` is a `String` (recording:
       `level0/parameter_without_as`).
-- [ ] Comparing a `Char` with a number is a compile error; `Char` with a
-      `String` compares as Strings (`level0/char_number_compare`,
-      `level0/char_string_compare`).
-- [ ] In a mixed comparison the left operand decides: number vs String
-      compares numerically, String vs number compares as Strings (forum;
-      `level0/mixed_compare_number_left`, `level0/mixed_compare_string_left`).
+- [ ] A `Char` `=` a number builds, and `c = 65` with `c` holding `"A"` is
+      `False` (recording: `level0/char_number_compare`): compared as
+      Strings, as the left operand deciding would give? FerroBASIC still
+      refuses it until B4J's generated code shows how it converts. A
+      `Char` with `<` is refused ("Cannot cast type: {Type=Char,…} to:
+      number", recording: `level0/char_string_compare`), next to a String
+      at least; between two Chars it is open (`level0/char_less_char`).
+- [x] With `=` and `<>` the left operand decides: number vs String
+      compares numerically (`10 = "10.0"` is `True`), String vs number as
+      Strings (`"10.0" = 10` is `False`); with `<` and `>` both compare
+      numbers (recordings: `level0/mixed_compare_number_left`,
+      `level0/mixed_compare_string_left`).
 - [x] `<` / `>` on Booleans is a compile error: "Cannot cast type:
       {Type=Boolean,…} to: number." (recording: `level0/boolean_less`). On
       objects it is still open.
-- [ ] `Null` compared with a number, Boolean or Char is a compile error
-      (`level0/null_number_compare`).
+- [ ] `Null` compared with a Boolean or a Char, or with a number on its
+      left or with `<`, is a compile error. A number `=` `Null` builds and
+      raises `NumberFormatException` when it runs, as `BA.ObjectToNumber`
+      parses `"null"` (recording: `level0/null_number_compare`).
 - [x] A real literal may start with its decimal point (`.08`), also with
       an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
       `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the

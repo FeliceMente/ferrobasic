@@ -374,6 +374,14 @@ fn untyped_for_each(name: &str, recorded: bool) -> String {
     }
 }
 
+/// An operand that is itself a comparison, not in parentheses.
+fn is_comparison(node: &SyntaxNode) -> bool {
+    node.kind() == BIN_EXPR
+        && tokens(node)
+            .next()
+            .is_some_and(|t| matches!(t.kind(), EQ | NEQ | LT | GT | LT_EQ | GT_EQ))
+}
+
 fn loop_kind(node: &SyntaxNode) -> LoopKind {
     match (node.kind(), child(node, TYPE_REF).is_some()) {
         (FOR_STMT, _) => LoopKind::Counter,
@@ -2666,6 +2674,17 @@ impl Lowerer {
                 }
             }
             EQ | NEQ | LT | GT | LT_EQ | GT_EQ => {
+                // B4J's parser takes one comparison, then expects what
+                // follows it: "'Then' expected" after `If a = b = c`,
+                // "')' expected" in `Log(3 < 2 < 1)` (recorded:
+                // `chained_comparison_equal`, `chained_comparison_less`).
+                if [l, r].iter().any(|o| is_comparison(o)) {
+                    self.error(
+                        op.text_range(),
+                        "comparisons cannot be chained: put one of them in parentheses",
+                    );
+                    return error_expr(at);
+                }
                 let cmp = match op.kind() {
                     EQ => CmpOp::Eq,
                     NEQ => CmpOp::Ne,
@@ -2680,13 +2699,47 @@ impl Lowerer {
         }
     }
 
-    /// Chooses how to compare: the left operand's type decides between
-    /// numeric and String comparison (as the forum describes for B4X).
+    /// Chooses how to compare. `=` and `<>`: the left operand's type
+    /// decides between numeric and String comparison (recorded:
+    /// `mixed_compare_number_left`, `mixed_compare_string_left`). `<`, `>`,
+    /// `<=` and `>=` compare numbers: B4J parses a String operand with
+    /// `Double.parseDouble`, so `"a" < "b"` raises `NumberFormatException`
+    /// (recorded: `string_compare_less`, `mixed_compare_string_left`), and
+    /// refuses a Boolean or a Char ("Cannot cast type ... to: number",
+    /// recorded: `boolean_less`, `char_string_compare`).
     fn compare(&mut self, op: CmpOp, left: Expr, right: Expr, at: TextRange) -> Expr {
         use Ty::*;
         let ordering = !matches!(op, CmpOp::Eq | CmpOp::Ne);
         let (kind, domain) = match (&left.ty, &right.ty) {
             (Error, _) | (_, Error) => return error_expr(at),
+            // `n = Null`: B4J converts the `Null` with `BA.ObjectToNumber`,
+            // which parses its text, `"null"`: a `NumberFormatException`
+            // when it runs (recorded: `null_number_compare`).
+            (l, Null) if l.is_numeric() && !ordering => {
+                let right = self.coerce(right, &String);
+                let left = self.coerce(left, &Double);
+                let right = self.coerce(right, &Double);
+                return Expr {
+                    kind: ExprKind::Compare(op, CmpKind::Numeric, Box::new(left), Box::new(right)),
+                    ty: Boolean,
+                    range: at,
+                };
+            }
+            (Char, _) | (_, Char) if ordering => {
+                self.error(
+                    at,
+                    "a Char cannot be compared with `<`, `>`, `<=` or `>=`: those compare \
+                     numbers, and a Char does not convert to one",
+                );
+                return error_expr(at);
+            }
+            (l, r)
+                if ordering
+                    && (l.is_numeric() || *l == String)
+                    && (r.is_numeric() || *r == String) =>
+            {
+                (CmpKind::Numeric, Double)
+            }
             (Null, _) | (_, Null) => {
                 let other = if left.ty == Null { &right.ty } else { &left.ty };
                 if other.is_primitive() || ordering {

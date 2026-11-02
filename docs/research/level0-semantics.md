@@ -343,8 +343,21 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   which does not determine the order. Needs a recorded test.
 - In a statement `x = a = b`, the first `=` is the assignment and the rest is
   one comparison (**generated**): `BluetoothState = NewState = Admin.STATE_ON`
-  compiles to `_bluetoothstate = _newstate==_admin.STATE_ON;`. No source shows
-  a real chain such as `a < b < c` or `If a = b = c`: **open**.
+  compiles to `_bluetoothstate = _newstate==_admin.STATE_ON;`. A real chain
+  does not compile: `Log(3 < 2 < 1)` gives "')' expected" and
+  `If a = b = c Then` "'Then' expected" (**recorded**:
+  `chained_comparison_less`, `chained_comparison_equal`).
+- `<`, `>`, `<=` and `>=` compare numbers: `"a" < "b"` stops on
+  `NumberFormatException: For input string: "a"` from `Double.parseDouble`
+  in the generated `_appstart`, and `"10" < 9` is `False` (**recorded**:
+  `string_compare_less`, `mixed_compare_string_left`). A Boolean or a Char
+  operand does not compile: "Cannot cast type: {Type=Char,…} to: number"
+  (**recorded**: `boolean_less`, `char_string_compare`). `=` and `<>` let
+  the left operand decide: `10 = "10.0"` is `True`, `"10.0" = 10` is
+  `False` (**recorded**: `mixed_compare_number_left`,
+  `mixed_compare_string_left`). `n = Null` with an `Int` compiles, and
+  `BA.ObjectToNumber` raises `NumberFormatException: For input string:
+  "null"` (**recorded**: `null_number_compare`).
 - The relative precedence of `And` versus `Or`, and of both versus comparisons,
   is not stated in official docs (**open**). The user table above
   contradicts common practice and is not reliable.

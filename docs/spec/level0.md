@@ -272,11 +272,22 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `1 + 2 & "x"`, `"x" & 6 / 2` and `"x" & -1` are errors: write
   `"x" & (1 + 2)`.
 - Comparisons:
-  - two numbers compare numerically, as Double;
-  - two Strings compare by value, case-sensitive; `<` and `>` on Strings are
-    *(open)*;
-  - `x = Null` / `x <> Null` test for null;
-  - mixing a String and a number in a comparison is *(open)*.
+  - `=` and `<>`: the left operand decides. A number on the left compares
+    numerically, as Double, converting a String on the right; a String on
+    the left compares as Strings, by value and case-sensitive (recorded:
+    `mixed_compare_number_left`, `mixed_compare_string_left`);
+  - `<`, `>`, `<=` and `>=` always compare numbers, as Double: a String
+    operand is parsed, so `"a" < "b"` raises `NumberFormatException`
+    (recorded: `string_compare_less`); a Boolean or a Char operand is an
+    error (recorded: `boolean_less`, `char_string_compare`);
+  - `x = Null` / `x <> Null` test for null; with a number on the left, the
+    `Null` is converted as its text, `"null"`, which raises
+    `NumberFormatException` (recorded: `null_number_compare`);
+  - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
+    errors (recorded: `chained_comparison_less`,
+    `chained_comparison_equal`), while `x = a = b` assigns one comparison;
+  - a Char on the left of `=` next to a number, and a String next to an
+    `Object` with `<`, are *(open)*.
 
 ## Statements
 

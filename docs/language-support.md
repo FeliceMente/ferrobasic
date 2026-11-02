@@ -69,7 +69,7 @@ The "not yet" rows come from the
 | --- | --- | --- |
 | `+ - * /`, `Mod`, unary `-` | ✅ | `/` always gives `Double`; [level0.md](spec/level0.md#operators); test `division_and_mod` |
 | `&` string concatenation | ✅ | an arithmetic operator or a negation next to it needs parentheses, as in B4J; tests `concat_*` |
-| `= <> < > <= >=` | ✅ | `<` and `>` on Strings, and String-number comparisons, are *(open)* |
+| `= <> < > <= >=` | ✅ | `=` and `<>` let the left operand decide between numbers and Strings; `<`, `>`, `<=`, `>=` compare numbers, parsing Strings; Booleans and Chars cannot be ordered; a number `=` `Null` raises `NumberFormatException`; comparisons do not chain (tests `mixed_compare_number_left`, `mixed_compare_string_left`, `string_compare_less`, `boolean_less`, `char_string_compare`, `null_number_compare`, `chained_comparison_less`, `chained_comparison_equal`); a Char `=` a number is *(not implemented yet, recorded)* (test `char_number_compare`) |
 | `And`, `Or` (short-circuit), `Not(x)` | ✅ | `And` binds tighter than `Or`; test `precedence_and_or` |
 | Inline cast `x.As(T)` | ✅ | [level0-builtins.md](spec/level0-builtins.md#keywords-and-constants) |
 | `IIf(condition, a, b)` | ✅ | test `iif_branches` |
