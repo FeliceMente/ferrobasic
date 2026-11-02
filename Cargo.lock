@@ -140,6 +140,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferro-compare"
+version = "0.0.6-dev"
+dependencies = [
+ "ferro-syntax",
+]
+
+[[package]]
 name = "ferro-corpus"
 version = "0.0.6-dev"
 

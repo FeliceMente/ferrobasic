@@ -36,6 +36,7 @@ crates/
   mir/            typed IR and lowering
   interp/         reference interpreter and REPL
   difftest/       differential runner, normalizer, differ, report
+  compare/        compares how two builds of ferro check generated programs
   corpus/         the conformance corpus and the real-world corpus's
                   references, as the test harnesses read them; fetches
                   the real-world projects

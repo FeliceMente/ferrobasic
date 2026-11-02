@@ -115,7 +115,7 @@ file: its expected stdout, derived by hand from the sources in
    `target/corpus` ([tests/corpus/README.md](../tests/corpus/README.md)).
    The tests that need them are `#[ignore]`d, so `cargo test --workspace`
    needs no network; run them with `--ignored` after fetching.
-3. Generated programs (`crates/progen`): a generator driven by the EBNF and the
+3. Generated programs (`crates/progen`, planned): a generator driven by the EBNF and the
    type rules produces well-typed, terminating Level 0 programs with bounded
    loops. Each mismatch is shrunk by delta debugging and kept as a regression test.
 
@@ -173,6 +173,46 @@ cargo run -p ferro-difftest -- --verbose --by-feature --filter sort
 
 The two targets also run as tests: `crates/difftest` on the interpreter, and
 `crates/cli/tests/difftest.rs` as standalone binaries.
+
+## Comparing two builds
+
+A change to how programs are checked can accept or refuse more than it
+means to. `ferro-compare` shows what it changes: it runs `ferro check` from
+two builds on generated programs, and lists the programs whose result
+changed. It compares FerroBASIC with itself, not with B4J: whether a change
+is right is for the recordings to say, and a program newly accepted that no
+recording settles is a bug.
+
+```sh
+cargo build -p ferro-cli -p ferro-compare
+target/debug/ferro-compare                       # against origin/dev
+target/debug/ferro-compare --old 8f3bd7b --family const --examples 5
+target/debug/ferro-compare --list                # the families
+```
+
+- The old `ferro` is built from a git ref (`--old`, by default `origin/dev`)
+  in a worktree of its own, removed after; its target folder is kept under
+  `target/compare`, so later builds are quick. `--old-ferro <path>` takes a
+  build instead. The new `ferro` is the one next to `ferro-compare`, or
+  `--new-ferro <path>`.
+- Each family covers one area with every combination of a few building
+  blocks: `const` (declarations of one name in `Process_Globals`, then each
+  use of it, in several layouts) and `sub-named-loops` (one to three loops
+  over a variable named like a Sub). The programs are written under
+  `target/compare/programs`, to read or re-run one by hand.
+- The programs run several at a time (`--jobs`, by default one per
+  processor): about 67,000 programs take under two minutes with each build
+  on four processors.
+- The report counts the programs that crash in the new build, are newly
+  accepted, newly refused, have more or fewer errors, or the same number of
+  other ones, then shows the smallest of each (`--examples`) with both
+  builds' errors. The exit code is 1 when the new build crashes on a
+  program, 0 otherwise, 2 on a usage error or a failed build.
+
+Unlike the planned generator of "Where test programs come from"
+(`crates/progen`), which makes well-typed programs to compare their output
+across targets, these families are mostly programs a build should refuse,
+to compare what it checks.
 
 ## CI
 
