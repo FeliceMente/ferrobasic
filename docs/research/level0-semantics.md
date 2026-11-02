@@ -357,7 +357,12 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `False` (**recorded**: `mixed_compare_number_left`,
   `mixed_compare_string_left`). `n = Null` with an `Int` compiles, and
   `BA.ObjectToNumber` raises `NumberFormatException: For input string:
-  "null"` (**recorded**: `null_number_compare`).
+  "null"` (**recorded**: `null_number_compare`). A Char `=` an `Int`
+  compiles to `_c==BA.ObjectToChar(65)`, and
+  [`ObjectToChar`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L457-L462)
+  takes the first character of the number's `toString()`, `'6'`, so
+  `"A" = 65` is `False` (**recorded** and **generated**:
+  `char_number_compare`).
 - The relative precedence of `And` versus `Or`, and of both versus comparisons,
   is not stated in official docs (**open**). The user table above
   contradicts common practice and is not reliable.

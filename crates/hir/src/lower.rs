@@ -2733,6 +2733,18 @@ impl Lowerer {
                 );
                 return error_expr(at);
             }
+            // `c = 65`: B4J converts the number with `BA.ObjectToChar`, the
+            // first character of its text, `'6'` (generated
+            // `_c==BA.ObjectToChar(65)` and recording: `char_number_compare`).
+            (Char, Int) if !ordering => {
+                let right = self.coerce(right, &String);
+                let right = self.coerce(right, &Char);
+                return Expr {
+                    kind: ExprKind::Compare(op, CmpKind::Char, Box::new(left), Box::new(right)),
+                    ty: Boolean,
+                    range: at,
+                };
+            }
             (Boolean, _) | (_, Boolean) if ordering => {
                 self.error(
                     at,

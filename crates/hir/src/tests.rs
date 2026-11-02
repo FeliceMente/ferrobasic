@@ -216,6 +216,20 @@ fn ordering_compares_numbers() {
             "{expr}: {d:?}"
         );
     }
+    // A Char `=` an Int converts the Int to a Char, the first character of
+    // its text (recorded: `char_number_compare`); the other way round, or
+    // with a Double, is not recorded.
+    let m = ok(&program("Dim c As Char = \"A\"\nDim b As Boolean = c = 65"));
+    assert_eq!(
+        show(&last_value(&m)),
+        "Eq:Char(var, conv(String->Char, conv(Int->String, 65)))"
+    );
+    for (decl, expr) in [("", "65 = c"), ("Dim d As Double\n", "c = d")] {
+        let d = errors(&program(&format!(
+            "Dim c As Char = \"A\"\n{decl}Dim b As Boolean = {expr}"
+        )));
+        assert!(has(&d, "cannot compare"), "{expr}: {d:?}");
+    }
     // A String next to an Object with `<` is not recorded.
     for expr in ["\"10\" < o", "o >= \"10\""] {
         let d = errors(&program(&format!(
