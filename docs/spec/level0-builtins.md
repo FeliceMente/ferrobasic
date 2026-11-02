@@ -21,7 +21,7 @@ A member not listed here gets a precise diagnostic. For example:
 | --- | --- |
 | `Log(Message As String)` | stdout, plus `\n`; `Null` prints `null` |
 | `LogError(Message As String)` | stderr, plus `\n` |
-| `LogDebug(Message As String)` | like `Log` *(open: B4J only logs it in debug mode; release mode is the reference, so it prints nothing)* |
+| `LogDebug(Message As String)` | prints nothing: B4J logs it only in debug mode, and release mode is the reference (recorded: `log_debug`) |
 | `True`, `False`, `Null` | literals |
 | `CRLF`, `TAB`, `QUOTE` | `Chr(10)`, `Chr(9)`, `Chr(34)` |
 | `cPI`, `cE` | Java `Math.PI`, `Math.E` |

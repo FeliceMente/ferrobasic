@@ -404,8 +404,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
   - [x] other types: `Long` (`level0/const_long`), `Double`
         (`level0/const_double`), `String` (`level0/const_string`),
         `Boolean` (`level0/const_boolean`); with no `As` it is a `String`
-        (`level0/const_no_as`), as a `Dim` with no `As` provisionally is
-        (open, above);
+        (`level0/const_no_as`), as a `Dim` with no `As` is
+        (`level0/dim_without_as`);
   - [x] forms from real projects: lower-case `const`
         (`level0/const_lower_case`), the value before `As`
         (`level0/const_value_before_as`);
