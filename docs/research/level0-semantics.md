@@ -383,6 +383,21 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `Loop Until` and a bare `Do … Loop` are not supported (**docs**, booklet
   §4.4.3; Erel on the [forum](https://www.b4x.com/android/forum/threads/while-or-until-at-end-of-do-loop-bug-wish.49474/)).
   Infinite loops are written `Do While True`.
+- **`For Each` without `As`** over a local declared before it is refused,
+  whatever its type: "Current declaration does not match previous one"
+  (**recorded**: `for_each_untyped_local`, over an `Int` and `Int` items;
+  `for_each_untyped_other_type`, over a `String`). Over a local `Object`,
+  a parameter, a local declared only after the loop (declarations are
+  hoisted), a module variable, in `Process_Globals` or over an undeclared
+  name it is **open** (pending: `for_each_untyped_object`,
+  `for_each_untyped_parameter`, `for_each_untyped_declared_after`,
+  `for_each_untyped_module_variable`, `process_globals_for_each_untyped`,
+  `for_each_untyped_undeclared`). Over an undeclared name B4J likely builds
+  it, in a class module at least: the real-world corpus's
+  `JSONWebToken.bas`, a class, loops `For Each Key In Claims.Keys` in
+  `setClaims` with `Key` declared nowhere. Classes are Level 1 and may
+  differ; the pending test asks in the main module, and which type `Key`
+  gets.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
   is implicitly declared as `Int` (**docs**, coreref), in `Process_Globals`
   too, where it is a module variable: AppStart reads it (4 after

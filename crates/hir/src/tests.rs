@@ -1638,3 +1638,74 @@ fn assigning_to_a_constant_or_a_sub_says_so() {
     let diags = errors(&program("    nothing = 3"));
     assert!(has(&diags, "`nothing` is not declared"), "{diags:?}");
 }
+
+#[test]
+fn for_each_without_as_over_a_declared_variable() {
+    let app = |pg: &str, body: &str| {
+        format!(
+            "Sub Process_Globals\n{pg}End Sub\n\nSub AppStart (Args() As String)\n{body}End Sub\n"
+        )
+    };
+    // Recorded over a local Int or String (`for_each_untyped_local`,
+    // `for_each_untyped_other_type`), and after a typed loop over it.
+    for body in [
+        "    Dim n As Int\n    For Each n In Array As Int(5)\n    Next\n",
+        "    Dim n As String\n    For Each n In Array As Int(5)\n    Next\n",
+        "    For Each n As Int In Array As Int(1)\n    Next\n    For Each n In Array As Int(2)\n    Next\n",
+    ] {
+        assert_eq!(
+            errors(&app("", body)),
+            [
+                "`n` is already declared: a `For Each` without `As` cannot loop over it; write \
+              `For Each n As <type> In ...`"
+            ],
+            "{body}"
+        );
+    }
+    // Not recorded: over a local Object, a local declared after the loop
+    // (declarations are hoisted), a module variable from a Sub, and in
+    // `Process_Globals`.
+    for (pg, body) in [
+        (
+            "",
+            "    Dim n As Object\n    For Each n In Array As Int(5)\n    Next\n",
+        ),
+        (
+            "",
+            "    For Each n In Array As Int(5)\n    Next\n    Dim n As Int\n",
+        ),
+        (
+            "    Private n As Int\n",
+            "    For Each n In Array As Int(5)\n    Next\n",
+        ),
+        (
+            "    Private n As Int\n    For Each n In Array As Int(5)\n    Next\n",
+            "",
+        ),
+    ] {
+        let diags = errors(&app(pg, body));
+        assert_eq!(diags.len(), 1, "{pg}{body}: {diags:?}");
+        assert!(has(&diags, "is not known yet"), "{pg}{body}: {diags:?}");
+    }
+    // Nor over a parameter.
+    let diags = errors(
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Show(\"a\")\nEnd Sub\n\n\
+         Sub Show (s As String)\n    For Each s In Array As String(\"x\")\n    Next\nEnd Sub\n",
+    );
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "is not known yet"), "{diags:?}");
+    // A variable of an unknown type has its error where the type is.
+    let diags = errors(&app(
+        "",
+        "    Dim n As Bogus\n    For Each n In Array As Int(5)\n    Next\n",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "`Bogus`"), "{diags:?}");
+    // The body of a refused loop is still checked.
+    let diags = errors(&app(
+        "",
+        "    Dim n As Int\n    For Each n In Array As Int(5)\n        Log(Missing)\n    Next\n",
+    ));
+    assert_eq!(diags.len(), 2, "{diags:?}");
+    assert!(has(&diags, "`Missing`"), "{diags:?}");
+}
