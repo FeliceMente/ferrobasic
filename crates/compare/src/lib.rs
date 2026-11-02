@@ -9,12 +9,17 @@
 pub mod families;
 
 use std::fmt::Write as _;
+use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 /// How many examples of each change the report shows by default.
 pub const DEFAULT_EXAMPLES: usize = 3;
+
+/// How long one `ferro check` may run before it counts as a crash.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// What `ferro check` made of a program.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,7 +28,8 @@ pub enum Outcome {
     Accepted,
     /// Compile errors (exit code 3): the `error:` lines, in order.
     Refused(Vec<String>),
-    /// Anything else: a crash, a usage error. How it ended, and its stderr.
+    /// Anything else: a crash, a usage error, a timeout. How it ended, and
+    /// its stderr.
     Crashed(String),
 }
 
@@ -56,8 +62,10 @@ impl Outcome {
 /// How a program's result changed from the old build to the new one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Change {
-    /// The new build crashed on it: always a bug.
+    /// Only the new build crashed on it: a bug the change brings.
     NewCrash,
+    /// Both builds crashed on it: a bug the change did not bring.
+    BothCrash,
     /// The old build crashed on it, the new one does not.
     OldCrash,
     /// Refused before, accepted now.
@@ -73,8 +81,9 @@ pub enum Change {
 }
 
 impl Change {
-    pub const ALL: [Change; 7] = [
+    pub const ALL: [Change; 8] = [
         Change::NewCrash,
+        Change::BothCrash,
         Change::OldCrash,
         Change::NewlyAccepted,
         Change::NewlyRefused,
@@ -85,7 +94,8 @@ impl Change {
 
     fn label(self) -> &'static str {
         match self {
-            Change::NewCrash => "crashes in the new build",
+            Change::NewCrash => "crashes in the new build only",
+            Change::BothCrash => "crashes in both builds",
             Change::OldCrash => "crashed in the old build only",
             Change::NewlyAccepted => "newly accepted",
             Change::NewlyRefused => "newly refused",
@@ -99,6 +109,7 @@ impl Change {
     pub fn between(old: &Outcome, new: &Outcome) -> Option<Change> {
         use Outcome::*;
         match (old, new) {
+            (Crashed(_), Crashed(_)) => Some(Change::BothCrash),
             (_, Crashed(_)) => Some(Change::NewCrash),
             (Crashed(_), _) => Some(Change::OldCrash),
             (Accepted, Accepted) => None,
@@ -144,21 +155,30 @@ pub fn write_programs(
 }
 
 /// Runs `ferro check` on every file with `jobs` threads, in the files'
-/// order.
-pub fn check_all(ferro: &Path, files: &[PathBuf], jobs: usize) -> Vec<Outcome> {
+/// order. Each check may take `timeout`; each thread keeps the stderr of
+/// its current check in a file of its own in `scratch`.
+pub fn check_all(
+    ferro: &Path,
+    files: &[PathBuf],
+    jobs: usize,
+    timeout: Duration,
+    scratch: &Path,
+) -> Vec<Outcome> {
     let next = AtomicUsize::new(0);
     let mut results: Vec<Option<Outcome>> = vec![None; files.len()];
     let chunks: Vec<Vec<(usize, Outcome)>> = std::thread::scope(|scope| {
         let workers: Vec<_> = (0..jobs.max(1))
-            .map(|_| {
-                scope.spawn(|| {
+            .map(|worker| {
+                let next = &next;
+                scope.spawn(move || {
+                    let stderr = scratch.join(format!("stderr-{worker}"));
                     let mut done = Vec::new();
                     loop {
                         let i = next.fetch_add(1, Ordering::Relaxed);
                         let Some(file) = files.get(i) else {
                             return done;
                         };
-                        done.push((i, check(ferro, file)));
+                        done.push((i, check(ferro, file, timeout, &stderr)));
                     }
                 })
             })
@@ -177,15 +197,38 @@ pub fn check_all(ferro: &Path, files: &[PathBuf], jobs: usize) -> Vec<Outcome> {
         .collect()
 }
 
-/// `ferro check <file>`.
-pub fn check(ferro: &Path, file: &Path) -> Outcome {
-    match Command::new(ferro).arg("check").arg(file).output() {
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Outcome::from_check(output.status.code(), &stderr)
+/// `ferro check <file>`, stopped after `timeout`. Its stderr goes through
+/// the file `stderr`, so a long one cannot block it.
+pub fn check(ferro: &Path, file: &Path, timeout: Duration, stderr: &Path) -> Outcome {
+    let sink = match File::create(stderr) {
+        Ok(sink) => sink,
+        Err(e) => return Outcome::Crashed(format!("cannot create {}: {e}", stderr.display())),
+    };
+    let child = Command::new(ferro)
+        .arg("check")
+        .arg(file)
+        .stdout(Stdio::null())
+        .stderr(sink)
+        .spawn();
+    let mut child = match child {
+        Ok(child) => child,
+        Err(e) => return Outcome::Crashed(format!("could not start {}: {e}", ferro.display())),
+    };
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(1)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Outcome::Crashed(format!("timed out after {} s", timeout.as_secs()));
+            }
+            Err(e) => return Outcome::Crashed(format!("cannot wait for ferro: {e}")),
         }
-        Err(e) => Outcome::Crashed(format!("could not start {}: {e}", ferro.display())),
-    }
+    };
+    let text = std::fs::read(stderr).unwrap_or_default();
+    Outcome::from_check(status.code(), &String::from_utf8_lossy(&text))
 }
 
 /// The comparison of two builds.

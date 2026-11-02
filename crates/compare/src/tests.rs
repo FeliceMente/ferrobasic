@@ -116,7 +116,7 @@ fn changes_between_outcomes() {
             Some(Change::OtherMessages),
         ),
         (Outcome::Accepted, crashed.clone(), Some(Change::NewCrash)),
-        (crashed.clone(), crashed.clone(), Some(Change::NewCrash)),
+        (crashed.clone(), crashed.clone(), Some(Change::BothCrash)),
         (crashed.clone(), Outcome::Accepted, Some(Change::OldCrash)),
     ];
     for (old, new, change) in cases {
@@ -170,4 +170,55 @@ fn the_report_counts_and_shows_the_smallest_example() {
         "{text}"
     );
     assert_eq!(report.new_crashes(), 0);
+}
+
+/// A fake `ferro`: a shell script running `body`.
+#[cfg(unix)]
+fn fake_ferro(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("ferro");
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+#[cfg(unix)]
+#[test]
+fn a_check_that_hangs_times_out_as_a_crash() {
+    let dir = std::env::temp_dir().join(format!("ferro-compare-test-hang-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ferro = fake_ferro(&dir, "sleep 30");
+    let started = std::time::Instant::now();
+    let outcome = crate::check(
+        &ferro,
+        &dir.join("x.bas"),
+        std::time::Duration::from_secs(1),
+        &dir.join("stderr"),
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    assert_eq!(outcome, Outcome::Crashed("timed out after 1 s".into()));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_check_reads_the_errors_through_its_stderr_file() {
+    let dir =
+        std::env::temp_dir().join(format!("ferro-compare-test-errors-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ferro = fake_ferro(
+        &dir,
+        "echo 'x.bas:1:1: error: one' >&2\necho '    caret' >&2\nexit 3",
+    );
+    let outcome = crate::check(
+        &ferro,
+        &dir.join("x.bas"),
+        crate::DEFAULT_TIMEOUT,
+        &dir.join("stderr"),
+    );
+    assert_eq!(
+        outcome,
+        Outcome::Refused(vec!["x.bas:1:1: error: one".into()])
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
 }

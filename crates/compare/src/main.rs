@@ -1,29 +1,40 @@
 //! `ferro-compare`: compares how two builds of `ferro` check generated
-//! programs. Exit code 0 when the new build crashes on none, 1 when it
-//! crashes on one, 2 on a usage error or when a build fails.
+//! programs. Exit code 0 when the new build alone crashes on none, 1 when
+//! it crashes on one, 2 on a usage error or when a build fails.
 
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::time::Duration;
 
 use ferro_compare::families::{FAMILIES, Family};
-use ferro_compare::{Compared, DEFAULT_EXAMPLES, Report, check_all, write_programs};
+use ferro_compare::{
+    Compared, DEFAULT_EXAMPLES, DEFAULT_TIMEOUT, Report, check_all, write_programs,
+};
 
 const USAGE: &str = "\
 usage: ferro-compare [--old <git ref> | --old-ferro <path>] [--new-ferro <path>]
-                     [--family <name>]... [--jobs <n>] [--examples <n>]
-                     [--work <dir>] [--list]
+                     [--family <name>]... [--jobs <n>] [--timeout <seconds>]
+                     [--examples <n>] [--work <dir>] [--list]
 
-  --old        the git ref to build the old ferro from (default: origin/dev)
+  --old        the git ref to build the old ferro from (default: origin/dev,
+               fetched first)
   --old-ferro  an old ferro already built, instead of --old
-  --new-ferro  the new ferro (default: ferro next to this program)
+  --new-ferro  the new ferro, instead of building it from this checkout
   --family     only this family of programs; repeat for several
                (default: every family, see --list)
   --jobs       how many programs are checked at once
                (default: the number of processors)
+  --timeout    how long one check may run before it counts as a crash
+               (default: 30)
   --examples   how many programs of each change to show (default: 3)
   --work       where the programs and the old build go
                (default: target/compare)
   --list       list the families and stop";
+
+/// The checkout this program was built from: git and cargo run there,
+/// wherever it is run from.
+const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 fn main() -> ExitCode {
     match run(std::env::args().skip(1).collect()) {
@@ -39,6 +50,7 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
     let (mut old, mut old_ferro, mut new_ferro, mut work) = (None, None, None, None);
     let mut family_names = Vec::new();
     let mut jobs = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let mut timeout = DEFAULT_TIMEOUT;
     let mut examples = DEFAULT_EXAMPLES;
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -49,6 +61,9 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
             "--new-ferro" => new_ferro = Some(PathBuf::from(value("--new-ferro")?)),
             "--family" => family_names.push(value("--family")?),
             "--jobs" => jobs = number("--jobs", &value("--jobs")?, 1)?,
+            "--timeout" => {
+                timeout = Duration::from_secs(number("--timeout", &value("--timeout")?, 1)? as u64)
+            }
             "--examples" => examples = number("--examples", &value("--examples")?, 0)?,
             "--work" => work = Some(PathBuf::from(value("--work")?)),
             "--list" => {
@@ -70,37 +85,39 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
         }
     }
     let families = pick_families(&family_names)?;
-    let me = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
-    let work = match work {
-        Some(work) => work,
-        // target/debug/ferro-compare -> target/compare
-        None => me
-            .parent()
-            .and_then(Path::parent)
-            .map(|target| target.join("compare"))
-            .ok_or("cannot find the target folder: pass --work")?,
-    };
-    std::fs::create_dir_all(&work).map_err(|e| format!("cannot create {}: {e}", work.display()))?;
-    let new_ferro = new_ferro
-        .unwrap_or_else(|| me.with_file_name(format!("ferro{}", std::env::consts::EXE_SUFFIX)));
-    if !new_ferro.is_file() {
-        return Err(format!(
-            "{} not found: build it with `cargo build -p ferro-cli`, or pass --new-ferro",
-            new_ferro.display()
-        ));
+    if old.is_some() && old_ferro.is_some() {
+        return Err("--old and --old-ferro are exclusive".into());
     }
+    let me = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
+    // target/<profile>/ferro-compare
+    let profile_dir = me.parent().ok_or("cannot find this program's folder")?;
+    let target = profile_dir
+        .parent()
+        .ok_or("cannot find the target folder: pass --work")?;
+    let work = work.unwrap_or_else(|| target.join("compare"));
+    std::fs::create_dir_all(&work).map_err(|e| format!("cannot create {}: {e}", work.display()))?;
+    let _lock = Lock::take(&work)?;
+
+    let new_ferro = match new_ferro {
+        Some(path) if path.is_file() => path,
+        Some(path) => return Err(format!("{} not found", path.display())),
+        None => build_new(profile_dir, target)?,
+    };
     let (old_ferro, old_name) = match (old_ferro, old) {
-        (Some(_), Some(_)) => return Err("--old and --old-ferro are exclusive".into()),
-        (Some(path), None) if path.is_file() => {
+        (Some(path), _) if path.is_file() => {
             let name = path.display().to_string();
             (path, name)
         }
-        (Some(path), None) => return Err(format!("{} not found", path.display())),
-        (None, reference) => {
-            let reference = reference.unwrap_or_else(|| "origin/dev".to_string());
-            build_ref(&reference, &work)?
+        (Some(path), _) => return Err(format!("{} not found", path.display())),
+        (None, Some(reference)) => build_ref(&reference, &work)?,
+        (None, None) => {
+            if let Err(e) = git(&["fetch", "-q", "origin", "dev"]) {
+                eprintln!("ferro-compare: warning: {e}; comparing with origin/dev as it is");
+            }
+            build_ref("origin/dev", &work)?
         }
     };
+
     let written = write_programs(&families, &work.join("programs"))
         .map_err(|e| format!("cannot write the programs: {e}"))?;
     let files: Vec<PathBuf> = written.iter().map(|(_, _, path, _)| path.clone()).collect();
@@ -108,8 +125,8 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
         "ferro-compare: checking {} programs with each build, {jobs} at a time",
         files.len()
     );
-    let old_outcomes = check_all(&old_ferro, &files, jobs);
-    let new_outcomes = check_all(&new_ferro, &files, jobs);
+    let old_outcomes = check_all(&old_ferro, &files, jobs, timeout, &work);
+    let new_outcomes = check_all(&new_ferro, &files, jobs, timeout, &work);
     let programs = written
         .into_iter()
         .zip(old_outcomes.into_iter().zip(new_outcomes))
@@ -159,11 +176,76 @@ fn pick_families(names: &[String]) -> Result<Vec<&'static Family>, String> {
         .collect()
 }
 
+/// Only one run at a time uses a work folder: two would remove each
+/// other's worktree and rewrite each other's programs.
+struct Lock(PathBuf);
+
+impl Lock {
+    fn take(work: &Path) -> Result<Lock, String> {
+        let path = work.join("lock");
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(_) => Ok(Lock(path)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(format!(
+                "another ferro-compare is using {}: wait for it, or pass another --work \
+                 (if none is running, remove {})",
+                work.display(),
+                path.display()
+            )),
+            Err(e) => Err(format!("cannot create {}: {e}", path.display())),
+        }
+    }
+}
+
+impl Drop for Lock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Builds `ferro` from this checkout, as it is, into the target folder this
+/// program is in, so that a stale `ferro` is never compared.
+fn build_new(profile_dir: &Path, target: &Path) -> Result<PathBuf, String> {
+    let mut args = vec!["build", "-q", "-p", "ferro-cli"];
+    let profile = profile_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("debug");
+    match profile {
+        "debug" => {}
+        "release" => args.push("--release"),
+        other => args.extend(["--profile", other]),
+    }
+    let workspace = Path::new(WORKSPACE);
+    let shown = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
+    eprintln!("ferro-compare: building ferro from {}", shown.display());
+    let status = Command::new("cargo")
+        .args(&args)
+        .arg("--target-dir")
+        .arg(target)
+        .current_dir(WORKSPACE)
+        .status()
+        .map_err(|e| format!("cannot run cargo: {e}"))?;
+    if !status.success() {
+        return Err("building ferro from this checkout failed".into());
+    }
+    Ok(profile_dir.join(format!("ferro{}", std::env::consts::EXE_SUFFIX)))
+}
+
 /// Builds `ferro` from a git ref in a worktree of its own, removed after,
 /// and returns the binary, copied into `work`, with a name for the report.
+/// Warns when the checkout does not contain the ref: what changed there
+/// since then would show as the checkout's own changes.
 fn build_ref(reference: &str, work: &Path) -> Result<(PathBuf, String), String> {
     let commit = git(&["rev-parse", "--verify", &format!("{reference}^{{commit}}")])?;
     let short = &commit[..commit.len().min(9)];
+    if git(&["merge-base", "--is-ancestor", &commit, "HEAD"]).is_err() {
+        eprintln!(
+            "ferro-compare: warning: this checkout does not contain {reference} ({short}): \
+             what changed there since shows as this checkout's changes"
+        );
+    }
     let source = work.join("old-source");
     remove_worktree(&source);
     git(&[
@@ -207,8 +289,11 @@ fn remove_worktree(source: &Path) {
     let _ = git(&["worktree", "prune"]);
 }
 
+/// Runs git in this program's checkout.
 fn git(args: &[&str]) -> Result<String, String> {
     let output = Command::new("git")
+        .arg("-C")
+        .arg(WORKSPACE)
         .args(args)
         .output()
         .map_err(|e| format!("cannot run git: {e}"))?;

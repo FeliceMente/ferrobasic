@@ -88,7 +88,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 
 ```sh
 scripts/check-all.sh                              # every check below a PR into dev needs
-cargo build -p ferro-cli -p ferro-compare && target/debug/ferro-compare   # what a checker change changes, vs origin/dev
+cargo run -p ferro-compare                        # what a checker change changes, vs origin/dev
 cargo build --workspace
 cargo test --workspace
 cargo fmt --all

@@ -184,30 +184,39 @@ is right is for the recordings to say, and a program newly accepted that no
 recording settles is a bug.
 
 ```sh
-cargo build -p ferro-cli -p ferro-compare
-target/debug/ferro-compare                       # against origin/dev
-target/debug/ferro-compare --old 4e7f547 --family const --examples 5
-target/debug/ferro-compare --list                # the families
+cargo run -p ferro-compare                       # against origin/dev
+cargo run -p ferro-compare -- --old 4e7f547 --family const --examples 5
+cargo run -p ferro-compare -- --list             # the families
 ```
 
-- The old `ferro` is built from a git ref (`--old`, by default `origin/dev`)
-  in a worktree of its own, removed after; its target folder is kept under
-  `target/compare`, so later builds are quick. `--old-ferro <path>` takes a
-  build instead. The new `ferro` is the one next to `ferro-compare`, or
-  `--new-ferro <path>`.
+- The new `ferro` is built from the checkout `ferro-compare` belongs to, as
+  it is, so a stale build is never compared; `--new-ferro <path>` takes a
+  build instead. Git and cargo run in that checkout, wherever
+  `ferro-compare` is run from.
+- The old `ferro` is built from a git ref (`--old`, by default `origin/dev`,
+  fetched first) in a worktree of its own, removed after; its target folder
+  is kept under `target/compare`, so later builds are quick. When the
+  checkout does not contain that ref, a warning says so: what changed there
+  since would show as the checkout's own changes. `--old-ferro <path>` takes
+  a build instead.
+- One run at a time uses a work folder (`--work`, by default
+  `target/compare`): a second one is refused while the first holds its
+  `lock` file.
 - Each family covers one area with every combination of a few building
   blocks: `const` (declarations of one name in `Process_Globals`, then each
   use of it, in several layouts) and `sub-named-loops` (one to three loops
   over a variable named like a Sub). The programs are written under
   `target/compare/programs`, to read or re-run one by hand.
 - The programs run several at a time (`--jobs`, by default one per
-  processor): about 67,000 programs take under two minutes with each build
-  on four processors.
-- The report counts the programs that crash in the new build, are newly
-  accepted, newly refused, have more or fewer errors, or the same number of
-  other ones, then shows the smallest of each (`--examples`) with both
-  builds' errors. The exit code is 1 when the new build crashes on a
-  program, 0 otherwise, 2 on a usage error or a failed build.
+  processor), each for at most 30 seconds (`--timeout`): about 67,000
+  programs take a little over two minutes with both builds on four
+  processors.
+- The report counts the programs that crash (or time out) in the new build
+  only, in both, or in the old one only, are newly accepted, newly refused,
+  have more or fewer errors, or the same number of other ones, then shows
+  the smallest of each (`--examples`) with both builds' errors. The exit
+  code is 1 when the new build alone crashes on a program, 0 otherwise, 2 on
+  a usage error or a failed build.
 
 Unlike the planned generator of "Where test programs come from"
 (`crates/progen`), which makes well-typed programs to compare their output
