@@ -2,14 +2,14 @@
 //! programs. Exit code 0 when the new build alone crashes on none, 1 when
 //! it crashes on one, 2 on a usage error or when a build fails.
 
-use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::Duration;
 
 use ferro_compare::families::{FAMILIES, Family};
 use ferro_compare::{
-    Compared, DEFAULT_EXAMPLES, DEFAULT_TIMEOUT, Report, check_all, write_programs,
+    Compared, DEFAULT_EXAMPLES, DEFAULT_TIMEOUT, Lock, Report, check_all, profile_args,
+    write_programs,
 };
 
 const USAGE: &str = "\
@@ -114,6 +114,13 @@ fn run(args: Vec<String>) -> Result<ExitCode, String> {
             if let Err(e) = git(&["fetch", "-q", "origin", "dev"]) {
                 eprintln!("ferro-compare: warning: {e}; comparing with origin/dev as it is");
             }
+            if git(&["rev-parse", "--verify", "-q", "origin/dev^{commit}"]).is_err() {
+                return Err(
+                    "this checkout has no origin/dev: fetch dev from its remote, or pass \
+                     --old <git ref>"
+                        .into(),
+                );
+            }
             build_ref("origin/dev", &work)?
         }
     };
@@ -176,52 +183,30 @@ fn pick_families(names: &[String]) -> Result<Vec<&'static Family>, String> {
         .collect()
 }
 
-/// Only one run at a time uses a work folder: two would remove each
-/// other's worktree and rewrite each other's programs.
-struct Lock(PathBuf);
-
-impl Lock {
-    fn take(work: &Path) -> Result<Lock, String> {
-        let path = work.join("lock");
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(_) => Ok(Lock(path)),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(format!(
-                "another ferro-compare is using {}: wait for it, or pass another --work \
-                 (if none is running, remove {})",
-                work.display(),
-                path.display()
-            )),
-            Err(e) => Err(format!("cannot create {}: {e}", path.display())),
-        }
-    }
-}
-
-impl Drop for Lock {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
-}
-
 /// Builds `ferro` from this checkout, as it is, into the target folder this
 /// program is in, so that a stale `ferro` is never compared.
 fn build_new(profile_dir: &Path, target: &Path) -> Result<PathBuf, String> {
-    let mut args = vec!["build", "-q", "-p", "ferro-cli"];
-    let profile = profile_dir
+    let name = profile_dir
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("debug");
-    match profile {
-        "debug" => {}
-        "release" => args.push("--release"),
-        other => args.extend(["--profile", other]),
-    }
+        .unwrap_or_default();
+    // Cargo keeps the build's fingerprints in each profile folder.
+    let in_target = profile_dir.join(".fingerprint").is_dir();
+    let Some(profile) = profile_args(name, in_target) else {
+        return Err(format!(
+            "{} is not a cargo target folder, so this program cannot build ferro next to \
+             itself: pass --new-ferro <path>",
+            profile_dir.display()
+        ));
+    };
     let workspace = Path::new(WORKSPACE);
     let shown = workspace
         .canonicalize()
         .unwrap_or_else(|_| workspace.to_path_buf());
     eprintln!("ferro-compare: building ferro from {}", shown.display());
     let status = Command::new("cargo")
-        .args(&args)
+        .args(["build", "-q", "-p", "ferro-cli"])
+        .args(&profile)
         .arg("--target-dir")
         .arg(target)
         .current_dir(WORKSPACE)
@@ -240,11 +225,18 @@ fn build_new(profile_dir: &Path, target: &Path) -> Result<PathBuf, String> {
 fn build_ref(reference: &str, work: &Path) -> Result<(PathBuf, String), String> {
     let commit = git(&["rev-parse", "--verify", &format!("{reference}^{{commit}}")])?;
     let short = &commit[..commit.len().min(9)];
-    if git(&["merge-base", "--is-ancestor", &commit, "HEAD"]).is_err() {
-        eprintln!(
+    // Exit code 1: not an ancestor; anything else but 0: git cannot tell.
+    match git_code(&["merge-base", "--is-ancestor", &commit, "HEAD"]) {
+        Some(0) => {}
+        Some(1) => eprintln!(
             "ferro-compare: warning: this checkout does not contain {reference} ({short}): \
              what changed there since shows as this checkout's changes"
-        );
+        ),
+        _ => eprintln!(
+            "ferro-compare: warning: cannot tell whether this checkout contains {reference} \
+             ({short}), as a shallow clone may not: if it does not, what changed there since \
+             shows as this checkout's changes"
+        ),
     }
     let source = work.join("old-source");
     remove_worktree(&source);
@@ -287,6 +279,19 @@ fn remove_worktree(source: &Path) {
         let _ = std::fs::remove_dir_all(source);
     }
     let _ = git(&["worktree", "prune"]);
+}
+
+/// The exit code of git, run in this program's checkout.
+fn git_code(args: &[&str]) -> Option<i32> {
+    Command::new("git")
+        .arg("-C")
+        .arg(WORKSPACE)
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .ok()
+        .and_then(|status| status.code())
 }
 
 /// Runs git in this program's checkout.

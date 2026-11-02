@@ -222,3 +222,53 @@ fn a_check_reads_the_errors_through_its_stderr_file() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn the_lock_keeps_a_second_run_out_until_released() {
+    let dir = std::env::temp_dir().join(format!("ferro-compare-test-lock-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let first = crate::Lock::take(&dir).unwrap();
+    let refused = crate::Lock::take(&dir).err().unwrap();
+    assert!(refused.contains("another ferro-compare"), "{refused}");
+    assert!(
+        refused.contains(&std::process::id().to_string()),
+        "{refused}"
+    );
+    drop(first);
+    assert!(!dir.join("lock").exists());
+    drop(crate::Lock::take(&dir).unwrap());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_lock_left_by_a_stopped_run_is_taken_over() {
+    let dir = std::env::temp_dir().join(format!("ferro-compare-test-stale-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // The id of a process that has ended, as after Ctrl-C.
+    let mut ended = std::process::Command::new("true").spawn().unwrap();
+    let pid = ended.id();
+    ended.wait().unwrap();
+    std::fs::write(dir.join("lock"), pid.to_string()).unwrap();
+    let lock = crate::Lock::take(&dir).unwrap();
+    let holder = std::fs::read_to_string(dir.join("lock")).unwrap();
+    assert_eq!(holder, std::process::id().to_string());
+    drop(lock);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn profile_folders_map_to_cargo_arguments() {
+    use crate::profile_args;
+    assert_eq!(profile_args("debug", true), Some(vec![]));
+    assert_eq!(
+        profile_args("release", true),
+        Some(vec!["--release".to_string()])
+    );
+    assert_eq!(
+        profile_args("fast", true),
+        Some(vec!["--profile".to_string(), "fast".to_string()])
+    );
+    // ~/.cargo/bin after `cargo install`: not a profile folder.
+    assert_eq!(profile_args("bin", false), None);
+}

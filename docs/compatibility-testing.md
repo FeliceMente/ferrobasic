@@ -190,8 +190,9 @@ cargo run -p ferro-compare -- --list             # the families
 ```
 
 - The new `ferro` is built from the checkout `ferro-compare` belongs to, as
-  it is, so a stale build is never compared; `--new-ferro <path>` takes a
-  build instead. Git and cargo run in that checkout, wherever
+  it is, into the target folder `ferro-compare` runs from, so a stale build
+  is never compared; `--new-ferro <path>` takes a build instead, and is
+  needed when `ferro-compare` runs from elsewhere (`cargo install`). Git and cargo run in that checkout, wherever
   `ferro-compare` is run from.
 - The old `ferro` is built from a git ref (`--old`, by default `origin/dev`,
   fetched first) in a worktree of its own, removed after; its target folder
@@ -201,7 +202,8 @@ cargo run -p ferro-compare -- --list             # the families
   a build instead.
 - One run at a time uses a work folder (`--work`, by default
   `target/compare`): a second one is refused while the first holds its
-  `lock` file.
+  `lock` file, which names the run's process; a lock left by a run that was
+  stopped (Ctrl-C) is taken over.
 - Each family covers one area with every combination of a few building
   blocks: `const` (declarations of one name in `Process_Globals`, then each
   use of it, in several layouts) and `sub-named-loops` (one to three loops

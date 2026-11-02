@@ -8,11 +8,14 @@
 
 pub mod families;
 
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 /// How many examples of each change the report shows by default.
@@ -165,11 +168,13 @@ pub fn check_all(
     scratch: &Path,
 ) -> Vec<Outcome> {
     let next = AtomicUsize::new(0);
+    let watchdog = Watchdog::default();
     let mut results: Vec<Option<Outcome>> = vec![None; files.len()];
     let chunks: Vec<Vec<(usize, Outcome)>> = std::thread::scope(|scope| {
+        scope.spawn(|| watchdog.run());
         let workers: Vec<_> = (0..jobs.max(1))
             .map(|worker| {
-                let next = &next;
+                let (next, watchdog) = (&next, &watchdog);
                 scope.spawn(move || {
                     let stderr = scratch.join(format!("stderr-{worker}"));
                     let mut done = Vec::new();
@@ -178,15 +183,17 @@ pub fn check_all(
                         let Some(file) = files.get(i) else {
                             return done;
                         };
-                        done.push((i, check(ferro, file, timeout, &stderr)));
+                        done.push((i, check_watched(ferro, file, timeout, &stderr, watchdog)));
                     }
                 })
             })
             .collect();
-        workers
+        let chunks = workers
             .into_iter()
             .map(|w| w.join().expect("a worker panicked"))
-            .collect()
+            .collect();
+        watchdog.stop.store(true, Ordering::Relaxed);
+        chunks
     });
     for (i, outcome) in chunks.into_iter().flatten() {
         results[i] = Some(outcome);
@@ -200,6 +207,80 @@ pub fn check_all(
 /// `ferro check <file>`, stopped after `timeout`. Its stderr goes through
 /// the file `stderr`, so a long one cannot block it.
 pub fn check(ferro: &Path, file: &Path, timeout: Duration, stderr: &Path) -> Outcome {
+    let watchdog = Watchdog::default();
+    std::thread::scope(|scope| {
+        scope.spawn(|| watchdog.run());
+        let outcome = check_watched(ferro, file, timeout, stderr, &watchdog);
+        watchdog.stop.store(true, Ordering::Relaxed);
+        outcome
+    })
+}
+
+/// Kills the checks that run past their deadline, so that each check can
+/// simply wait for its process instead of polling it.
+#[derive(Default)]
+struct Watchdog {
+    /// The running checks: process id and deadline.
+    running: Mutex<HashMap<u32, Instant>>,
+    /// The processes it killed, until their check reads it.
+    killed: Mutex<HashSet<u32>>,
+    stop: AtomicBool,
+}
+
+impl Watchdog {
+    /// How often it looks for checks past their deadline: a timeout is
+    /// reported this much late at most.
+    const TICK: Duration = Duration::from_millis(50);
+
+    fn run(&self) {
+        while !self.stop.load(Ordering::Relaxed) {
+            std::thread::sleep(Self::TICK);
+            let now = Instant::now();
+            let mut running = self.running.lock().unwrap();
+            let overdue: Vec<u32> = running
+                .iter()
+                .filter(|(_, deadline)| **deadline <= now)
+                .map(|(pid, _)| *pid)
+                .collect();
+            for pid in overdue {
+                // Marked killed while the check is still registered, so that
+                // the check, which deregisters under the same lock, sees it.
+                running.remove(&pid);
+                self.killed.lock().unwrap().insert(pid);
+                kill(pid);
+            }
+        }
+    }
+
+    /// Deregisters a check whose process ended; whether it was killed.
+    fn finished(&self, pid: u32) -> bool {
+        let mut running = self.running.lock().unwrap();
+        running.remove(&pid);
+        self.killed.lock().unwrap().remove(&pid)
+    }
+}
+
+fn kill(pid: u32) {
+    let pid = pid.to_string();
+    let mut command = if cfg!(windows) {
+        let mut command = Command::new("taskkill");
+        command.args(["/F", "/T", "/PID", &pid]);
+        command
+    } else {
+        let mut command = Command::new("kill");
+        command.args(["-KILL", &pid]);
+        command
+    };
+    let _ = command.stdout(Stdio::null()).stderr(Stdio::null()).status();
+}
+
+fn check_watched(
+    ferro: &Path,
+    file: &Path,
+    timeout: Duration,
+    stderr: &Path,
+    watchdog: &Watchdog,
+) -> Outcome {
     let sink = match File::create(stderr) {
         Ok(sink) => sink,
         Err(e) => return Outcome::Crashed(format!("cannot create {}: {e}", stderr.display())),
@@ -214,21 +295,110 @@ pub fn check(ferro: &Path, file: &Path, timeout: Duration, stderr: &Path) -> Out
         Ok(child) => child,
         Err(e) => return Outcome::Crashed(format!("could not start {}: {e}", ferro.display())),
     };
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(1)),
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Outcome::Crashed(format!("timed out after {} s", timeout.as_secs()));
-            }
-            Err(e) => return Outcome::Crashed(format!("cannot wait for ferro: {e}")),
-        }
+    let pid = child.id();
+    watchdog
+        .running
+        .lock()
+        .unwrap()
+        .insert(pid, Instant::now() + timeout);
+    let status = child.wait();
+    if watchdog.finished(pid) {
+        return Outcome::Crashed(format!("timed out after {} s", timeout.as_secs()));
+    }
+    let status = match status {
+        Ok(status) => status,
+        Err(e) => return Outcome::Crashed(format!("cannot wait for ferro: {e}")),
     };
     let text = std::fs::read(stderr).unwrap_or_default();
     Outcome::from_check(status.code(), &String::from_utf8_lossy(&text))
+}
+
+/// Keeps a second run out of a work folder while one uses it: two would
+/// remove each other's worktree and rewrite each other's programs. The
+/// file holds the run's process id, so a lock left by a run that was
+/// stopped (Ctrl-C) is taken over.
+pub struct Lock(PathBuf);
+
+impl Lock {
+    pub fn take(work: &Path) -> Result<Lock, String> {
+        let path = work.join("lock");
+        for _ in 0..2 {
+            match OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(mut file) => {
+                    let _ = write!(file, "{}", std::process::id());
+                    return Ok(Lock(path));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let holder = std::fs::read_to_string(&path).unwrap_or_default();
+                    match holder.trim().parse::<u32>() {
+                        Ok(pid) if !process_runs(pid) => {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                        _ => {
+                            return Err(format!(
+                                "another ferro-compare (process {}) is using {}: wait for it, \
+                                 or pass another --work",
+                                holder.trim(),
+                                work.display()
+                            ));
+                        }
+                    }
+                }
+                Err(e) => return Err(format!("cannot create {}: {e}", path.display())),
+            }
+        }
+        Err(format!("cannot take {}", path.display()))
+    }
+}
+
+impl Drop for Lock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Whether a process runs; when it cannot tell, it says yes, so that a lock
+/// is never taken from a run that may be going on.
+fn process_runs(pid: u32) -> bool {
+    let pid = pid.to_string();
+    if cfg!(windows) {
+        let filter = format!("PID eq {pid}");
+        Command::new("tasklist")
+            .args(["/FI", &filter, "/NH"])
+            .output()
+            .map_or(true, |out| {
+                String::from_utf8_lossy(&out.stdout).contains(&pid)
+            })
+    } else {
+        // `ps` prints the state, empty for no such process; a zombie (`Z`)
+        // has ended and only waits to be reaped.
+        match Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid])
+            .stderr(Stdio::null())
+            .output()
+        {
+            Ok(out) => {
+                let state = String::from_utf8_lossy(&out.stdout);
+                let state = state.trim();
+                !state.is_empty() && !state.starts_with('Z')
+            }
+            Err(_) => true,
+        }
+    }
+}
+
+/// The `cargo build` arguments that build into the profile folder `name`
+/// of a target folder (`debug`, `release`, or a custom profile's own
+/// name); `None` when `name` is not a profile folder.
+pub fn profile_args(name: &str, is_profile_folder: bool) -> Option<Vec<String>> {
+    if !is_profile_folder {
+        return None;
+    }
+    Some(match name {
+        "debug" => vec![],
+        "release" => vec!["--release".to_string()],
+        other => vec!["--profile".to_string(), other.to_string()],
+    })
 }
 
 /// The comparison of two builds.
