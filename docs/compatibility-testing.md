@@ -190,12 +190,13 @@ It runs on pull requests into `main` (releases) and on demand ("Run
 workflow"), not on pull requests into `dev`: the repository is private, so
 every minute comes out of the owner's Actions allowance, and macOS minutes
 count ten times. Pull requests into `dev` are checked locally (AGENTS.md)
-with `scripts/check-all.sh`: `fmt`, `clippy` (also for
-`x86_64-pc-windows-gnu`, `aarch64-apple-darwin` and `x86_64-apple-darwin`),
-the tests, `ferro-difftest` on both targets, the recorder's dry run and the
-real-world corpus. Run the workflow by hand before a
-release, and after a change to platform-specific code (`ferro bundle`, files,
-the command line). A release is merged only with the workflow green.
+with `scripts/check-all.sh`: `fmt`, `clippy` for every platform CI tests,
+the tests, `ferro-difftest` on both targets, the recorder's dry run, the
+real-world corpus, and on Linux x86_64 the static Linux binary
+(`--offline` skips the corpus download; a skipped step is named at the
+end). Run the workflow by hand before a release, and after a change to
+platform-specific code (`ferro bundle`, files, the command line). A release
+is merged only with the workflow green.
 
 ## Open points
 

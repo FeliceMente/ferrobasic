@@ -104,9 +104,10 @@ cargo test -p ferro-project --test projects -- --ignored
 
 ## Before closing a task
 
-1. `scripts/check-all.sh` passes: format, clippy (also for Windows and
-   macOS targets), the tests, the conformance tests in the interpreter and
-   as standalone binaries, the recorder's dry run and the real-world corpus.
+1. `scripts/check-all.sh` passes: format, clippy for Linux, Windows and
+   macOS, the tests, the conformance tests in the interpreter and as
+   standalone binaries, the recorder's dry run, the real-world corpus and,
+   on Linux x86_64, the static Linux binary.
    CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for
    pull requests into `main` and on demand (see
    `docs/compatibility-testing.md`, "CI").
