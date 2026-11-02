@@ -161,12 +161,68 @@ fn comparisons() {
 }
 
 #[test]
-fn comparison_chains_are_type_errors() {
-    // `(1 < 2) < 3` compares a Boolean with a number.
-    let d = errors(&program("Dim b As Boolean = 1 < 2 < 3"));
-    assert!(has(&d, "cannot compare Boolean with Int"), "{d:?}");
-    // Assigning one comparison is fine.
+fn comparison_chains_are_refused() {
+    // B4J parses one comparison, then expects what follows it (recorded:
+    // `chained_comparison_less`, `chained_comparison_equal`).
+    for chain in ["1 < 2 < 3", "1 = 2 = False", "1 = 2 < 3"] {
+        let d = errors(&program(&format!("Dim b As Boolean = {chain}")));
+        assert_eq!(
+            d,
+            ["comparisons cannot be chained: put one of them in parentheses"],
+            "{chain}"
+        );
+    }
+    // In parentheses, or assigning one comparison, is fine.
+    ok(&program("Dim b As Boolean = (1 = 2) = False"));
     ok(&program("Dim b As Boolean\nDim n As Int = 1\nb = n = 1"));
+}
+
+#[test]
+fn ordering_compares_numbers() {
+    // A String operand is parsed as a number (recorded:
+    // `string_compare_less`, `mixed_compare_string_left`).
+    let m = ok(&program("Dim b As Boolean = \"a\" < \"b\""));
+    assert_eq!(
+        show(&last_value(&m)),
+        "Lt:Numeric(conv(String->Double, \"a\"), conv(String->Double, \"b\"))"
+    );
+    let m = ok(&program("Dim b As Boolean = \"10\" > 9"));
+    assert!(show(&last_value(&m)).starts_with("Gt:Numeric("));
+    // `=` still lets the left operand decide.
+    let m = ok(&program("Dim b As Boolean = \"10.0\" = 10"));
+    assert!(show(&last_value(&m)).starts_with("Eq:String("));
+    // A Char does not convert to a number (recorded: `char_string_compare`).
+    for other in ["\"B\"", "c"] {
+        let d = errors(&program(&format!(
+            "Dim c As Char = \"A\"\nDim b As Boolean = c < {other}"
+        )));
+        assert!(has(&d, "a Char cannot be compared with `<`"), "{d:?}");
+    }
+    // A number `=` Null converts the Null as text, `"null"` (recorded:
+    // `null_number_compare`); with `<` it stays refused.
+    let m = ok(&program("Dim n As Int\nDim b As Boolean = n = Null"));
+    assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
+    let d = errors(&program("Dim n As Int\nDim b As Boolean = n < Null"));
+    assert!(has(&d, "cannot compare Int with Null"), "{d:?}");
+    // Only an `Int` was recorded next to `Null`.
+    let d = errors(&program("Dim n As Double\nDim b As Boolean = n = Null"));
+    assert!(has(&d, "cannot compare Double with Null"), "{d:?}");
+    // A Boolean does not convert to a number either (recorded:
+    // `boolean_less`), next to a String too.
+    for expr in ["\"a\" < True", "True > \"a\"", "False < True"] {
+        let d = errors(&program(&format!("Dim b As Boolean = {expr}")));
+        assert!(
+            has(&d, "a Boolean cannot be compared with `<`"),
+            "{expr}: {d:?}"
+        );
+    }
+    // A String next to an Object with `<` is not recorded.
+    for expr in ["\"10\" < o", "o >= \"10\""] {
+        let d = errors(&program(&format!(
+            "Dim o As Object = \"5\"\nDim b As Boolean = {expr}"
+        )));
+        assert!(has(&d, "is not known yet"), "{expr}: {d:?}");
+    }
 }
 
 #[test]

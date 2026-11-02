@@ -10,7 +10,11 @@ fn family(name: &str) -> &'static crate::families::Family {
 #[test]
 fn families_have_their_sizes_and_unique_names() {
     // The sizes of the comparisons run by hand for #67 and #68.
-    for (name, size) in [("const", 65_160), ("sub-named-loops", 1_687)] {
+    for (name, size) in [
+        ("const", 65_160),
+        ("sub-named-loops", 1_687),
+        ("comparisons", 594),
+    ] {
         let programs = (family(name).generate)();
         assert_eq!(programs.len(), size, "{name}");
         let names: HashSet<&str> = programs.iter().map(|p| p.name.as_str()).collect();
