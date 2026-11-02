@@ -129,7 +129,8 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   its position ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java#L57-L59), [L225-L227](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java#L225-L227)).
 - Keys compare with Java `equals`: string keys are case-sensitive, and boxed
   numbers of different types are different keys (`Int` 1 ≠ `Double` 1.0).
-  Which boxed type a numeric literal key gets is compiler behaviour (**open**).
+  A numeric literal key is an `Integer`, or a `Double` with a point, so
+  `1` and `1.0` are two keys (**recorded**: `literal_boxed_type`).
 - `Put` returns the previous value or `Null`; `Get` of a missing key returns
   `Null`; `GetDefault` returns the default when the stored value is `Null`.
 - `GetKeyAt` / `GetValueAt` go through `MyMap.getEntry`
@@ -357,8 +358,8 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
 The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
 `Floor(a / b)`. Division by zero in Double is not an error (`Infinity`/`NaN`;
 [forum](https://www.b4x.com/android/forum/threads/divide-by-zero-not-an-error.142795/)).
-**open**: the exact rule for converting a Double back to `Int`
-(truncation toward zero is Java's `(int)` cast, as reported on the forum).
+Converting a Double back to `Int` truncates toward zero, as Java's `(int)`
+cast does and the forum reported (**recorded**: `double_to_int_assign`).
 
 ### Statements
 
@@ -449,24 +450,27 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `process_globals_counter_named_like_sub_typed_for_each_again`,
   `process_globals_for_each_named_like_sub_typed_for_each_again`); a
   `Dim` with a Sub's name is refused: "Variable name cannot be the same as
-  a sub name" (**recorded**: `module_variable_named_like_sub`). Not
-  recorded (*open*): a `For Each` without `As` as the first loop over the
-  name, which only a later typed `For Each` can declare
-  (`local_for_each_named_like_sub_before_typed`,
-  `process_globals_for_each_named_like_sub_before_typed`), or nested in a
-  loop of `Process_Globals` (`process_globals_for_each_named_like_sub_nested`);
-  a `For Each v As T` of another type after a counter of the Sub
-  (`local_typed_for_each_other_type_after_counter_named_like_sub`) or
-  inside a `For` over it (`local_typed_for_each_in_counter_named_like_sub`),
-  or nested in `Process_Globals`
-  (`process_globals_typed_for_each_named_like_sub_nested`); a `For` over
-  a loop variable that a `For Each v As T` of another number type than
-  `Int` declared (`local_counter_after_double_for_each_named_like_sub`);
-  any other combination of loops over the name, as FerroBASIC settles only
-  the recorded ones (`recorded_loop` in `crates/hir/src/lower.rs`, and
-  the pending tests listed in [open-questions.md](../open-questions.md));
-  and a `Dim` of
-  `Class_Globals` with a Sub's name.
+  a sub name" (**recorded**: `module_variable_named_like_sub`). Refused
+  too, "Current declaration does not match previous one": a `For Each`
+  without `As` as the first loop over the name, which only a later typed
+  `For Each` declares, or nested in a loop of `Process_Globals` over it,
+  and a `For Each v As T` of another type after a counter of the Sub
+  (**recorded**: `local_for_each_named_like_sub_before_typed`,
+  `process_globals_for_each_named_like_sub_before_typed`,
+  `process_globals_for_each_named_like_sub_nested`,
+  `local_typed_for_each_other_type_after_counter_named_like_sub`).
+  Recorded as built, which FerroBASIC does not follow yet: a `For Each v
+  As T` inside a `For` of the Sub over it
+  (`local_typed_for_each_in_counter_named_like_sub`) or nested in
+  `Process_Globals` (`process_globals_typed_for_each_named_like_sub_nested`);
+  a `For` over a loop variable that a `For Each v As T` of another number
+  type than `Int` declared
+  (`local_counter_after_double_for_each_named_like_sub`); and the other
+  pending tests listed in [open-questions.md](../open-questions.md).
+  Not recorded (*open*): any other combination of loops over the name, as
+  FerroBASIC settles only the recorded ones (`recorded_loop` in
+  `crates/hir/src/lower.rs`), and a `Dim` of `Class_Globals` with a Sub's
+  name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,

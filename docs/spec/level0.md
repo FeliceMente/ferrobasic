@@ -96,8 +96,10 @@ End Sub
   `For Each v As T` of a Sub may have the name of a Sub and of a module
   variable of type `T`, and with another type it is an error as for any
   other name (recorded). In `Class_Globals`, a `Dim` with a Sub's
-  name is *(open)*. A loop variable of `Process_Globals` named like a `Type`, `Bit`
-  or a keyword is *(open)* too, and so is `For i As T` there: declare `i`
+  name is *(open)*. A loop variable of `Process_Globals` cannot be named
+  `Bit` (B4J's compiler fails, recorded); named like a `Type` it builds
+  (recorded, not followed by FerroBASIC yet), and like a keyword or
+  built-in it is *(open)*, and so is `For i As T` there: declare `i`
   with `Dim` and loop without `As`. All of this is only for the main module:
   in `Class_Globals` a loop must use a variable declared with `Dim`,
   without `As`.
@@ -144,8 +146,10 @@ End Sub
   when passed. Everything else, `String` included, copies the reference.
 - `Object` holds a boxed value. The box remembers its type: `Int` 1 and
   `Double` 1 stored in a `Map` are different keys. Which boxed type a numeric
-  literal gets is *(open)*. Provisionally, an integer literal that fits is
-  `Int`, a real literal is `Double`.
+  literal gets is recorded: an integer literal that fits is an `Int`, a
+  larger one a `Long`, a hex one up to `0xFFFFFFFF` an `Int`, and a real
+  literal a `Double` (`literal_boxed_type`, `decimal_literal_over_int`,
+  `hex_literal`).
 
 ## Declarations and scope
 
@@ -154,8 +158,8 @@ End Sub
   of any type, `List`, `Map` and arrays included, with any expression as
   its value (recorded). Each must be given its value there (B4J: "Const
   variable must be set in the declaration line.", recorded). Without `As`
-  it is a `String` (recorded), as a `Dim` without `As` provisionally is
-  (below). Its value is
+  it is a `String` (recorded), as a `Dim` without `As` is (recorded:
+  `dim_without_as`). Its value is
   computed where it is declared, in order, as a `Dim`'s: a module variable
   initialised from a constant declared after it reads `0` (recorded).
   A `Const` array with bounds must be given its value too (recorded).
@@ -194,7 +198,7 @@ End Sub
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
   A name without `As` takes the type of the next `As` to its right in the same
   statement.
-- With no `As` at all, the type is *(open)*. Provisionally it is `String`.
+- With no `As` at all, the type is `String` (recorded: `dim_without_as`).
 - Arrays: `Dim a(10) As Int`, `Dim m(3, 4) As Double`. The bounds are
   expressions, evaluated when the `Dim` runs. `Dim a() As Int` is an empty array.
 - **Scope is the whole Sub.** Every local is hoisted to the top of its Sub and
@@ -216,7 +220,7 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 | From → to | Rule |
 | --- | --- |
 | number → wider number | Java widening. Exact for Byte/Short/Int → Int/Long/Double, Float → Double and every integer → Float/Double whose value fits the mantissa; otherwise rounded to nearest (Int 16777217 → Float 16777216, Long 9007199254740993 → Double 9007199254740992). |
-| number → narrower integer | Java narrowing. Double → Int truncates toward zero *(open: forum level)*; out-of-range values follow Java rules (NaN → 0, saturating). Long → Int keeps the low 32 bits. |
+| number → narrower integer | Java narrowing. Double → Int truncates toward zero (recorded: `double_to_int_assign`); out-of-range values follow Java rules (NaN → 0, saturating). Long → Int keeps the low 32 bits. |
 | number → String | `NumberToString`, see below |
 | Boolean → String | `true` / `false` (lower case) |
 | String → number | parsed as a Java `double` literal, then narrowed. An unparsable string raises `NumberFormatException`. |
@@ -293,21 +297,28 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
     fall-through. `Case Else` runs if nothing matched.
   - There are no ranges. `Select True` with `Case cond` is the idiom for conditions.
 - **`For i = a To b [Step s]`**:
-  - `a`, `b` and `s` are evaluated once, before the first iteration *(open)*;
+  - `a`, `b` and `s` are evaluated once, before the first iteration
+    (recorded: `for_limit_evaluated_once`); in which order is recorded too
+    (`for_evaluation_order`: `s`, then `b`, then `a`), which FerroBASIC
+    does not follow yet;
     `s` defaults to 1;
   - the loop runs while `i <= b` (positive step) or `i >= b` (negative step);
   - after `Next`, `i` is incremented by `s`;
-  - the value of `i` after the loop is *(open)*.
+  - after the loop, `i` holds the first value past `b`, or `a` when the
+    loop never ran (recorded: `for_counter_after_loop`).
 - **`For Each x [As T] In c`**: iterates arrays, `List`, `Map.Keys` and
-  `Map.Values` in order (insertion order for a `Map`). Changing a collection
-  while iterating it is *(open)*.
+  `Map.Values` in order (insertion order for a `Map`). A `List` that grows
+  while it is iterated is iterated over the items it had when the loop
+  began (recorded: `list_modified_in_for_each`); changing a `Map` while
+  iterating it is *(open)*.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing
   `Select`** if that is closer.
 - **`Continue`** jumps to the next iteration of the innermost loop.
 - **`Return [expr]`** leaves the Sub. A Sub with an `As` type that falls off its
-  end returns that type's default value *(open)*.
+  end returns that type's default value: 0, or an empty `String` (recorded:
+  `typed_sub_without_return`, `typed_string_sub_without_return`).
 - **`Try … Catch … End Try`** catches every runtime error raised in the `Try`
   block, including from called Subs. `LastException` then holds the innermost
   cause. `LastException.Message` is `<kind>`, then `": "` and the message when
