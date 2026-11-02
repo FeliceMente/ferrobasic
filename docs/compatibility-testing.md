@@ -192,8 +192,8 @@ cargo run -p ferro-compare -- --list             # the families
 - The new `ferro` is built from the checkout `ferro-compare` belongs to, as
   it is, into the target folder `ferro-compare` runs from, so a stale build
   is never compared; `--new-ferro <path>` takes a build instead, and is
-  needed when `ferro-compare` runs from elsewhere (`cargo install`). Git and cargo run in that checkout, wherever
-  `ferro-compare` is run from.
+  needed when `ferro-compare` runs from elsewhere (`cargo install`). Git
+  and cargo run in that checkout, wherever `ferro-compare` is run from.
 - The old `ferro` is built from a git ref (`--old`, by default `origin/dev`,
   fetched first) in a worktree of its own, removed after; its target folder
   is kept under `target/compare`, so later builds are quick. When the

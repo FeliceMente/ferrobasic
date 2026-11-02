@@ -272,3 +272,50 @@ fn profile_folders_map_to_cargo_arguments() {
     // ~/.cargo/bin after `cargo install`: not a profile folder.
     assert_eq!(profile_args("bin", false), None);
 }
+
+#[test]
+fn a_panic_stops_the_watchdog_instead_of_hanging() {
+    let watchdog = crate::Watchdog::default();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        std::thread::scope(|scope| {
+            scope.spawn(|| watchdog.run());
+            let _stop = watchdog.stopper();
+            panic!("a worker panicked");
+        })
+    }));
+    assert!(result.is_err());
+}
+
+#[test]
+fn an_empty_lock_is_kept_while_fresh_and_taken_over_when_old() {
+    let dir = std::env::temp_dir().join(format!("ferro-compare-test-empty-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // A run that has created the lock but not yet written its id.
+    let file = std::fs::File::create(dir.join("lock")).unwrap();
+    let refused = crate::Lock::take(&dir).err().unwrap();
+    assert!(
+        refused.starts_with("another ferro-compare is using"),
+        "{refused}"
+    );
+    // The same, left by a run stopped in between.
+    let old = std::time::SystemTime::now() - crate::Lock::EMPTY_FOR * 2;
+    file.set_modified(old).unwrap();
+    drop(file);
+    drop(crate::Lock::take(&dir).unwrap());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_running_process_runs_and_a_zombie_does_not() {
+    assert!(crate::process_runs(std::process::id()));
+    // Not waited for: once it ends, it stays a zombie until reaped.
+    let mut zombie = std::process::Command::new("true").spawn().unwrap();
+    let pid = zombie.id();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while crate::process_runs(pid) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!crate::process_runs(pid));
+    zombie.wait().unwrap();
+}

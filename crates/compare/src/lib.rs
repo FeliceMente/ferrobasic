@@ -172,6 +172,9 @@ pub fn check_all(
     let mut results: Vec<Option<Outcome>> = vec![None; files.len()];
     let chunks: Vec<Vec<(usize, Outcome)>> = std::thread::scope(|scope| {
         scope.spawn(|| watchdog.run());
+        // Stops the watchdog when the workers are done, or when one panics:
+        // the scope waits for every thread before it ends.
+        let _stop = watchdog.stopper();
         let workers: Vec<_> = (0..jobs.max(1))
             .map(|worker| {
                 let (next, watchdog) = (&next, &watchdog);
@@ -188,12 +191,10 @@ pub fn check_all(
                 })
             })
             .collect();
-        let chunks = workers
+        workers
             .into_iter()
             .map(|w| w.join().expect("a worker panicked"))
-            .collect();
-        watchdog.stop.store(true, Ordering::Relaxed);
-        chunks
+            .collect()
     });
     for (i, outcome) in chunks.into_iter().flatten() {
         results[i] = Some(outcome);
@@ -210,9 +211,8 @@ pub fn check(ferro: &Path, file: &Path, timeout: Duration, stderr: &Path) -> Out
     let watchdog = Watchdog::default();
     std::thread::scope(|scope| {
         scope.spawn(|| watchdog.run());
-        let outcome = check_watched(ferro, file, timeout, stderr, &watchdog);
-        watchdog.stop.store(true, Ordering::Relaxed);
-        outcome
+        let _stop = watchdog.stopper();
+        check_watched(ferro, file, timeout, stderr, &watchdog)
     })
 }
 
@@ -252,11 +252,24 @@ impl Watchdog {
         }
     }
 
+    /// Stops the watchdog when dropped, even while unwinding.
+    fn stopper(&self) -> Stopper<'_> {
+        Stopper(&self.stop)
+    }
+
     /// Deregisters a check whose process ended; whether it was killed.
     fn finished(&self, pid: u32) -> bool {
         let mut running = self.running.lock().unwrap();
         running.remove(&pid);
         self.killed.lock().unwrap().remove(&pid)
+    }
+}
+
+struct Stopper<'a>(&'a AtomicBool);
+
+impl Drop for Stopper<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
     }
 }
 
@@ -320,6 +333,9 @@ fn check_watched(
 pub struct Lock(PathBuf);
 
 impl Lock {
+    /// How long a lock file may stay empty before it counts as left behind.
+    pub const EMPTY_FOR: Duration = Duration::from_secs(5);
+
     pub fn take(work: &Path) -> Result<Lock, String> {
         let path = work.join("lock");
         for _ in 0..2 {
@@ -330,25 +346,42 @@ impl Lock {
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     let holder = std::fs::read_to_string(&path).unwrap_or_default();
-                    match holder.trim().parse::<u32>() {
-                        Ok(pid) if !process_runs(pid) => {
-                            let _ = std::fs::remove_file(&path);
-                        }
-                        _ => {
-                            return Err(format!(
-                                "another ferro-compare (process {}) is using {}: wait for it, \
-                                 or pass another --work",
-                                holder.trim(),
-                                work.display()
-                            ));
-                        }
+                    let holder = holder.trim();
+                    let stale = match holder.parse::<u32>() {
+                        Ok(pid) => !process_runs(pid),
+                        // A run writes its id right after creating the file:
+                        // one still empty after a while was left by a run
+                        // stopped in between.
+                        Err(_) => holder.is_empty() && age(&path) > Lock::EMPTY_FOR,
+                    };
+                    if !stale {
+                        let who = if holder.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" (process {holder})")
+                        };
+                        return Err(format!(
+                            "another ferro-compare{who} is using {}: wait for it, or pass \
+                             another --work",
+                            work.display()
+                        ));
                     }
+                    let _ = std::fs::remove_file(&path);
                 }
                 Err(e) => return Err(format!("cannot create {}: {e}", path.display())),
             }
         }
         Err(format!("cannot take {}", path.display()))
     }
+}
+
+/// How long ago a file was last written; zero when that is unknown.
+fn age(path: &Path) -> Duration {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .unwrap_or_default()
 }
 
 impl Drop for Lock {
@@ -363,28 +396,34 @@ fn process_runs(pid: u32) -> bool {
     let pid = pid.to_string();
     if cfg!(windows) {
         let filter = format!("PID eq {pid}");
-        Command::new("tasklist")
+        return match Command::new("tasklist")
             .args(["/FI", &filter, "/NH"])
             .output()
-            .map_or(true, |out| {
-                String::from_utf8_lossy(&out.stdout).contains(&pid)
-            })
-    } else {
-        // `ps` prints the state, empty for no such process; a zombie (`Z`)
-        // has ended and only waits to be reaped.
-        match Command::new("ps")
+        {
+            Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).contains(&pid),
+            _ => true,
+        };
+    }
+    // `kill -0` only asks whether the process exists; any failure but "No
+    // such process" (no permission, say) leaves the answer unknown.
+    let exists = match Command::new("kill")
+        .args(["-0", &pid])
+        .env("LC_ALL", "C")
+        .stdout(Stdio::null())
+        .output()
+    {
+        Ok(out) if out.status.success() => true,
+        Ok(out) => !String::from_utf8_lossy(&out.stderr).contains("No such process"),
+        Err(_) => true,
+    };
+    // A zombie exists but has ended and only waits to be reaped: `ps`
+    // shows its state as `Z`. Any other answer, or none, means it runs.
+    exists
+        && !Command::new("ps")
             .args(["-o", "stat=", "-p", &pid])
             .stderr(Stdio::null())
             .output()
-        {
-            Ok(out) => {
-                let state = String::from_utf8_lossy(&out.stdout);
-                let state = state.trim();
-                !state.is_empty() && !state.starts_with('Z')
-            }
-            Err(_) => true,
-        }
-    }
+            .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim().starts_with('Z'))
 }
 
 /// The `cargo build` arguments that build into the profile folder `name`
