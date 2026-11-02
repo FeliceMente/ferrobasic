@@ -186,7 +186,7 @@ recording settles is a bug.
 ```sh
 cargo build -p ferro-cli -p ferro-compare
 target/debug/ferro-compare                       # against origin/dev
-target/debug/ferro-compare --old 8f3bd7b --family const --examples 5
+target/debug/ferro-compare --old 4e7f547 --family const --examples 5
 target/debug/ferro-compare --list                # the families
 ```
 
