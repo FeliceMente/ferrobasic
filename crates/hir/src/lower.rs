@@ -195,6 +195,23 @@ struct GlobalDeclaration {
     literal: bool,
     /// A statement of `Process_Globals` itself, not inside a block.
     direct: bool,
+    /// A statement of an `If` block that is a statement of
+    /// `Process_Globals` itself.
+    in_if: bool,
+}
+
+/// Which two declarations of `Process_Globals` declare a constant's name
+/// (recorded, in each order).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pair {
+    /// A `Const`, then a `Dim`: the name may then be assigned in a Sub
+    /// (recorded: `const_dim_after_assign`).
+    ConstDim,
+    /// A `Dim`, then a `Const`: the name cannot be assigned (recorded:
+    /// `const_after_dim_assign`).
+    DimConst,
+    /// Two `Const`s (recorded: `const_twice`).
+    ConstConst,
 }
 
 /// What the declarations of `Process_Globals` make of a constant.
@@ -202,10 +219,10 @@ struct GlobalDeclaration {
 enum ConstState {
     /// Declared there once, by its `Const` alone.
     Single,
-    /// An `Int` declared by a `Const` and by a `Dim` with a value, in either
-    /// order, and nothing else: built (recorded), but whether it may then
-    /// change is not known, asked once (`reported`).
-    Redeclared { reported: bool },
+    /// Declared by two declarations there, as `Pair` lists, and nothing
+    /// else: built, each setting its value in turn (recorded). What else
+    /// may change it is not known, asked once (`reported`).
+    Redeclared { reported: bool, pair: Pair },
     /// Declared again where that is refused as open: the program has an
     /// error already, so the uses of the name are refused with no error of
     /// their own.
@@ -779,6 +796,14 @@ impl Lowerer {
         for node in nodes {
             if node.kind() == DIM_STMT {
                 let direct = node.parent().and_then(|block| block.parent()).as_ref() == Some(sub);
+                let in_if = node
+                    .parent()
+                    .and_then(|block| block.parent())
+                    .filter(|n| n.kind() == IF_STMT)
+                    .and_then(|stmt| stmt.parent())
+                    .and_then(|block| block.parent())
+                    .as_ref()
+                    == Some(sub);
                 for (decl, ty) in self.declarators(&node) {
                     let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                     let declaration = GlobalDeclaration {
@@ -788,6 +813,7 @@ impl Lowerer {
                         is_const: in_const(&decl),
                         literal: exprs(&decl).first().is_some_and(|e| e.kind() == LITERAL),
                         direct,
+                        in_if,
                     };
                     self.declare_dim_global(name.clone(), ty, range(&decl));
                     self.mark_const(&decl, &name);
@@ -813,20 +839,34 @@ impl Lowerer {
             let global = self.module.global(id);
             let (first, is_const, ty) = (global.range, global.is_const, global.ty.clone());
             let name = global.name.clone();
-            // An `Int` declared by a `Const` and by a `Dim`, in either order,
-            // both with a literal value and statements of `Process_Globals`
-            // itself.
+            // The recorded pairs: a `Const` of an `Int` or a `String` with a
+            // literal value, then a `Dim` of its type, with a value or not,
+            // a statement of `Process_Globals` or of an `If` there
+            // (`const_dim_after*`); an `Int` declared by a `Dim`, then by a
+            // `Const` (`const_after_dim`), or by two `Const`s (`const_twice`),
+            // both with a literal value and statements of `Process_Globals`.
             let pair = match &found[..] {
-                [Ok(a), Ok(b), ..] => {
-                    a.is_const != b.is_const
-                        && a.literal
-                        && b.literal
-                        && a.direct
-                        && b.direct
-                        && a.ty == Ty::Int
-                        && b.ty == Ty::Int
-                }
-                _ => false,
+                [Ok(a), Ok(b), ..] if a.ty == b.ty => match (a.is_const, b.is_const) {
+                    (true, false)
+                        if a.literal
+                            && a.direct
+                            && (b.direct || b.in_if)
+                            && matches!(a.ty, Ty::Int | Ty::String) =>
+                    {
+                        Some(Pair::ConstDim)
+                    }
+                    (false, true) | (true, true)
+                        if a.literal && b.literal && a.direct && b.direct && a.ty == Ty::Int =>
+                    {
+                        Some(if a.is_const {
+                            Pair::ConstConst
+                        } else {
+                            Pair::DimConst
+                        })
+                    }
+                    _ => None,
+                },
+                _ => None,
             };
             // Every declaration but the first: lowered for the recorded pair
             // alone (the program has an error otherwise).
@@ -836,15 +876,22 @@ impl Lowerer {
                 .map(|d| d.range)
                 .filter(|&r| r != first)
                 .collect();
-            if pair && found.len() == 2 {
+            if let Some(pair) = pair
+                && found.len() == 2
+            {
                 self.module.globals[id.0 as usize].is_const = true;
-                self.const_states
-                    .insert(id, ConstState::Redeclared { reported: false });
+                self.const_states.insert(
+                    id,
+                    ConstState::Redeclared {
+                        reported: false,
+                        pair,
+                    },
+                );
                 self.const_declarations
                     .extend(again.iter().map(|&r| (r, true)));
                 continue;
             }
-            if pair {
+            if pair.is_some() {
                 // The pair, then what makes it open: reported there; another
                 // type is the clash reported already.
                 match &found[2] {
@@ -1844,11 +1891,21 @@ impl Lowerer {
                 } else {
                     self.lookup_value(&name)
                 };
+                // A `Const` then a `Dim` of its name in `Process_Globals`
+                // make a variable a Sub may assign (recorded).
+                let assignable = |this: &Self, var: &VarRef| {
+                    !this.in_process_globals && this.pair(var) == Some(Pair::ConstDim)
+                };
                 match found {
-                    Some((var, ty)) if !refused_dim && self.is_const(&var) => {
-                        // B4J: "Cannot modify Const variable." (recorded).
+                    Some((var, ty))
+                        if !refused_dim && self.is_const(&var) && !assignable(self, &var) =>
+                    {
+                        // B4J: "Cannot modify Const variable." (recorded), also
+                        // when the `Const` follows a `Dim` of the name.
                         let name = self.var(&var).name.clone();
-                        let message = if self.redeclared_const(&var) {
+                        let recorded_pair =
+                            !self.in_process_globals && self.pair(&var) == Some(Pair::DimConst);
+                        let message = if self.redeclared_const(&var) && !recorded_pair {
                             redeclared_const_open(&name, "may be assigned")
                         } else {
                             format!("`{name}` is a `Const`: it cannot be assigned")
@@ -1960,10 +2017,21 @@ impl Lowerer {
     /// is asked once: after that, the program has an error already.
     fn const_error(&mut self, var: &VarRef, at: TextRange, message: String) {
         match (var, self.const_state(var)) {
-            (_, Some(ConstState::Reported | ConstState::Redeclared { reported: true })) => {}
-            (VarRef::Global(id), Some(ConstState::Redeclared { reported: false })) => {
-                self.const_states
-                    .insert(*id, ConstState::Redeclared { reported: true });
+            (_, Some(ConstState::Reported | ConstState::Redeclared { reported: true, .. })) => {}
+            (
+                VarRef::Global(id),
+                Some(ConstState::Redeclared {
+                    reported: false,
+                    pair,
+                }),
+            ) => {
+                self.const_states.insert(
+                    *id,
+                    ConstState::Redeclared {
+                        reported: true,
+                        pair,
+                    },
+                );
                 self.error(at, message);
             }
             _ => self.error(at, message),
@@ -1974,6 +2042,14 @@ impl Lowerer {
     /// whether it may change is not known.
     fn redeclared_const(&self, var: &VarRef) -> bool {
         matches!(self.const_state(var), Some(ConstState::Redeclared { .. }))
+    }
+
+    /// The two declarations of a name declared twice in `Process_Globals`.
+    fn pair(&self, var: &VarRef) -> Option<Pair> {
+        match self.const_state(var) {
+            Some(ConstState::Redeclared { pair, .. }) => Some(pair),
+            _ => None,
+        }
     }
 
     /// Checks a declarator of a `Dim` against the constants, and whether

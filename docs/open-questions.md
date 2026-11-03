@@ -477,26 +477,30 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         "Cannot modify Const variable." (`level0/const_array_mutate`).
 - [ ] What `Const` leaves open. FerroBASIC refuses each until it is
       recorded:
-  - [ ] whether a variable declared both by a `Const` and by a `Dim` in
-        `Process_Globals` may then be assigned, in either order: with the
-        `Dim` last it may (recording: `level0/const_dim_after_assign`,
-        which FerroBASIC still refuses), with the `Const` last it may not
-        ("Cannot modify Const variable.", recording:
-        `level0/const_after_dim_assign`); a loop over it or an item is
-        open;
-  - [ ] a `Dim` with no value after a constant of its name: built, and
-        which value it keeps (`level0/const_dim_after_no_value`);
-  - [ ] the same with another type than `Int`
-        (`level0/const_dim_after_string`), with the `Dim` inside an `If`
-        (`level0/const_dim_after_in_if`), or with a value that reads the
-        constant (`level0/const_dim_after_from_const`);
+  - [x] a variable declared both by a `Const` and by a `Dim` in
+        `Process_Globals` may then be assigned in a Sub with the `Dim`
+        last (recording: `level0/const_dim_after_assign`), not with the
+        `Const` last ("Cannot modify Const variable.", recording:
+        `level0/const_after_dim_assign`);
+  - [x] after a `Const`, a `Dim` with no value builds and resets it to 0,
+        and so does one of a `String`, one inside an `If`, and one with a
+        value reading the constant (recordings:
+        `level0/const_dim_after_no_value`, `level0/const_dim_after_string`,
+        `level0/const_dim_after_in_if`, `level0/const_dim_after_from_const`);
+  - [ ] the same pair assigned after a `Dim` with no value, or of a
+        `String`, and a `String` `Dim` inside an `If`, which FerroBASIC
+        accepts as the recorded ones (`level0/const_dim_after_no_value_assign`,
+        `level0/const_dim_after_string_assign`,
+        `level0/const_dim_after_in_if_string`); a loop over the pair or an
+        item of it, assigning it in `Process_Globals`, and other types;
   - [x] a `Dim` with no value in a Sub with a module constant's name is
         refused: "Cannot redeclare a const variable." (recording:
         `level0/const_local_dim_no_value`);
   - [ ] a `For Each` without `As` over a constant is refused ("Current
         declaration does not match previous one", recording:
-        `level0/const_for_each_untyped`); two `Const`s of one name
-        (`level0/const_twice`); like them, any other loop over a constant
+        `level0/const_for_each_untyped`); two `Const`s of an `Int` build,
+        the second setting its value (recording: `level0/const_twice`),
+        and whether they may then be assigned is open; any other loop over a constant
         (in `Process_Globals`, over a local constant, of another type than
         `Int`) or declaration again of its name (a third one).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
