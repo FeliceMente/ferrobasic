@@ -280,6 +280,7 @@ mod tests {
             ],
             init: FuncId(0),
             entry: FuncId(1),
+            package: None,
         }
     }
 

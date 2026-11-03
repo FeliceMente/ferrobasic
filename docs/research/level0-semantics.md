@@ -131,6 +131,16 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   numbers of different types are different keys (`Int` 1 ≠ `Double` 1.0).
   A numeric literal key is an `Integer`, or a `Double` with a point, so
   `1` and `1.0` are two keys (**recorded**: `literal_boxed_type`).
+- A `List` key is the `ArrayList` itself, so it compares by its contents:
+  two Lists holding `1` are one key (**recorded**: `list_as_map_key`).
+  `HashMap` keeps the hash a key had when it was put and compares the
+  bucket's keys with `equals`, oldest first, so a List changed afterwards
+  is found neither by its old contents nor by its new ones, and a List
+  that holds itself raises `StackOverflowError` from `hashCode` (Java's
+  [`HashMap`](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/util/HashMap.html)
+  and [`List.hashCode`](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/util/List.html#hashCode());
+  pending: `list_key_changed`, `list_key_self`). Whether a `Map` key
+  compares by its contents too is open (`map_as_map_key`).
 - `Put` returns the previous value or `Null`; `Get` of a missing key returns
   `Null`; `GetDefault` returns the default when the stored value is `Null`.
 - `GetKeyAt` / `GetValueAt` go through `MyMap.getEntry`
@@ -664,6 +674,13 @@ in the same way is **open**.
 Ranges in booklet §2.1 match the table in [spec/level0.md](../spec/level0.md#types)
 (Java primitives). B4R differs (Int is 16-bit, Double is 32-bit) and is
 out of scope for Level 0.
+
+A `Type` is a static class nested in its module's class, named in lower
+case after an underscore: `GetType` of a `Point` declared in Main is
+`b4j.example.main$_point` (**recorded**: `record_get_type`), `b4j.example`
+being the package of the recorder's projects (`Build1=Default,b4j.example`).
+FerroBASIC takes the package from a project's first build, and uses
+`b4j.example` for a lone module.
 
 ## Impact on the Level 0 spec
 

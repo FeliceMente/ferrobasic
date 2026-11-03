@@ -47,6 +47,16 @@ pub fn header(text: &str) -> Option<Vec<Entry<'_>>> {
     Some(entries)
 }
 
+/// The package of a project's first build (`Build1=Default,b4j.example`
+/// gives `b4j.example`), or `None` when `text` has no header or its first
+/// build names none.
+pub fn package(text: &str) -> Option<String> {
+    let file = HeaderFile::parse(text)?;
+    let (_, build) = file.numbered("Build").into_iter().next()?;
+    let (_, package) = build.split_once(',')?;
+    Some(package.trim().to_string()).filter(|p| !p.is_empty())
+}
+
 /// Something in a header that Level 0 cannot honour, at a byte offset of the
 /// whole text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,6 +193,15 @@ mod tests {
             "Library1"
         );
         assert_eq!(header("Sub AppStart (Args() As String)\nEnd Sub\n"), None);
+    }
+
+    #[test]
+    fn the_package_is_the_first_builds() {
+        assert_eq!(package(CONSOLE).as_deref(), Some("b4j.example"));
+        let two = "Build2=Other,org.other\nBuild1=Default, com.example \n@EndOfDesignText@\n";
+        assert_eq!(package(two).as_deref(), Some("com.example"));
+        assert_eq!(package("Build1=Default\n@EndOfDesignText@\n"), None);
+        assert_eq!(package("Sub AppStart (Args() As String)\nEnd Sub\n"), None);
     }
 
     #[test]

@@ -53,14 +53,17 @@ pub fn check(
     (module.filter(|_| errors.is_empty()), errors)
 }
 
-/// Lowers and interprets a checked module.
+/// Lowers and interprets a module checked from `source`, whose header (a
+/// project's) names the package.
 pub fn run(
+    source: &str,
     module: &ferro_hir::Module,
     args: &[String],
     stdout: &mut dyn std::io::Write,
     stderr: &mut dyn std::io::Write,
 ) -> ferro_interp::Outcome {
-    let program = ferro_mir::lower(module);
+    let mut program = ferro_mir::lower(module);
+    program.package = ferro_project::package(source);
     ferro_interp::run(&program, args, stdout, stderr)
 }
 

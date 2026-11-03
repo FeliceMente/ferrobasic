@@ -401,6 +401,7 @@ mod tests {
             functions: vec![],
             init: ferro_mir::FuncId(0),
             entry: ferro_mir::FuncId(0),
+            package: None,
         }
     }
 

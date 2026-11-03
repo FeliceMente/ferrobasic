@@ -72,6 +72,35 @@ fn a_console_project_runs_from_its_file_or_its_directory() {
     assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
 }
 
+/// A record's class is named after the project's package, from its first
+/// build, in `ferro run` and in a bundled program alike; a lone module's
+/// package is `b4j.example` (`level0/record_get_type`).
+#[test]
+fn a_record_class_is_named_after_the_project_package() {
+    let dir = Scratch::new("package");
+    let code = "Sub Process_Globals\r\n\tType Point (X As Int)\r\nEnd Sub\r\n\r\nSub AppStart (Args() As String)\r\n\tDim p As Point\r\n\tp.Initialize\r\n\tLog(GetType(p))\r\nEnd Sub\r\n";
+    let header = CONSOLE.split("@EndOfDesignText@").next().unwrap();
+    let header = header.replace(
+        "Build1=Default,b4j.example",
+        "Build1=Default,com.example.points\r\nBuild2=Other,org.other",
+    );
+    dir.file(
+        "points/Points.b4j",
+        &format!("{header}@EndOfDesignText@\r\n{code}"),
+    );
+    dir.file("Lone.bas", code);
+    let out = ferro(&dir.0, &["run", "points"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert_eq!(text(&out.stdout), "com.example.points.main$_point\n");
+    let exe = format!("points-bin{}", std::env::consts::EXE_SUFFIX);
+    let out = ferro(&dir.0, &["bundle", "points", "-o", &exe]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let out = run_written(&mut Command::new(dir.0.join(&exe)));
+    assert_eq!(text(&out.stdout), "com.example.points.main$_point\n");
+    let out = ferro(&dir.0, &["run", "Lone.bas"]);
+    assert_eq!(text(&out.stdout), "b4j.example.main$_point\n");
+}
+
 /// Bundles `input` from `cwd` with no `-o`, then runs the program expected at
 /// `expected` (relative to the scratch directory, without `.exe`).
 fn bundle_lands_at(dir: &Scratch, cwd: &str, input: &str, expected: &str) {

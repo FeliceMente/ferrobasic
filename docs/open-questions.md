@@ -150,7 +150,12 @@ needs a recorded test):
 - [x] How a record prints: jCore's `BA.TypeToString`, `IsInitialized` first
       and a line break after every third field (recording:
       `level0/record_printing`).
-- [ ] `GetType` of a record (`level0/record_get_type`).
+- [x] `GetType` of a record: `<package>.main$_<name in lower case>`, e.g.
+      `b4j.example.main$_point` (recording: `level0/record_get_type`).
+- [ ] A project's package in `GetType` of a record: FerroBASIC takes it from
+      the first build (`Build1=Default,<package>`) as written; the recorder's
+      projects all use `b4j.example`, so no recording settles another
+      package, or a build chosen in the IDE other than the first.
 - [x] A variable of type `Exception` prints as `(<Class>) <toString>` once
       caught, and as `(Exception) Not initialized` when never set
       (recording: `level0/exception_printing`).
@@ -181,8 +186,7 @@ needs a recorded test):
       `SortType`'s wrapped `IllegalArgumentException` (an item of another
       type) has no message in FerroBASIC; on JDK 21 `Field.get` says
       `Can not get java.lang.Object field <class>.N on <class>`, naming B4J's
-      generated classes, whose names are open too (see "How a record
-      prints").
+      generated classes (a record's is `b4j.example.main$_point`).
 - [x] Which fields `SortType` finds on the first item's class (jCore calls
       `getClass().getDeclaredField(name)`, then `setAccessible(true)`): a
       record has `IsInitialized` too, and sorts by it; a field a JDK class
@@ -194,8 +198,13 @@ needs a recorded test):
 - [x] `GetType` returns B4J's Java class names (e.g. a Map's wrapper class),
       even though they contain the product's package name: kept for
       compatibility, since it is program output, not a FerroBASIC message.
-- [ ] A List or Map used as a Map key: compared by identity in FerroBASIC
-      (`level0/list_as_map_key`).
+- [x] A List used as a Map key compares by its contents, as an `ArrayList`
+      does (recording: `level0/list_as_map_key`). FerroBASIC follows Java's
+      `HashMap` for a List changed after it was put, or one that holds
+      itself (`level0/list_key_changed`, `list_key_self`, to record).
+- [ ] A Map used as a Map key, alone or inside a List key: compared by
+      identity in FerroBASIC; B4J's `MyMap` may compare by contents, as
+      `LinkedHashMap` does (`level0/map_as_map_key`).
 
 Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 

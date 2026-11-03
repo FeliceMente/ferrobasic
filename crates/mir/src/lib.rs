@@ -52,6 +52,10 @@ pub struct Program {
     pub init: FuncId,
     /// `AppStart`: one parameter, the arguments as `String()`.
     pub entry: FuncId,
+    /// The package a project's first build names (`Build1=Default,b4j.example`),
+    /// set by whoever reads the project file; `None` for a lone module, whose
+    /// default the target profile supplies.
+    pub package: Option<String>,
 }
 
 impl Program {
