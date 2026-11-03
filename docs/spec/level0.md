@@ -209,9 +209,11 @@ End Sub
   `Type` records this means a fresh object.
 - Locals start at their default value on every call.
 - The counter of `For i = …` is implicitly declared as `Int` if it was not
-  declared before. A name nothing declared before it is declared by an
+  declared before. A name that nothing in the Sub or the module declares,
+  and that is not a Sub, a built-in or a `Type`, is declared by an
   assignment to it, as a `String` (recorded: `undeclared_variable`; its
-  type is *(open)*: `undeclared_variable_type`). Reading a name nothing
+  type is *(open)*: `undeclared_variable_type`); with a `Dim` or a loop of
+  it anywhere in the Sub, the hoisted declaration is that variable. Reading a name nothing
   declares or assigns is *(open)*, so a compile error.
 - Two declarations of the same name in one Sub: *(open)*. Provisionally they
   are allowed if the types match, and rejected otherwise.

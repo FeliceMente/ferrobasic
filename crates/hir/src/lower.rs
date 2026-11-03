@@ -1185,6 +1185,24 @@ impl Lowerer {
 
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
     fn hoist_locals(&mut self, body: &SyntaxNode) {
+        // The names a `Dim` or a loop declares anywhere in the Sub: an
+        // assignment above one of them assigns that variable, as B4X hoists
+        // declarations.
+        let declared: HashSet<String> = body
+            .descendants()
+            .flat_map(|node| match node.kind() {
+                DIM_STMT => node
+                    .descendants()
+                    .filter(|d| d.kind() == DECLARATOR)
+                    .filter_map(|d| child(&d, NAME))
+                    .map(|n| key(&name_of(&n)))
+                    .collect::<Vec<_>>(),
+                FOR_STMT | FOR_EACH_STMT => child(&node, NAME)
+                    .map(|n| vec![key(&name_of(&n))])
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            })
+            .collect();
         for node in body.descendants() {
             match node.kind() {
                 DIM_STMT => {
@@ -1218,8 +1236,9 @@ impl Lowerer {
                     }
                     _ => {}
                 },
-                // An assignment to a name nothing declared before it, in
-                // source order, declares it: B4J builds `Undeclared = 5`
+                // An assignment to a name nothing in the Sub, nor the
+                // module, declares, and that is not a Sub, a built-in or a
+                // `Type`, declares it: B4J builds `Undeclared = 5`
                 // (recorded: `undeclared_variable`). Its type is a `String`,
                 // as old forum posts say; `undeclared_variable_type` asks.
                 ASSIGN_STMT => {
@@ -1231,6 +1250,8 @@ impl Lowerer {
                     }
                     let text = name_of(&target);
                     if self.lookup_var(&text).is_none()
+                        && !declared.contains(&key(&text))
+                        && !self.records.contains_key(&key(&text))
                         && !self.subs.contains_key(&key(&text))
                         && builtins::lookup(Owner::Global, &text).is_none()
                     {
@@ -1554,6 +1575,13 @@ impl Lowerer {
                     // (recorded: `return_value_untyped_sub`): the value is
                     // evaluated, and nothing can read it, as such a Sub's
                     // call has no value here.
+                    Some(v) if self.ret == Ty::Void && self.in_process_globals => {
+                        self.error(
+                            v.range,
+                            "`Process_Globals` returns nothing, so `Return` cannot return a value",
+                        );
+                        None
+                    }
                     Some(v) if self.ret == Ty::Void => {
                         push(out, StmtKind::Expr(v));
                         None

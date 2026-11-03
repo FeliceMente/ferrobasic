@@ -299,6 +299,27 @@ fn undeclared_names() {
         "{:?}",
         app_start(&m).locals
     );
+    // Not when a `Dim` or a loop declares the name anywhere in the Sub: the
+    // hoisted declaration is that variable. Nor for a `Type`'s name.
+    for body in [
+        "x = 5\nDim x As Int\nLog(x)",
+        "If False Then x = 1\nDim x As Int = 2\nLog(x)",
+        "k = 5\nFor k = 1 To 2\nNext\nLog(k)",
+    ] {
+        let m = ok(&program(body));
+        assert!(
+            app_start(&m)
+                .locals
+                .iter()
+                .all(|v| v.ty != Ty::String || v.name == "Args"),
+            "{body}: {:?}",
+            app_start(&m).locals
+        );
+    }
+    let d = errors(
+        "Sub Process_Globals\n  Type Point (X As Int)\nEnd Sub\nSub AppStart (Args() As String)\n  Point = 5\nEnd Sub\n",
+    );
+    assert!(has(&d, "`Point` is not declared"), "{d:?}");
     let d = errors(&program("Log(z)"));
     assert!(has(&d, "`z` is not declared"), "{d:?}");
 }
@@ -915,6 +936,11 @@ fn subs_calls_and_returns() {
     ok(
         "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  F\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n",
     );
+    // Only a Sub's was recorded: `Process_Globals` returns nothing.
+    let d = errors(
+        "Sub Process_Globals\n  Return 1\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n",
+    );
+    assert!(has(&d, "`Process_Globals` returns nothing"), "{d:?}");
     let d = errors(
         "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Dim x As Int = F\nEnd Sub\nSub F\nEnd Sub\n",
     );

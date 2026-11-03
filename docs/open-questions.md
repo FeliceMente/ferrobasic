@@ -76,7 +76,8 @@ related tests stay `pending-recording`.
       step works (recording: `level0/for_double_counter`).
 - [x] An assignment to a name nothing declared builds and declares it
       (recording: `level0/undeclared_variable`). FerroBASIC makes it a
-      `String`, as old forum posts say.
+      `String`, as old forum posts say, unless a `Dim` or a loop of the
+      Sub declares the name, before or after (declarations are hoisted).
 - [ ] Which type such a variable has (`level0/undeclared_variable_type`),
       and whether a read of a name nothing declares or assigns builds.
 - [x] A variable declared without `As` (`Dim x`, `Dim x = 5`) is a `String`
