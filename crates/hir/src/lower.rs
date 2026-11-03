@@ -288,24 +288,33 @@ fn recorded_loop(kind: LoopKind) -> bool {
     kind != LoopKind::Untyped
 }
 
-/// A `For Each` without `As` over a declared variable, which it would
-/// declare an `Object`. B4J refuses it over a variable of another type
-/// (`other`), a local, a parameter or a module variable (recorded:
-/// `for_each_untyped_local`, `for_each_untyped_other_type`,
-/// `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
-/// `process_globals_for_each_untyped`); over a parameter or a module
-/// variable of type `Object` it is not recorded.
-fn untyped_for_each(name: &str, other: Option<&str>) -> String {
-    match other {
-        Some(ty) => format!(
-            "`{name}` is already declared as {ty}: a `For Each` without `As` declares its \
-             variable an Object, so it cannot loop over it; write `For Each {name} As <type> In ...`"
-        ),
-        None => format!(
-            "`{name}` is already declared: whether a `For Each` without `As` may loop over it \
-             here is not known yet, so write `For Each {name} As <type> In ...`"
-        ),
-    }
+/// A `For Each` without `As` over a parameter or a module variable of
+/// type `Object`: not recorded.
+fn untyped_for_each(name: &str) -> String {
+    format!(
+        "`{name}` is already declared: whether a `For Each` without `As` may loop over it here \
+         is not known yet, so write `For Each {name} As <type> In ...`"
+    )
+}
+
+/// Which declarations of one name disagree on its type, for
+/// `Lowerer::type_clash`. B4J refuses each ("Current declaration does not
+/// match previous one", recorded).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Clash {
+    /// Two declarations of a local of the current Sub.
+    InSub,
+    /// Two declarations of a module variable.
+    Global,
+    /// A `Dim` of `Process_Globals` after a loop there declared the name.
+    DimAfterLoop,
+    /// A loop of `Process_Globals` after the name was declared there.
+    LoopInProcessGlobals,
+    /// A local of a Sub with a module variable's name.
+    LocalOfModuleVariable,
+    /// A `For Each` without `As`, which declares an `Object` (recorded:
+    /// `for_each_untyped_declared_after`), over a variable of another type.
+    UntypedForEach,
 }
 
 /// What declares a name.
@@ -406,6 +415,37 @@ impl Lowerer {
             range,
             message: message.into(),
         });
+    }
+
+    /// The one check that a declaration again of `name` keeps its type:
+    /// `None` when the types agree, or one of them is an error reported
+    /// already; otherwise the message.
+    fn type_clash(&self, name: &str, existing: &Ty, new: &Ty, clash: Clash) -> Option<String> {
+        if existing == new || *existing == Ty::Error || *new == Ty::Error {
+            return None;
+        }
+        let (was, now) = (self.ty_name(existing), self.ty_name(new));
+        Some(match clash {
+            Clash::InSub => format!("`{name}` is already declared as {was} in this Sub"),
+            Clash::Global => format!("`{name}` is already declared with another type"),
+            Clash::DimAfterLoop => format!(
+                "`{name}` is already declared as {was} by a loop of `Process_Globals`: this \
+                 `Dim` cannot declare it again as {now}"
+            ),
+            Clash::LoopInProcessGlobals => format!(
+                "`{name}` is already declared as {was} in `Process_Globals`: this loop cannot \
+                 declare it again as {now}"
+            ),
+            Clash::LocalOfModuleVariable => format!(
+                "`{name}` is a module variable of type {was}: a local cannot declare it again as \
+                 {now}"
+            ),
+            Clash::UntypedForEach => format!(
+                "`{name}` is already declared as {was}: a `For Each` without `As` declares its \
+                 variable an Object, so it cannot loop over it; write `For Each {name} As \
+                 <type> In ...`"
+            ),
+        })
     }
 
     fn ty_name(&self, ty: &Ty) -> String {
@@ -734,11 +774,8 @@ impl Lowerer {
         match self.globals.get(&key(&name)) {
             Some(&id) => {
                 let existing = &self.module.global(id).ty;
-                if *existing != ty && *existing != Ty::Error && ty != Ty::Error {
-                    self.error(
-                        at,
-                        format!("`{name}` is already declared with another type"),
-                    );
+                if let Some(message) = self.type_clash(&name, existing, &ty, Clash::Global) {
+                    self.error(at, message);
                 }
             }
             None => {
@@ -920,16 +957,9 @@ impl Lowerer {
         if let Some(&id) = self.globals.get(&k)
             && self.declared_by_loop(&k)
         {
-            let existing = self.module.global(id).ty.clone();
-            if existing != ty && existing != Ty::Error && ty != Ty::Error {
-                let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
-                self.error(
-                    at,
-                    format!(
-                        "`{name}` is already declared as {existing} by a loop of \
-                         `Process_Globals`: this `Dim` cannot declare it again as {ty}"
-                    ),
-                );
+            let existing = &self.module.global(id).ty;
+            if let Some(message) = self.type_clash(&name, existing, &ty, Clash::DimAfterLoop) {
+                self.error(at, message);
             }
             return;
         }
@@ -962,20 +992,15 @@ impl Lowerer {
             // (its type is checked when lowered). Otherwise the same type is
             // that variable, whichever declarations and in which order
             // (recorded), and another type is refused (recorded).
-            let existing = self.module.global(id).ty.clone();
             let counter_over_dim = node.kind() == FOR_STMT && !self.declared_by_loop(&k);
-            if counter_over_dim || existing == ty || existing == Ty::Error || ty == Ty::Error {
-                return;
+            let existing = &self.module.global(id).ty;
+            if !counter_over_dim
+                && let Some(message) =
+                    self.type_clash(&text, existing, &ty, Clash::LoopInProcessGlobals)
+            {
+                self.refused_loop_names.insert(k);
+                self.error(range(&name), message);
             }
-            let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
-            self.refused_loop_names.insert(k);
-            self.error(
-                range(&name),
-                format!(
-                    "`{text}` is already declared as {existing} in `Process_Globals`: this \
-                     loop cannot declare it again as {ty}"
-                ),
-            );
             return;
         }
         if self.loop_name_free(&text, &name) {
@@ -1137,13 +1162,9 @@ impl Lowerer {
         match self.local_names.get(&key(name)) {
             Some(&id) => {
                 let existing = &self.locals[id.0 as usize].ty;
-                if *existing != ty && *existing != Ty::Error && ty != Ty::Error {
-                    let existing = self.ty_name(existing);
+                if let Some(message) = self.type_clash(name, existing, &ty, Clash::InSub) {
                     self.refused_loop_vars.insert(at);
-                    self.error(
-                        at,
-                        format!("`{name}` is already declared as {existing} in this Sub"),
-                    );
+                    self.error(at, message);
                 }
             }
             None => {
@@ -1233,19 +1254,15 @@ impl Lowerer {
         if existing == *ty && self.subs.contains_key(&key(name)) {
             return;
         }
-        let message = if existing == *ty {
-            format!(
-                "`{name}` is also a module variable ({shown}): whether this loop declares a \
-                 new local or means the module variable is not known yet, so loop over it \
-                 without `As`"
-            )
-        } else {
-            let ty = self.ty_name(ty);
-            format!(
-                "`{name}` is a module variable of type {shown}: a local cannot declare it \
-                 again as {ty}"
-            )
-        };
+        let message = self
+            .type_clash(name, &existing, ty, Clash::LocalOfModuleVariable)
+            .unwrap_or_else(|| {
+                format!(
+                    "`{name}` is also a module variable ({shown}): whether this loop declares a \
+                     new local or means the module variable is not known yet, so loop over it \
+                     without `As`"
+                )
+            });
         self.refused_loop_vars.insert(at);
         // After a constant refused, or asked about once, no error of its own.
         self.const_error(&VarRef::Global(id), at, message);
@@ -1679,8 +1696,9 @@ impl Lowerer {
                                 )
                             })
                         }
-                        _ if ty == Ty::Object => Some(untyped_for_each(&text, None)),
-                        _ => Some(untyped_for_each(&text, Some(&self.ty_name(&ty)))),
+                        _ => self
+                            .type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach)
+                            .or_else(|| Some(untyped_for_each(&text))),
                     };
                     if let Some(message) = message {
                         self.error(range(&name), message);
