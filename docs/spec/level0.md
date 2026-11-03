@@ -284,19 +284,22 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   - `<`, `>`, `<=` and `>=` always compare numbers, as Double: a String
     operand is parsed, so `"a" < "b"` raises `NumberFormatException`
     (recorded: `string_compare_less`); a Boolean or a Char operand is an
-    error (recorded: `boolean_less`, `char_string_compare`); a String next
-    to an `Object` is *(open)*, so an error;
+    error (recorded: `boolean_less`, `char_string_compare`,
+    `char_less_char`, `string_less_boolean`); an `Object` next to a String
+    is parsed too (recorded: `string_less_object`);
   - `x = Null` / `x <> Null` test for null; with an `Int` on the left, the
     `Null` is converted as its text, `"null"`, which raises
-    `NumberFormatException` (recorded: `null_number_compare`); with another
-    number type it is *(open)*, so an error;
+    `NumberFormatException` (recorded: `null_number_compare`), and with a
+    `Double` too (recorded: `double_eq_null`); with another number type it
+    is *(open)*, so an error;
   - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
     errors (recorded: `chained_comparison_less`,
     `chained_comparison_equal`), while `x = a = b` assigns one comparison;
   - a Char `=` an `Int` converts the `Int` to a Char, the first character
-    of its text, so `"A" = 65` is `False` (recorded: `char_number_compare`);
-    the number on the left, or another number type, is *(open)*, so an
-    error.
+    of its text, so `"A" = 65` is `False` (recorded: `char_number_compare`),
+    and so does a `Long`, `Short`, `Byte` or `Double` (recorded:
+    `char_eq_long`, `char_eq_double`); the number on the left is an error
+    (recorded: `number_eq_char`), and a `Float` is *(open)*, so an error.
 
 ## Statements
 
@@ -333,22 +336,31 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `Map.Values` in order (insertion order for a `Map`). A `List` that grows
   while it is iterated is iterated over the items it had when the loop
   began (recorded: `list_modified_in_for_each`); changing a `Map` while
-  iterating it is *(open)*. Without `As`, `x` cannot be a local declared
-  before the loop, whatever its type (B4J: "Current declaration does not
-  match previous one", recorded: `for_each_untyped_local`,
-  `for_each_untyped_other_type`); over a local `Object`, a parameter, a
-  local declared only after the loop, a module variable, in
-  `Process_Globals` or over an undeclared name it is *(open)*, so an
-  error. In `Class_Globals` a loop uses a variable declared with `Dim`.
+  iterating it is *(open)*. Without `As`, the loop declares `x` an
+  `Object`: over a name nothing declared before it, in source order, it
+  declares it (recorded: `for_each_untyped_undeclared`), and a later `Dim`
+  of another type is an error (B4J: "Current declaration does not match
+  previous one", recorded: `for_each_untyped_declared_after`); over a
+  local `Object` declared before it, it loops with it (recorded:
+  `for_each_untyped_object`); over a local, a parameter or a module
+  variable of another type it is an error, in `Process_Globals` too
+  (recorded: `for_each_untyped_local`, `for_each_untyped_other_type`,
+  `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
+  `process_globals_for_each_untyped`). Over a parameter or a module
+  variable of type `Object`, over an undeclared name in
+  `Process_Globals`, or with a later `Dim` of the name as an `Object`, it
+  is *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing
   `Select`** if that is closer.
 - **`Continue`** jumps to the next iteration of the innermost loop.
-- **`Return [expr]`** leaves the Sub. In a Sub without `As`, `Return expr`
-  builds (recorded: `return_value_untyped_sub`); the value is evaluated, and
-  the call has no value *(open: B4J declares such Subs as returning a
-  `String`)*. A Sub with an `As` type that falls off its
+- **`Return [expr]`** leaves the Sub. A Sub without `As` returns a
+  `String`, as B4J declares it: `Return 5` builds (recorded:
+  `return_value_untyped_sub`), and the call's value prints `5` (recorded:
+  `untyped_sub_return_value_used`); one that returns nothing returns `""`
+  *(that it is a `String` is open: `untyped_sub_return_type`)*.
+  `Process_Globals` and `AppStart` return nothing. A Sub with an `As` type that falls off its
   end returns that type's default value: 0, or an empty `String` (recorded:
   `typed_sub_without_return`, `typed_string_sub_without_return`).
 - **`Try … Catch … End Try`** catches every runtime error raised in the `Try`
