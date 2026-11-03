@@ -618,11 +618,24 @@ Implemented as recorded with B4J 10.70 (run 12,
   value:
   each declaration sets its value in turn, so the program prints the
   last one, `3` and `10` (`const_dim_after`, `const_after_dim`).
+- Recording run 14 (B4J 10.70, 2026-11-02) built more of them, each
+  declaration setting its value in turn: after a `Const`, a `Dim` with no
+  value (`0`), of a `String` (`b`), inside an `If` (`3`), or with a value
+  reading the constant (`11`); and two `Const`s of an `Int` (`3`)
+  (`const_dim_after_no_value`, `const_dim_after_string`,
+  `const_dim_after_in_if`, `const_dim_after_from_const`, `const_twice`).
+  With the `Dim` last, a Sub may assign the name (`5`,
+  `const_dim_after_assign`); with the `Const` last, it may not ("Cannot
+  modify Const variable.", `const_after_dim_assign`). A `Dim` with no
+  value in a Sub over a module constant is refused ("Cannot redeclare a
+  const variable.", `const_local_dim_no_value`), and so is a `For Each`
+  without `As` over one ("Current declaration does not match previous
+  one", `const_for_each_untyped`).
 - **open**: any other loop over a constant or declaration again of its
-  name (without a value, of another type than `Int`, a third one), and
-  whether a variable declared both by a `Const` and by a `Dim` may then
-  change, each with a pending test
-  ([open-questions.md](../open-questions.md)).
+  name (of another type than `Int` or `String`, a third one, inside
+  another block than an `If`), assigning one declared by two `Const`s,
+  and assigning it in `Process_Globals`, each with a pending test where
+  one is recorded next ([open-questions.md](../open-questions.md)).
 
 ### Keywords used as names (generated)
 

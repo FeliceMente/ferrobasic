@@ -170,12 +170,17 @@ End Sub
   constant's contents are not (`Set`, `Put`, recorded). A `Dim` in a Sub
   with a module `Int` constant's name, with a value, is an error (B4J:
   "Cannot redeclare a const variable.", recorded). In `Process_Globals`,
-  an `Int` declared by a `Const` and by a `Dim`, each with a literal
-  value, in either order, both statements of `Process_Globals` itself (not inside an `If`
-  or a loop), with no other declaration of or loop over its name there, is
-  one variable: each declaration sets its value in turn (recorded); whether
-  it may change is *(open)*, so assigning it anywhere, a loop over it or
-  assigning an item of it is a compile error, reported once. A
+  two declarations of a name, with no other declaration of or loop over
+  it there, are one variable, each setting its value in turn (recorded):
+  a `Const` of an `Int` or a `String` with a literal value, then a `Dim`
+  of its type, with a value or not, a statement of `Process_Globals` or of
+  an `If` there, which a Sub may then assign (`const_dim_after*`); an
+  `Int` `Dim`, then a `Const`, which cannot be assigned
+  (`const_after_dim_assign`); and two `Const`s of an `Int` (`const_twice`),
+  the last two with literal values and statements of `Process_Globals`
+  itself. Assigning one of two `Const`s, assigning any of them in
+  `Process_Globals`, a loop over them or an item of them is *(open)*, so a
+  compile error, reported once. A
   constant may be a `Select Case` label (recorded). Any other loop over a
   constant or declaration again of its name is *(open)*, so a compile
   error. After a declaration again in `Process_Globals` refused so, the

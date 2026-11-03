@@ -471,20 +471,18 @@ fn constants() {
             open_loop.to_string(),
         ),
         (size, "    Dim Size As Int", open_again.to_string()),
+        // Pairs of other types than recorded.
         (
-            "    Private Const Size As Int = 10\n    Private Size As Int",
+            "    Private Const Size As Double = 1\n    Private Size As Double = 2",
             "",
             open_again.to_string(),
         ),
         (
-            "    Private Const Size As String = \"a\"\n    Private Size As String = \"b\"",
+            "    Private Const Size As String = \"a\"\n    Private Const Size As String = \"b\"",
             "",
-            open_again.to_string(),
-        ),
-        (
-            "    Private Const Size As Int = 10\n    Private Const Size As Int = 11",
-            "",
-            open_const.to_string(),
+            "`Size` is already declared: whether a `Const` may declare it again here is not \
+             known yet, so use another name"
+                .to_string(),
         ),
         (
             &format!("{dim_after}\n    Private Size As Int = 4"),
@@ -496,8 +494,22 @@ fn constants() {
             "",
             redeclared("may be declared again"),
         ),
-        (dim_after, "    Size = 5", redeclared("may be assigned")),
-        (after_dim, "    Size = 5", redeclared("may be assigned")),
+        (
+            after_dim,
+            "    Size = 5",
+            "`Size` is a `Const`: it cannot be assigned".to_string(),
+        ),
+        (
+            "    Private Const Size As Int = 10\n    Private Const Size As Int = 3",
+            "    Size = 5",
+            redeclared("may be assigned"),
+        ),
+        // In `Process_Globals`, between the declarations or after them.
+        (
+            &format!("{dim_after}\n    Size = 5"),
+            "",
+            redeclared("may be assigned"),
+        ),
         (
             after_dim,
             "    For Size = 1 To 2\n    Next",
@@ -547,16 +559,44 @@ fn constants() {
     for body in [
         "    Size = 5",
         "    For Size = 1 To 2\n    Next",
-        "    Dim Size As Int = 4",
+        "    Dim Size As Double = 4",
     ] {
         assert_eq!(
             errors(&module(
-                "    Private Const Size As Int = 10\n    Private Size As Int",
+                "    Private Const Size As Double = 10\n    Private Size As Double",
                 body
             )),
             [open_again],
             "{body}"
         );
+    }
+    // The recorded pairs build: a `Const` then a `Dim` of an `Int` or a
+    // `String`, with a value or not, in an `If` too, which a Sub may then
+    // assign (`const_dim_after*`); two `Const`s (`const_twice`).
+    for (globals, body) in [
+        (dim_after, "    Size = 5"),
+        (
+            "    Private Const Size As Int = 10\n    Private Size As Int",
+            "    Size = 5",
+        ),
+        (
+            "    Private Const Size As Int = 10\n    Private Size As Int = Size + 1",
+            "    Log(Size)",
+        ),
+        (
+            "    Private Const Size As Int = 10\n    If True Then\n        Private Size As Int = 3\n    End If",
+            "    Log(Size)",
+        ),
+        (
+            "    Private Const Size As String = \"a\"\n    Private Size As String = \"b\"",
+            "    Size = \"c\"",
+        ),
+        (
+            "    Private Const Size As Int = 10\n    Private Const Size As Int = 3",
+            "    Log(Size)",
+        ),
+    ] {
+        ok(&module(globals, body));
     }
     // The same answers with the Sub before `Process_Globals`, and with a
     // statement between the two declarations of `Process_Globals`.
@@ -566,8 +606,11 @@ fn constants() {
         )
     };
     for (body, globals, message) in [
-        ("    Size = 5", after_dim, redeclared("may be assigned")),
-        ("    Size = 5", dim_after, redeclared("may be assigned")),
+        (
+            "    Size = 5",
+            after_dim,
+            "`Size` is a `Const`: it cannot be assigned".to_string(),
+        ),
         (
             "    Dim Size As Int = 4",
             size,
@@ -591,11 +634,12 @@ fn constants() {
             "{body}{globals}"
         );
     }
-    // A declaration inside a block of `Process_Globals` is not the recorded
-    // pair.
+    ok(&sub_first("    Size = 5", dim_after));
+    // A declaration inside another block of `Process_Globals` than an `If`
+    // is not the recorded pair.
     assert_eq!(
         errors(&module(
-            "    Private Const Size As Int = 10\n    If True Then\n        Private Size As Int = 3\n    End If",
+            "    Private Const Size As Int = 10\n    For i = 1 To 2\n        Private Size As Int = 3\n    Next",
             ""
         )),
         [open_again]
@@ -605,7 +649,7 @@ fn constants() {
     // of a Sub refused, a use keeps its recorded error, in any order.
     for (globals, body, other, message) in [
         (
-            "    Private Const Size As Int = 10\n    Private Size As Int",
+            "    Private Const Size As Double = 10\n    Private Size As Double",
             "    Size = 5",
             "",
             open_again.to_string(),
@@ -641,13 +685,14 @@ fn constants() {
         )),
         [open_loop, open_loop]
     );
-    // The recorded pair has literal values: one reading the name is open.
+    // The recorded pair with the `Dim` first has literal values: a `Const`
+    // reading the name is open.
     assert_eq!(
         errors(&module(
-            "    Private Const Size As Int = 10\n    Private Size As Int = Size + 1",
+            "    Private Size As Int = 10\n    Private Const Size As Int = Size + 1",
             ""
         )),
-        [open_again]
+        [open_const]
     );
     // The recorded field answer is for a constant of `Process_Globals`
     // declared once: a local one is open.
@@ -662,8 +707,8 @@ fn constants() {
     // no error of its own.
     assert_eq!(
         errors(&module(
-            "    Private Const Size As Int = 10\n    Private Const Size As Int = 11",
-            "    For Size As Int = 1 To 2\n    Next"
+            "    Private Const Size As Double = 1\n    Private Const Size As Double = 2",
+            "    For Size As Double = 1 To 2\n    Next"
         )),
         [open_const]
     );
@@ -675,10 +720,10 @@ fn constants() {
         .len(),
         1
     );
-    // Whether it may change is asked once.
+    // Whether it may change is asked, or answered, once.
     assert_eq!(
         errors(&module(after_dim, "    Size = 5\n    Size = 6")),
-        [redeclared("may be assigned")]
+        ["`Size` is a `Const`: it cannot be assigned"]
     );
     assert_eq!(
         errors(&module(after_dim, "    Dim Size As Int = 4\n    Size = 6")),
