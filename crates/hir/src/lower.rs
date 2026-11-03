@@ -919,9 +919,10 @@ impl Lowerer {
     /// Whether a loop variable that `Process_Globals` declares may take this
     /// name. A Sub's may (recorded: `lookup_value`). `Bit` may not: B4J's
     /// compiler fails on it (recorded:
-    /// `process_globals_loop_named_like_bit`). Whether the module variable
-    /// hides a `Type` or a keyword of the same name is not recorded, so it
-    /// is refused, once.
+    /// `process_globals_loop_named_like_bit`). A `Type`'s may: B4J builds
+    /// it (recorded: `process_globals_loop_named_like_type`). Whether it
+    /// hides a keyword of the same name is not recorded, so that is
+    /// refused, once.
     fn loop_name_free(&mut self, text: &str, name: &SyntaxNode) -> bool {
         if text.eq_ignore_ascii_case("Bit") {
             self.refused_loop_names.insert(key(text));
@@ -934,18 +935,14 @@ impl Lowerer {
             );
             return false;
         }
-        let what = if self.records.contains_key(&key(text)) {
-            "a `Type`"
-        } else if builtins::lookup(Owner::Global, text).is_some() {
-            "a keyword"
-        } else {
+        if builtins::lookup(Owner::Global, text).is_none() {
             return true;
-        };
+        }
         self.refused_loop_names.insert(key(text));
         self.error(
             range(name),
             format!(
-                "the loop variable `{text}` of `Process_Globals` has the name of {what}: \
+                "the loop variable `{text}` of `Process_Globals` has the name of a keyword: \
                  whether it would hide it is not known yet, so use another name"
             ),
         );
@@ -1188,6 +1185,24 @@ impl Lowerer {
 
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
     fn hoist_locals(&mut self, body: &SyntaxNode) {
+        // The names a `Dim` or a loop declares anywhere in the Sub: an
+        // assignment above one of them assigns that variable, as B4X hoists
+        // declarations.
+        let declared: HashSet<String> = body
+            .descendants()
+            .flat_map(|node| match node.kind() {
+                DIM_STMT => node
+                    .descendants()
+                    .filter(|d| d.kind() == DECLARATOR)
+                    .filter_map(|d| child(&d, NAME))
+                    .map(|n| key(&name_of(&n)))
+                    .collect::<Vec<_>>(),
+                FOR_STMT | FOR_EACH_STMT => child(&node, NAME)
+                    .map(|n| vec![key(&name_of(&n))])
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            })
+            .collect();
         for node in body.descendants() {
             match node.kind() {
                 DIM_STMT => {
@@ -1221,6 +1236,28 @@ impl Lowerer {
                     }
                     _ => {}
                 },
+                // An assignment to a name nothing in the Sub, nor the
+                // module, declares, and that is not a Sub, a built-in or a
+                // `Type`, declares it: B4J builds `Undeclared = 5`
+                // (recorded: `undeclared_variable`). Its type is a `String`,
+                // as old forum posts say; `undeclared_variable_type` asks.
+                ASSIGN_STMT => {
+                    let Some(target) = exprs(&node).into_iter().next() else {
+                        continue;
+                    };
+                    if target.kind() != NAME_REF {
+                        continue;
+                    }
+                    let text = name_of(&target);
+                    if self.lookup_var(&text).is_none()
+                        && !declared.contains(&key(&text))
+                        && !self.records.contains_key(&key(&text))
+                        && !self.subs.contains_key(&key(&text))
+                        && builtins::lookup(Owner::Global, &text).is_none()
+                    {
+                        self.declare_local(&text, Ty::String, range(&target));
+                    }
+                }
                 _ => {}
             }
         }
@@ -1534,8 +1571,19 @@ impl Lowerer {
             RETURN_STMT => {
                 let value = exprs(node).into_iter().next().map(|e| self.expr(&e));
                 let value = match value {
+                    // B4J builds `Return <value>` in a Sub without `As`
+                    // (recorded: `return_value_untyped_sub`): the value is
+                    // evaluated, and nothing can read it, as such a Sub's
+                    // call has no value here.
+                    Some(v) if self.ret == Ty::Void && self.in_process_globals => {
+                        self.error(
+                            v.range,
+                            "`Process_Globals` returns nothing, so `Return` cannot return a value",
+                        );
+                        None
+                    }
                     Some(v) if self.ret == Ty::Void => {
-                        self.error(v.range, "this Sub has no return type (`As ...`), so `Return` cannot return a value");
+                        push(out, StmtKind::Expr(v));
                         None
                     }
                     Some(v) => {

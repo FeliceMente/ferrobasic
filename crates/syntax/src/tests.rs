@@ -246,11 +246,9 @@ fn rejected_vb_forms() {
     let errors = parse_errors(&in_sub("Select v\n  Case 1 To 4\n    Log(1)\nEnd Select"));
     assert!(errors.iter().any(|e| e.contains("ranges")), "{errors:?}");
 
-    let errors = parse_errors(&in_sub("Select Case v\nEnd Select"));
-    assert!(
-        errors.iter().any(|e| e.contains("Select Case")),
-        "{errors:?}"
-    );
+    // `Select Case v` is a synonym of `Select v` (recorded:
+    // `select_case_synonym`).
+    parse_ok(&in_sub("Select Case v\n  Case 1\n    Log(1)\nEnd Select"));
 }
 
 #[test]

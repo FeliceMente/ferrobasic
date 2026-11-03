@@ -384,9 +384,10 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
 - **`:`** separates statements on one line, exactly like a line break. So
   `If b = 0 Then a = 0 : c = 1` puts only `a = 0` under the `If`; `c = 1`
   always runs (**docs**, booklet §4.3.1). `Sub` and `End Sub` cannot share a line.
-- **`Select`**: written `Select expr`, not `Select Case expr`
-  ([forum](https://www.b4x.com/android/forum/threads/select-case-help.42378/));
-  whether `Select Case` is a compile error is **open**. `Case` takes a
+- **`Select`**: written `Select expr`
+  ([forum](https://www.b4x.com/android/forum/threads/select-case-help.42378/)),
+  and `Select Case expr` builds too, as a synonym (**recorded**:
+  `select_case_synonym`). `Case` takes a
   comma-separated list of expressions; ranges (`Case 1 To 4`) are not
   supported (**docs**, booklet §4.3.3; Erel on the
   [forum](https://www.b4x.com/android/forum/threads/using-to-in-select-cases.137312/)).
