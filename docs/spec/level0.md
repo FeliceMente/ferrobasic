@@ -316,8 +316,8 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - **`For i = a To b [Step s]`**:
   - `a`, `b` and `s` are evaluated once, before the first iteration
     (recorded: `for_limit_evaluated_once`): `s` first, then `b`, then `a`,
-    which is assigned to `i` last (recorded: `for_evaluation_order`), so `b`
-    reading `i` reads its value before the loop;
+    which is assigned to `i` last (recorded: `for_evaluation_order`), so `s`
+    or `b` reading `i` reads its value before the loop;
     `s` defaults to 1;
   - the loop runs while `i <= b` (positive step) or `i >= b` (negative step);
   - after `Next`, `i` is incremented by `s`;
