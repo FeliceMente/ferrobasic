@@ -390,7 +390,10 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   comma-separated list of expressions; ranges (`Case 1 To 4`) are not
   supported (**docs**, booklet §4.3.3; Erel on the
   [forum](https://www.b4x.com/android/forum/threads/using-to-in-select-cases.137312/)).
-  `Select True` with `Case x < 16` is the idiom for conditions. Matching:
+  `Select True` with `Case x < 16` is the idiom for conditions. Every
+  `Case` value is evaluated, in order, before any is compared, as they are
+  the arguments of `BA.switchObjectToInt` (**recorded**:
+  `case_values_evaluated`). Matching:
   numbers compare as `double`, other values with `equals`
   ([`BA.switchObjectToInt`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L514-L533),
   **source**; that the compiler uses it is **forum** level).
@@ -509,8 +512,11 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   (**recorded**: `process_globals_counter_and_for_each_int`,
   `process_globals_for_each_then_counter`, `process_globals_for_each_twice`).
   Test is `i <= b` for a
-  positive step and `i >= b` for a negative step. **open**: whether `b` and
-  `s` are evaluated once (expected, as in VB), and the value of `i` after the loop.
+  positive step and `i >= b` for a negative step. `s`, then `b`, then `a`
+  are evaluated once, before the first test (**recorded**:
+  `for_evaluation_order`, `for_limit_evaluated_once`); after the loop `i`
+  holds the first value past `b`, or `a` when the loop never ran
+  (**recorded**: `for_counter_after_loop`).
 - **`If`**: single line `If c Then stmt [Else stmt]`; block form with
   `Else If` (two words) (**docs**).
 - **`IIf(cond, a, b)`** exists in current versions and evaluates only the chosen

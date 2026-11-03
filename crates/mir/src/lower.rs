@@ -446,8 +446,10 @@ impl<'m> Builder<'m> {
         self.goto(end, end);
     }
 
-    /// The scrutinee is evaluated once; case values are evaluated and
-    /// compared in order until one matches. No fall-through; `Exit` leaves.
+    /// The scrutinee is evaluated once, then every case value in order, as
+    /// B4J passes them all to `BA.switchObjectToInt` (recorded:
+    /// `case_values_evaluated`); then they are compared in order until one
+    /// matches. No fall-through; `Exit` leaves.
     fn select(
         &mut self,
         scrutinee: &h::Expr,
@@ -459,12 +461,23 @@ impl<'m> Builder<'m> {
         let value = self.snapshot(value, &scrutinee.ty);
         let end = self.new_block();
         self.scopes.push(Scope::Select { exit: end });
+        let values: Vec<Vec<Operand>> = cases
+            .iter()
+            .map(|case| {
+                case.values
+                    .iter()
+                    .map(|v| {
+                        let op = self.operand(v);
+                        self.snapshot(op, &v.ty)
+                    })
+                    .collect()
+            })
+            .collect();
         // The bodies are lowered after all tests, so blocks stay in test order.
         let mut bodies = Vec::with_capacity(cases.len());
-        for case in cases {
+        for (case, values) in cases.iter().zip(values) {
             let body = self.new_block();
-            for v in &case.values {
-                let v = self.operand(v);
+            for v in values {
                 let matched = self.compare(CmpOp::Eq, kind, value.clone(), v);
                 let next = self.new_block();
                 self.branch(matched, body, next, next);
@@ -485,7 +498,7 @@ impl<'m> Builder<'m> {
     }
 
     /// ```text
-    ///     var = start; limit = end; step = step
+    ///     step = step; limit = end; var = start
     /// cond:   test (by the sign of step) -> body | exit
     /// body:   ...; goto next
     /// next:   var = var + step; goto cond
@@ -500,15 +513,8 @@ impl<'m> Builder<'m> {
         body: &h::Block,
     ) {
         let ty = self.var_ty(var);
-        let start = self.rvalue(start);
-        self.write_var(var, start);
-        // The limit is only used compared as a Double.
-        let limit = self.operand(end);
-        let limit_d = if ty == Ty::Double {
-            self.snapshot(limit, &ty)
-        } else {
-            self.as_double(limit, &ty)
-        };
+        // B4J evaluates the step, then the limit, then the start, which it
+        // assigns last (recorded: `for_evaluation_order`).
         let (step, sign) = match step {
             Some(e) => {
                 let sign = constant_sign(e);
@@ -517,6 +523,15 @@ impl<'m> Builder<'m> {
             }
             None => (self.one(&ty), Some(Sign::Positive)),
         };
+        // The limit is only used compared as a Double.
+        let limit = self.operand(end);
+        let limit_d = if ty == Ty::Double {
+            self.snapshot(limit, &ty)
+        } else {
+            self.as_double(limit, &ty)
+        };
+        let start = self.rvalue(start);
+        self.write_var(var, start);
         // A step whose sign is only known at run time is tested as a Double.
         let step_d = match sign {
             Some(sign) => Err(sign),
