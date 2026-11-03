@@ -204,9 +204,12 @@ fn ordering_compares_numbers() {
     assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
     let d = errors(&program("Dim n As Int\nDim b As Boolean = n < Null"));
     assert!(has(&d, "cannot compare Int with Null"), "{d:?}");
-    // Only an `Int` was recorded next to `Null`.
-    let d = errors(&program("Dim n As Double\nDim b As Boolean = n = Null"));
-    assert!(has(&d, "cannot compare Double with Null"), "{d:?}");
+    // So does a `Double` (recorded: `double_eq_null`); the other number
+    // types were not recorded.
+    let m = ok(&program("Dim n As Double\nDim b As Boolean = n = Null"));
+    assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
+    let d = errors(&program("Dim n As Long\nDim b As Boolean = n = Null"));
+    assert!(has(&d, "cannot compare Long with Null"), "{d:?}");
     // A Boolean does not convert to a number either (recorded:
     // `boolean_less`), next to a String too.
     for expr in ["\"a\" < True", "True > \"a\"", "False < True"] {
@@ -217,25 +220,35 @@ fn ordering_compares_numbers() {
         );
     }
     // A Char `=` an Int converts the Int to a Char, the first character of
-    // its text (recorded: `char_number_compare`); the other way round, or
-    // with a Double, is not recorded.
+    // its text (recorded: `char_number_compare`), and so does a Long, a
+    // Short, a Byte and a Double (recorded: `char_eq_long`,
+    // `char_eq_double`). The other way round is refused (recorded:
+    // `number_eq_char`); a Float was not recorded.
     let m = ok(&program("Dim c As Char = \"A\"\nDim b As Boolean = c = 65"));
     assert_eq!(
         show(&last_value(&m)),
         "Eq:Char(var, conv(String->Char, conv(Int->String, 65)))"
     );
-    for (decl, expr) in [("", "65 = c"), ("Dim d As Double\n", "c = d")] {
+    for ty in ["Long", "Short", "Byte", "Double"] {
+        let m = ok(&program(&format!(
+            "Dim c As Char = \"A\"\nDim n As {ty}\nDim b As Boolean = c = n"
+        )));
+        let shown = format!("Eq:Char(var, conv(String->Char, conv({ty}->String, var)))");
+        assert_eq!(show(&last_value(&m)), shown);
+    }
+    for (decl, expr) in [("", "65 = c"), ("Dim f As Float\n", "c = f")] {
         let d = errors(&program(&format!(
             "Dim c As Char = \"A\"\n{decl}Dim b As Boolean = {expr}"
         )));
         assert!(has(&d, "cannot compare"), "{expr}: {d:?}");
     }
-    // A String next to an Object with `<` is not recorded.
+    // An Object next to a String with `<` is parsed as a number too
+    // (recorded: `string_less_object`).
     for expr in ["\"10\" < o", "o >= \"10\""] {
-        let d = errors(&program(&format!(
+        let m = ok(&program(&format!(
             "Dim o As Object = \"5\"\nDim b As Boolean = {expr}"
         )));
-        assert!(has(&d, "is not known yet"), "{expr}: {d:?}");
+        assert!(show(&last_value(&m)).contains(":Numeric("), "{expr}");
     }
 }
 
@@ -932,17 +945,24 @@ fn subs_calls_and_returns() {
         Sub Square (x As Int) As Int\n  Return x * x\nEnd Sub\nSub Hello\n  Log(\"hi\")\nEnd Sub\n",
     );
     // `Return <value>` in a Sub without `As` builds (recorded:
-    // `return_value_untyped_sub`); its call still has no value.
+    // `return_value_untyped_sub`), and its call is a String (recorded:
+    // `untyped_sub_return_value_used`).
     ok(
-        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  F\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  F\n  Log(F)\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n",
     );
     // Only a Sub's was recorded: `Process_Globals` returns nothing.
     let d = errors(
         "Sub Process_Globals\n  Return 1\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n",
     );
     assert!(has(&d, "`Process_Globals` returns nothing"), "{d:?}");
+    let m = ok(
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Dim s As String = F\nEnd Sub\nSub F\nEnd Sub\n",
+    );
+    let f = m.subs.iter().find(|s| s.name == "F").expect("Sub F");
+    assert_eq!(f.ret, Ty::String);
+    // `AppStart` returns nothing.
     let d = errors(
-        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Dim x As Int = F\nEnd Sub\nSub F\nEnd Sub\n",
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub F\n  Dim s As String = AppStart(Null)\nEnd Sub\n",
     );
     assert!(has(&d, "does not return a value"), "{d:?}");
     let d = errors(
@@ -988,8 +1008,11 @@ fn smart_string_formatters() {
 fn for_each_requires_an_iterable() {
     let d = errors(&program("Dim n As Int\nFor Each x As Int In n\nNext"));
     assert!(has(&d, "cannot iterate over Int"), "{d:?}");
-    let d = errors(&program("Dim L As List\nFor Each q In L\nNext"));
-    assert!(has(&d, "`q` is not declared"), "{d:?}");
+    // Without `As`, a name nothing declares is an Object (recorded:
+    // `for_each_untyped_undeclared`).
+    ok(&program(
+        "Dim L As List\nL.Initialize\nFor Each q In L\nLog(q)\nNext",
+    ));
 }
 
 #[test]
@@ -1737,12 +1760,12 @@ fn loops_in_process_globals() {
         ),
         "{diags:?}"
     );
-    // An undeclared `For Each` variable elsewhere is reported once.
-    let diags = errors(&globals(
+    // In a Sub an undeclared `For Each` variable is an Object (recorded:
+    // `for_each_untyped_undeclared`).
+    ok(&globals(
         "",
         "    For Each x In Array As Int(1)\n        Log(x)\n    Next",
     ));
-    assert_eq!(diags.len(), 1, "{diags:?}");
 }
 
 /// A local may not take a module variable's name: B4J refuses another type
@@ -1829,51 +1852,102 @@ fn for_each_without_as_over_a_declared_variable() {
             "Sub Process_Globals\n{pg}End Sub\n\nSub AppStart (Args() As String)\n{body}End Sub\n"
         )
     };
-    // Recorded over a local Int or String (`for_each_untyped_local`,
-    // `for_each_untyped_other_type`), and after a typed loop over it.
-    for body in [
-        "    Dim n As Int\n    For Each n In Array As Int(5)\n    Next\n",
-        "    Dim n As String\n    For Each n In Array As Int(5)\n    Next\n",
-        "    For Each n As Int In Array As Int(1)\n    Next\n    For Each n In Array As Int(2)\n    Next\n",
-    ] {
-        assert_eq!(
-            errors(&app("", body)),
-            [
-                "`n` is already declared: a `For Each` without `As` cannot loop over it; write \
-              `For Each n As <type> In ...`"
-            ],
-            "{body}"
-        );
-    }
-    // Not recorded: over a local Object, a local declared after the loop
-    // (declarations are hoisted), a module variable from a Sub, and in
-    // `Process_Globals`.
-    for (pg, body) in [
+    // It declares its variable an Object, so it is refused over a variable
+    // of another type: a local Int or String (`for_each_untyped_local`,
+    // `for_each_untyped_other_type`), after a typed loop over it, a module
+    // variable from a Sub or in `Process_Globals`
+    // (`for_each_untyped_module_variable`, `process_globals_for_each_untyped`).
+    let refused = |ty: &str| {
+        format!(
+            "`n` is already declared as {ty}: a `For Each` without `As` declares its variable \
+             an Object, so it cannot loop over it; write `For Each n As <type> In ...`"
+        )
+    };
+    for (pg, body, ty) in [
         (
             "",
-            "    Dim n As Object\n    For Each n In Array As Int(5)\n    Next\n",
+            "    Dim n As Int\n    For Each n In Array As Int(5)\n    Next\n",
+            "Int",
         ),
         (
             "",
-            "    For Each n In Array As Int(5)\n    Next\n    Dim n As Int\n",
+            "    Dim n As String\n    For Each n In Array As Int(5)\n    Next\n",
+            "String",
+        ),
+        (
+            "",
+            "    For Each n As Int In Array As Int(1)\n    Next\n    For Each n In Array As Int(2)\n    Next\n",
+            "Int",
         ),
         (
             "    Private n As Int\n",
             "    For Each n In Array As Int(5)\n    Next\n",
+            "Int",
         ),
         (
             "    Private n As Int\n    For Each n In Array As Int(5)\n    Next\n",
             "",
+            "Int",
+        ),
+    ] {
+        assert_eq!(errors(&app(pg, body)), [refused(ty)], "{pg}{body}");
+    }
+    // Over a String parameter too (`for_each_untyped_parameter`).
+    let diags = errors(
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Show(\"a\")\nEnd Sub\n\n\
+         Sub Show (n As String)\n    For Each n In Array As String(\"x\")\n    Next\nEnd Sub\n",
+    );
+    assert_eq!(diags, [refused("String")]);
+    // A later Dim of another type is refused where it is ("Previous:
+    // Object", `for_each_untyped_declared_after`).
+    let diags = errors(&app(
+        "",
+        "    For Each n In Array As Int(5)\n    Next\n    Dim n As Int\n",
+    ));
+    assert_eq!(diags, ["`n` is already declared as Object in this Sub"]);
+    // Over a local Object declared before it, over a name nothing declares,
+    // and again over that name, it builds (`for_each_untyped_object`,
+    // `for_each_untyped_undeclared`).
+    ok(&app(
+        "",
+        "    Dim n As Object\n    For Each n In Array As Int(5)\n    Next\n",
+    ));
+    ok(&app(
+        "",
+        "    For Each n In Array As Int(5)\n    Next\n    For Each n In Array As Int(6)\n    Next\n    Log(n)\n",
+    ));
+    // Not recorded: an Object declared again after the loop, the name
+    // assigned or read before it, an Object a typed loop declared first, a
+    // module variable or a parameter of type Object.
+    for (pg, body) in [
+        (
+            "",
+            "    For Each n In Array As Int(5)\n    Next\n    Dim n As Object\n",
+        ),
+        (
+            "",
+            "    n = 5\n    For Each n In Array As Int(5)\n    Next\n",
+        ),
+        (
+            "",
+            "    Log(n)\n    For Each n In Array As Int(5)\n    Next\n",
+        ),
+        (
+            "",
+            "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
+        ),
+        (
+            "    Private n As Object\n",
+            "    For Each n In Array As Int(5)\n    Next\n",
         ),
     ] {
         let diags = errors(&app(pg, body));
         assert_eq!(diags.len(), 1, "{pg}{body}: {diags:?}");
-        assert!(has(&diags, "is not known yet"), "{pg}{body}: {diags:?}");
+        assert!(has(&diags, "not known yet"), "{pg}{body}: {diags:?}");
     }
-    // Nor over a parameter.
     let diags = errors(
         "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Show(\"a\")\nEnd Sub\n\n\
-         Sub Show (s As String)\n    For Each s In Array As String(\"x\")\n    Next\nEnd Sub\n",
+         Sub Show (n As Object)\n    For Each n In Array As String(\"x\")\n    Next\nEnd Sub\n",
     );
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert!(has(&diags, "is not known yet"), "{diags:?}");

@@ -214,22 +214,26 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       says "Unknown type: Object" (recording: `level0/member_on_object`).
 - [x] `Return <value>` in a Sub declared without `As` builds (recording:
       `level0/return_value_untyped_sub`).
-- [ ] Whether the call of such a Sub has a value: B4J declares Subs without
-      `As` as returning a `String`, so `Log(NoType)` may print `5`;
-      FerroBASIC gives the call no value (`level0/untyped_sub_return_value_used`).
-      Recording run 15 builds it and prints `5`, to apply.
+- [x] The call of such a Sub has a value: `Log(NoType)` prints `5`
+      (recording: `level0/untyped_sub_return_value_used`). FerroBASIC makes
+      it a `String`, as B4J declares such Subs (it generates `return "";`
+      at their end), so one that returns nothing gives `""`.
+- [ ] That the value is a `String` (`level0/untyped_sub_return_type`:
+      `GetType`, `+ 1`, and a Sub that returns nothing).
 - [x] A parameter without `As` is a `String` (recording:
       `level0/parameter_without_as`).
 - [x] A `Char` `=` an `Int` converts the `Int` to a `Char`, the first
       character of its text: B4J generates `_c==BA.ObjectToChar(65)`, and
       jCore's `ObjectToChar` takes `"65".charAt(0)`, `'6'`, so `"A" = 65` is
       `False` (recording and generated code: `level0/char_number_compare`).
-- [ ] A `Char` `=` a `Long`, `Short` or `Byte`, whose Java text is B4J's,
-      so very likely as an `Int`; and a `Char` `=` a `Double`, whose Java
-      text (`1.0E-5`) can start with another character than B4J's
-      (`0.00001`) (`level0/char_eq_long`, `level0/char_eq_double`).
-      FerroBASIC refuses them; recording run 15 builds both, to apply.
-      The number on the left is refused ("Cannot cast type:
+- [x] A `Char` `=` a `Long`, `Short`, `Byte` or `Double` converts it as an
+      `Int`: `"6" = 65` is `True` with each, and `"1" = 0.00001` is `True`,
+      the first character of `1.0E-5` (recordings: `level0/char_eq_long`,
+      `level0/char_eq_double`).
+- [ ] A `Char` `=` a `Float`, whose Java text (`1.0E-5`) FerroBASIC does
+      not keep, as it widens a Float to a Double (`level0/char_eq_float`).
+      FerroBASIC refuses it.
+- [x] The number on the left is refused ("Cannot cast type:
       {Type=Char,…} to: number", recording: `level0/number_eq_char`), as
       FerroBASIC refuses it.
 - [x] A `Char` with `<` is refused ("Cannot cast type: {Type=Char,…} to:
@@ -238,8 +242,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [x] `<` between a String and a Boolean is refused, as between two
       Booleans (recordings: `level0/string_less_boolean`,
       `level0/boolean_less`).
-- [ ] `<` between a String and an `Object`, which FerroBASIC refuses
-      (`level0/string_less_object`); recording run 15 builds it, to apply.
+- [x] `<` between a String and an `Object` parses both as numbers:
+      `"10" < o` with `o = "5"` is `False` (recording:
+      `level0/string_less_object`).
 - [x] With `=` and `<>` the left operand decides: number vs String
       compares numerically (`10 = "10.0"` is `True`), String vs number as
       Strings (`"10.0" = 10` is `False`); with `<` and `>` both compare
@@ -252,9 +257,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       the left of a number (`Null = n`), is a compile error. An `Int` `=`
       `Null` builds and raises `NumberFormatException` when it runs, as
       `BA.ObjectToNumber` parses `"null"` (recording:
-      `level0/null_number_compare`); with another number type it is open
-      (`level0/double_eq_null`). Recording run 15 shows a `Double` raises it
-      too, to apply.
+      `level0/null_number_compare`), and so does a `Double` (recording:
+      `level0/double_eq_null`). With another number type it is open
+      (`level0/long_eq_null`); FerroBASIC refuses it.
 - [x] A real literal may start with its decimal point (`.08`), also with
       an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
       `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the
@@ -432,11 +437,19 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_for_each_untyped`,
       `level0/for_each_untyped_parameter`,
       `level0/for_each_untyped_declared_after`).
-- [ ] Over a local `Object` and over a name never declared, which
-      FerroBASIC refuses (`level0/for_each_untyped_object`,
-      `level0/for_each_untyped_undeclared`); recording run 15 builds both,
-      to apply. `JSONWebToken.bas`, a class of the real-world corpus,
-      loops `For Each Key In Claims.Keys` with `Key` declared nowhere.
+- [x] Over a local `Object` declared before it, and over a name never
+      declared, which it declares, it builds (recordings:
+      `level0/for_each_untyped_object`, `level0/for_each_untyped_undeclared`).
+      `JSONWebToken.bas`, a class of the real-world corpus, loops
+      `For Each Key In Claims.Keys` with `Key` declared nowhere.
+- [ ] Over a module variable or a parameter of type `Object`, with a
+      `Dim` of the name as an `Object` after the loop, with the name
+      assigned or read before the loop (where an assignment may declare a
+      `String`), and over an `Object` that a typed loop declared first:
+      FerroBASIC refuses them (`level0/for_each_untyped_module_object`,
+      `level0/for_each_untyped_object_declared_after`,
+      `level0/for_each_untyped_assigned_before`,
+      `level0/for_each_untyped_after_typed_object`).
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls

@@ -83,5 +83,4 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       published as the user types, on the lossless CST.
 - [ ] Gate: the conformance tests pass in the interpreter and as standalone
       binaries. On 2026-11-03 none fails on either target; 7 tests are
-      pending: recording run 15 answered them, and FerroBASIC refuses
-      what B4J builds until they are applied.
+      pending, all for the next run.

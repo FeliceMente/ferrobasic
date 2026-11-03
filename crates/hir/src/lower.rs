@@ -54,6 +54,9 @@ struct Lowerer {
     /// variable, `false` for a refused `Dim`. Their uses mean the Sub
     /// (recorded).
     sub_named_locals: HashMap<String, bool>,
+    /// The current Sub's `Object` locals a `For Each` without `As` loops
+    /// over, by name, and how they were declared.
+    untyped_loops: HashMap<String, UntypedLoop>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -289,23 +292,55 @@ fn recorded_loop(kind: LoopKind) -> bool {
     kind != LoopKind::Untyped
 }
 
-/// A `For Each` without `As` over a declared variable. B4J refuses it over
-/// a local of a Sub declared before the loop, of a type other than `Object`
-/// (`recorded`: `for_each_untyped_local`, `for_each_untyped_other_type`),
-/// as over a constant or a loop variable named like a Sub; over an
-/// `Object`, a parameter, a local declared after the loop (declarations
-/// are hoisted) or a module variable it is not recorded.
-fn untyped_for_each(name: &str, recorded: bool) -> String {
-    if recorded {
-        format!(
-            "`{name}` is already declared: a `For Each` without `As` cannot loop over it; \
-             write `For Each {name} As <type> In ...`"
-        )
-    } else {
-        format!(
+/// A `For Each` without `As` over a declared variable, which it would
+/// declare an `Object`. B4J refuses it over a variable of another type
+/// (`other`), a local, a parameter or a module variable (recorded:
+/// `for_each_untyped_local`, `for_each_untyped_other_type`,
+/// `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
+/// `process_globals_for_each_untyped`); over a parameter or a module
+/// variable of type `Object` it is not recorded.
+fn untyped_for_each(name: &str, other: Option<&str>) -> String {
+    match other {
+        Some(ty) => format!(
+            "`{name}` is already declared as {ty}: a `For Each` without `As` declares its \
+             variable an Object, so it cannot loop over it; write `For Each {name} As <type> In ...`"
+        ),
+        None => format!(
             "`{name}` is already declared: whether a `For Each` without `As` may loop over it \
              here is not known yet, so write `For Each {name} As <type> In ...`"
-        )
+        ),
+    }
+}
+
+/// How the `Object` local a `For Each` without `As` loops over was
+/// declared, when that matters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UntypedLoop {
+    /// By the loop, as nothing declared or used it before (recorded:
+    /// `for_each_untyped_undeclared`).
+    Declared,
+    /// By the loop, and again as an `Object` after it: not recorded.
+    Redeclared,
+    /// By the loop, but used before it, where an assignment may declare a
+    /// `String`: not recorded.
+    UsedBefore,
+    /// By a typed loop before it, not by a `Dim`: not recorded.
+    AfterTypedLoop,
+}
+
+impl UntypedLoop {
+    /// Why the loop over `name` is refused as not recorded, if it is.
+    fn unrecorded(self, name: &str) -> Option<String> {
+        let why = match self {
+            UntypedLoop::Declared => return None,
+            UntypedLoop::Redeclared => "declared again as Object after this loop",
+            UntypedLoop::UsedBefore => "used before this loop",
+            UntypedLoop::AfterTypedLoop => "declared by a typed loop before this one",
+        };
+        Some(format!(
+            "`{name}` is {why}: whether a `For Each` without `As` may loop over it here is not \
+             known yet, so write `For Each {name} As <type> In ...`"
+        ))
     }
 }
 
@@ -596,9 +631,15 @@ impl Lowerer {
                 });
             }
         }
+        // A Sub without `As` returns a `String`, as B4J declares it: the
+        // value of `Return 5` prints `5` (recorded:
+        // `untyped_sub_return_value_used`), and one that returns nothing
+        // returns `""`, the `return "";` B4J generates. `Process_Globals`
+        // and `AppStart`, which only B4J's runtime calls, return nothing.
         let ret = match child(node, TYPE_REF) {
             Some(t) => self.resolve_type(&t),
-            None => Ty::Void,
+            None if matches!(key(&name).as_str(), "process_globals" | "appstart") => Ty::Void,
+            None => Ty::String,
         };
         let header = child(node, NAME)
             .map(|n| range(&n))
@@ -1014,6 +1055,7 @@ impl Lowerer {
             .collect();
         self.ret = sub.ret.clone();
         self.sub_named_locals.clear();
+        self.untyped_loops.clear();
         self.sub_named_loops.clear();
         self.in_class_globals = self.class_globals == Some(id);
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
@@ -1183,6 +1225,18 @@ impl Lowerer {
         self.const_error(&VarRef::Global(id), at, message);
     }
 
+    /// A declaration as an `Object` of a name a `For Each` without `As`
+    /// declared before it: one variable, or refused as two declarations?
+    /// Not recorded.
+    fn note_redeclared(&mut self, name: &str, ty: &Ty) {
+        if *ty == Ty::Object
+            && let Some(state) = self.untyped_loops.get_mut(&key(name))
+            && *state == UntypedLoop::Declared
+        {
+            *state = UntypedLoop::Redeclared;
+        }
+    }
+
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
     fn hoist_locals(&mut self, body: &SyntaxNode) {
         // The names a `Dim` or a loop declares anywhere in the Sub: an
@@ -1203,24 +1257,72 @@ impl Lowerer {
                 _ => Vec::new(),
             })
             .collect();
+        // In source order: the names used so far, and the names a typed
+        // loop declared first.
+        let mut used: HashSet<String> = HashSet::new();
+        let mut typed_loop_first: HashSet<String> = HashSet::new();
         for node in body.descendants() {
+            let first_by_loop = |this: &Self, name: &SyntaxNode, set: &mut HashSet<String>| {
+                let text = name_of(name);
+                if this.lookup_var(&text).is_none() {
+                    set.insert(key(&text));
+                }
+            };
             match node.kind() {
+                NAME_REF => {
+                    used.insert(key(&name_of(&node)));
+                }
                 DIM_STMT => {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
+                        self.note_redeclared(&name, &ty);
                         self.declare_dim_local(&name, ty, range(&decl), true);
                         self.mark_const(&decl, &name);
                     }
                 }
-                FOR_EACH_STMT => {
-                    if let (Some(name), Some(t)) = (child(&node, NAME), child(&node, TYPE_REF)) {
+                FOR_EACH_STMT => match (child(&node, NAME), child(&node, TYPE_REF)) {
+                    (Some(name), Some(t)) => {
                         let ty = self.resolve_type(&t);
+                        self.note_redeclared(&name_of(&name), &ty);
+                        first_by_loop(self, &name, &mut typed_loop_first);
                         self.declare_dim_local(&name_of(&name), ty, range(&name), false);
                     }
-                }
+                    // Not declared before it, in source order, the variable
+                    // of a `For Each` without `As` is an `Object`: a later
+                    // `Dim` of another type is refused ("Previous: Object",
+                    // recorded: `for_each_untyped_declared_after`), and a
+                    // name nothing declares builds (recorded:
+                    // `for_each_untyped_undeclared`).
+                    // Used before it, or declared first by a typed loop, it is
+                    // not recorded.
+                    (Some(name), None) => {
+                        let text = name_of(&name);
+                        let k = key(&text);
+                        if self.lookup_var(&text).is_none()
+                            && !self.subs.contains_key(&k)
+                            && !self.records.contains_key(&k)
+                            && builtins::lookup(Owner::Global, &text).is_none()
+                        {
+                            self.declare_local(&text, Ty::Object, range(&name));
+                            let state = if used.contains(&k) {
+                                UntypedLoop::UsedBefore
+                            } else {
+                                UntypedLoop::Declared
+                            };
+                            self.untyped_loops.insert(k, state);
+                        } else if typed_loop_first.contains(&k) {
+                            self.untyped_loops
+                                .entry(k)
+                                .or_insert(UntypedLoop::AfterTypedLoop);
+                        }
+                    }
+                    _ => {}
+                },
                 FOR_STMT => match (child(&node, NAME), child(&node, TYPE_REF)) {
                     (Some(name), Some(t)) => {
                         let ty = self.resolve_type(&t);
+                        self.note_redeclared(&name_of(&name), &ty);
+                        first_by_loop(self, &name, &mut typed_loop_first);
                         self.declare_loop_local(&name_of(&name), ty, range(&name), true);
                     }
                     // A counter not declared before it, in source order, is
@@ -1493,27 +1595,38 @@ impl Lowerer {
                     return;
                 };
                 // Outside `Class_Globals`, where a loop must use a variable
-                // declared with `Dim`, a `For Each` without `As` cannot loop
-                // over a variable declared before it. A Sub's name was
-                // judged by `loop_variable`, which lets one through only
-                // after the program has an error over it already, and so
-                // has a variable of an unknown type.
+                // declared with `Dim`, a `For Each` without `As` declares its
+                // variable an `Object` (recorded:
+                // `for_each_untyped_declared_after`): it loops over a local
+                // `Object` that a `Dim` declared before it, or that it
+                // declares (recorded: `for_each_untyped_object`,
+                // `for_each_untyped_undeclared`), and over a variable of
+                // another type it is refused, wherever it is declared
+                // (recorded over a local, a parameter and a module
+                // variable). Not recorded: over a parameter or a module
+                // variable of type `Object`, and the cases `UntypedLoop`
+                // lists. A Sub's name was judged by `loop_variable`, which
+                // lets one through only after the program has an error over
+                // it already, and so has a variable of an unknown type.
                 if child(node, TYPE_REF).is_none()
                     && !self.in_class_globals
                     && !self.subs.contains_key(&key(&text))
                     && ty != Ty::Error
                 {
-                    let recorded = match var {
-                        VarRef::Local(id) => {
-                            id.0 as usize >= self.params
-                                && ty != Ty::Object
-                                && self.locals[id.0 as usize].range.end() <= range(&name).start()
+                    let message = match var {
+                        VarRef::Local(id) if id.0 as usize >= self.params && ty == Ty::Object => {
+                            self.untyped_loops
+                                .get(&key(&text))
+                                .and_then(|state| state.unrecorded(&text))
                         }
-                        VarRef::Global(_) => false,
+                        _ if ty == Ty::Object => Some(untyped_for_each(&text, None)),
+                        _ => Some(untyped_for_each(&text, Some(&self.ty_name(&ty)))),
                     };
-                    self.error(range(&name), untyped_for_each(&text, recorded));
-                    self.refused_loop(node, &text, &name);
-                    return;
+                    if let Some(message) = message {
+                        self.error(range(&name), message);
+                        self.refused_loop(node, &text, &name);
+                        return;
+                    }
                 }
                 self.accepted_loop(node, &name, &ty);
                 let Some(coll) = exprs(node).into_iter().next() else {
@@ -1571,10 +1684,6 @@ impl Lowerer {
             RETURN_STMT => {
                 let value = exprs(node).into_iter().next().map(|e| self.expr(&e));
                 let value = match value {
-                    // B4J builds `Return <value>` in a Sub without `As`
-                    // (recorded: `return_value_untyped_sub`): the value is
-                    // evaluated, and nothing can read it, as such a Sub's
-                    // call has no value here.
                     Some(v) if self.ret == Ty::Void && self.in_process_globals => {
                         self.error(
                             v.range,
@@ -1582,6 +1691,8 @@ impl Lowerer {
                         );
                         None
                     }
+                    // In `AppStart` the value is evaluated, and nothing can
+                    // read it.
                     Some(v) if self.ret == Ty::Void => {
                         push(out, StmtKind::Expr(v));
                         None
@@ -2724,8 +2835,9 @@ impl Lowerer {
             (Error, _) | (_, Error) => return error_expr(at),
             // `n = Null`: B4J converts the `Null` with `BA.ObjectToNumber`,
             // which parses its text, `"null"`: a `NumberFormatException`
-            // when it runs (recorded with an `Int`: `null_number_compare`).
-            (Int, Null) if !ordering => {
+            // when it runs (recorded with an `Int` and a `Double`:
+            // `null_number_compare`, `double_eq_null`).
+            (Int | Double, Null) if !ordering => {
                 let right = self.coerce(right, &String);
                 let left = self.coerce(left, &Double);
                 let right = self.coerce(right, &Double);
@@ -2745,8 +2857,11 @@ impl Lowerer {
             }
             // `c = 65`: B4J converts the number with `BA.ObjectToChar`, the
             // first character of its text, `'6'` (generated
-            // `_c==BA.ObjectToChar(65)` and recording: `char_number_compare`).
-            (Char, Int) if !ordering => {
+            // `_c==BA.ObjectToChar(65)` and recording: `char_number_compare`;
+            // a `Long`, `Short`, `Byte` and `Double` too: `char_eq_long`,
+            // `char_eq_double`). Java's text of a Double (`1.0E-5`) starts
+            // as B4J's does, which only drops a trailing `.0`.
+            (Char, Int | Long | Short | Byte | Double) if !ordering => {
                 let right = self.coerce(right, &String);
                 let right = self.coerce(right, &Char);
                 return Expr {
@@ -2763,16 +2878,8 @@ impl Lowerer {
                 );
                 return error_expr(at);
             }
-            // Not recorded: B4J parses a String for `<`, and how it converts
-            // an `Object` there is not known.
-            (String, Object) | (Object, String) if ordering => {
-                self.error(
-                    at,
-                    "whether `<`, `>`, `<=` or `>=` can compare a String with an Object is not \
-                     known yet: assign the Object to a number first",
-                );
-                return error_expr(at);
-            }
+            // An `Object` next to a String is parsed as a number too
+            // (recorded: `string_less_object`).
             (l, r)
                 if ordering
                     && (l.is_numeric() || *l == String)
@@ -2780,6 +2887,7 @@ impl Lowerer {
             {
                 (CmpKind::Numeric, Double)
             }
+            (String, Object) | (Object, String) if ordering => (CmpKind::Numeric, Double),
             (Null, _) | (_, Null) => {
                 let other = if left.ty == Null { &right.ty } else { &left.ty };
                 if other.is_primitive() || ordering {
