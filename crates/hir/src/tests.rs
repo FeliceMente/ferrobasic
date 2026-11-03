@@ -1251,7 +1251,7 @@ fn loops_in_process_globals() {
     let refused = |what: &str| {
         format!(
             "`Bump` is {what} with the name of a Sub: a `For Each` without `As` cannot loop \
-             over it again"
+             over it"
         )
     };
     let (sub_var, module) = ("a loop variable of this Sub", "a module variable");
@@ -1322,90 +1322,90 @@ fn loops_in_process_globals() {
     ] {
         assert_eq!(errors(&sub(&body, &app)), [refused(what)], "{body}{app}");
     }
-    // Anything else is open, with a message for the loop that asks the
-    // question; a pending test asks B4J each time.
-    let open = |what: &str, form: &str| {
-        format!(
-            "`Bump` is {what} with the name of a Sub: whether {form} may loop over it here is \
-             not known yet, so use another name"
-        )
-    };
-    let (open_for, open_typed, open_untyped) =
-        ("this `For`", "this `For Each`", "a `For Each` without `As`");
+    // Recording run 14: every other `For` and typed `For Each` is accepted
+    // too, as the variable's own rules allow, and the name still calls the
+    // Sub; a `For Each` without `As` is refused wherever it is.
     let double = "    For Each Bump As Double In Array As Double(1.5)\n    Next\n";
     let counter_half = "    For Bump = 0 To 1 Step 0.5\n    Next\n";
-    for (body, app, what, form) in [
-        // A `For Each` without `As` as the first loop, which only a later
-        // typed `For Each` declares.
-        (String::new(), format!("{untyped}{typed}"), sub_var, open_untyped),
-        (format!("{untyped}{typed}"), String::new(), module, open_untyped),
-        // A `For` over a variable that a `For Each` of another number type
-        // declares, before it or after it, in a Sub or from another Sub.
-        (String::new(), format!("{counter_half}{double}"), sub_var, open_for),
-        (String::new(), format!("{double}{counter_half}"), sub_var, open_for),
-        (double.to_string(), counter_half.to_string(), module, open_for),
-        // A typed `For Each` of another type than `Int` after a typed one,
-        // or in another Sub with the name of a loop variable of
-        // `Process_Globals` (FerroBASIC: its own local).
-        (String::new(), format!("{double}{double}"), sub_var, open_typed),
-        (double.to_string(), double.to_string(), sub_var, open_typed),
-        // Nested other than recorded: a `For Each` with `As` inside a `For`,
-        // a `For` inside a loop, any loop nested in `Process_Globals`, one
-        // of another type than `Int`.
+    for (body, app) in [
+        // A `For` over a variable a `For Each` of another number type
+        // declared, in a Sub or from another Sub.
+        (String::new(), format!("{double}{counter_half}{log}")),
+        (double.to_string(), format!("{counter_half}{log}")),
+        // A typed `For Each` of another type than `Int` again.
+        (String::new(), format!("{double}{double}{log}")),
+        (double.to_string(), format!("{double}{log}")),
+        (format!("{double}{double}"), log.to_string()),
+        // Nested: a typed `For Each` inside a `For`, a `For` inside a loop,
+        // in a Sub or in `Process_Globals`, of any type.
         (
             String::new(),
-            "    For Bump = 1 To 3\n        For Each Bump As Int In Array As Int(7)\n        Next\n    Next\n".to_string(),
-            sub_var,
-            open_typed,
+            "    For Bump = 1 To 3\n        For Each Bump As Int In Array As Int(7)\n        Next\n    Next\n    Log(Bump)\n".to_string(),
         ),
         (
             String::new(),
-            "    For Each Bump As Int In Array As Int(1)\n        For Bump = 1 To 2\n        Next\n    Next\n".to_string(),
-            sub_var,
-            open_for,
+            "    For Each Bump As Int In Array As Int(1)\n        For Bump = 1 To 2\n        Next\n    Next\n    Log(Bump)\n".to_string(),
         ),
         (
-            String::new(),
             "    For Bump = 1 To 2\n        For Bump = 1 To 2\n        Next\n    Next\n".to_string(),
-            sub_var,
-            open_for,
+            log.to_string(),
         ),
+        (
+            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n        Next\n    Next\n".to_string(),
+            log.to_string(),
+        ),
+        (
+            String::new(),
+            "    For Each Bump As Long In Array As Long(1)\n        For Each Bump As Long In Array As Long(2)\n        Next\n    Next\n    Log(Bump)\n".to_string(),
+        ),
+        // Three loops, one after the other or nested, and loops in another
+        // Sub after one there.
+        (String::new(), format!("{counter}{counter}{counter}{log}")),
+        (format!("{counter}{counter}{counter}"), log.to_string()),
+        (String::new(), format!("{typed}{counter}{typed}{log}")),
+        (counter.to_string(), format!("{counter}{counter}{log}")),
+        (counter.to_string(), format!("{typed}{typed}{log}")),
+        (
+            String::new(),
+            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n            For Each Bump As Int In Array As Int(5)\n            Next\n        Next\n    Next\n    Log(Bump)\n".to_string(),
+        ),
+    ] {
+        let module_ = ok(&sub(&body, &app));
+        assert!(
+            format!("{:?}", app_start(&module_).body).contains("Call"),
+            "{body}{app}: {:?}",
+            app_start(&module_).body
+        );
+    }
+    for (body, app, what) in [
+        // A `For Each` without `As` as the first loop, which only a later
+        // typed `For Each` declares, in a Sub or in `Process_Globals`.
+        (String::new(), format!("{untyped}{typed}"), sub_var),
+        (format!("{untyped}{typed}"), String::new(), module),
+        // Inside a `For` of `Process_Globals`.
         (
             "    For Bump = 1 To 2\n        For Each Bump In Array As Int(5)\n        Next\n    Next\n".to_string(),
             String::new(),
             module,
-            open_untyped,
         ),
+        // In another Sub over a loop variable of `Process_Globals` of another
+        // type than `Int`.
         (
-            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n        Next\n    Next\n".to_string(),
-            String::new(),
+            typed_string.to_string(),
+            "    For Each Bump In Array As String(\"b\")\n    Next\n".to_string(),
             module,
-            open_typed,
-        ),
-        (
-            String::new(),
-            "    For Each Bump As Long In Array As Long(1)\n        For Each Bump As Long In Array As Long(2)\n        Next\n    Next\n".to_string(),
-            sub_var,
-            open_typed,
         ),
     ] {
-        assert_eq!(errors(&sub(&body, &app)), [open(what, form)], "{body}{app}");
+        assert_eq!(errors(&sub(&body, &app)), [refused(what)], "{body}{app}");
     }
-    // Every recording has at most two loops over the name: a third, one
-    // after the other or nested, is open on the third loop.
-    for (body, app, what, form) in [
-        (String::new(), format!("{counter}{counter}{counter}"), sub_var, open_for),
-        (format!("{counter}{counter}{counter}"), String::new(), module, open_for),
-        (String::new(), format!("{typed}{counter}{typed}"), sub_var, open_typed),
-        (
-            String::new(),
-            "    For Each Bump As Int In Array As Int(1)\n        For Each Bump As Int In Array As Int(2)\n            For Each Bump As Int In Array As Int(5)\n            Next\n        Next\n    Next\n".to_string(),
-            sub_var,
-            open_typed,
-        ),
-    ] {
-        assert_eq!(errors(&sub(&body, &app)), [open(what, form)], "{body}{app}");
-    }
+    // A `For` before it declares the name an `Int`: a `For Each` of another
+    // type is refused (recorded), though declarations are hoisted.
+    let diags = errors(&sub("", &format!("{counter_half}{double}")));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(
+        has(&diags, "a `For` before declared it an Int"),
+        "{diags:?}"
+    );
     // After a refused loop, the program has an error already: the loops
     // after it are not judged, so no error follows from them.
     for (body, app) in [
@@ -1450,16 +1450,6 @@ fn loops_in_process_globals() {
         ),
     ));
     assert_eq!(diags.len(), 1, "{diags:?}");
-    // A `For Each` without `As` in another Sub over a loop variable of
-    // `Process_Globals` of another type than `Int` is open: only `Int` was
-    // recorded.
-    assert_eq!(
-        errors(&sub(
-            typed_string,
-            "    For Each Bump In Array As String(\"b\")\n    Next"
-        )),
-        [open(module, open_untyped)]
-    );
     let diags = errors(&sub(
         "",
         "    For Bump As Int = 1 To 2\n    Next\n    For Each Bump In Array As Int(5)\n    Next",
