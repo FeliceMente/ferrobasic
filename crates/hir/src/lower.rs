@@ -244,11 +244,15 @@ enum Refusal {
 }
 
 impl Refusal {
-    fn open(subject: impl Into<String>, question: impl Into<String>, advice: &str) -> Refusal {
+    fn open(
+        subject: impl Into<String>,
+        question: impl Into<String>,
+        advice: impl Into<String>,
+    ) -> Refusal {
         Refusal::Open {
             subject: subject.into(),
             question: question.into(),
-            advice: Some(advice.to_string()),
+            advice: Some(advice.into()),
         }
     }
 
@@ -300,11 +304,14 @@ fn const_again_open(name: &str, is_const: bool) -> String {
 /// A module variable declared both by a `Const` and by a `Dim`: whether it
 /// may change is not known.
 fn redeclared_const_open(name: &str, what: &str) -> String {
+    redeclared_const(name, what).message()
+}
+
+fn redeclared_const(name: &str, what: &str) -> Refusal {
     Refusal::asked(
         format!("`{name}` is declared both by a `Const` and by a `Dim`"),
         format!("it {what}"),
     )
-    .message()
 }
 
 /// A `Dim` with a Sub's name. B4J: "Variable name cannot be the same as a
@@ -340,7 +347,7 @@ fn untyped_for_each(name: &str, subject: &str) -> String {
     Refusal::open(
         format!("`{name}` is {subject}"),
         "a `For Each` without `As` may loop over it here",
-        &format!("write `For Each {name} As <type> In ...`"),
+        format!("write `For Each {name} As <type> In ...`"),
     )
     .message()
 }
@@ -384,11 +391,11 @@ enum Found {
 }
 
 /// The one place that finds what a body (a Sub's, `Process_Globals`')
-/// declares, assigns and uses, in source order: a statement before the
-/// names in it.
-fn in_source_order(body: &SyntaxNode) -> Vec<Found> {
+/// declares, assigns and, with `uses`, uses, in source order: a statement
+/// before the names in it.
+fn in_source_order(body: &SyntaxNode, uses: bool) -> impl Iterator<Item = Found> {
     body.descendants()
-        .filter_map(|node| match node.kind() {
+        .filter_map(move |node| match node.kind() {
             DIM_STMT => Some(Found::Dim(node)),
             FOR_STMT | FOR_EACH_STMT => {
                 let name = child(&node, NAME)?;
@@ -401,15 +408,14 @@ fn in_source_order(body: &SyntaxNode) -> Vec<Found> {
                     type_ref,
                 })
             }
-            ASSIGN_STMT => exprs(&node)
+            ASSIGN_STMT if uses => exprs(&node)
                 .into_iter()
                 .next()
                 .filter(|target| target.kind() == NAME_REF)
                 .map(Found::Assign),
-            NAME_REF => Some(Found::Use(node)),
+            NAME_REF if uses => Some(Found::Use(node)),
             _ => None,
         })
-        .collect()
 }
 
 /// What declares a name.
@@ -457,6 +463,9 @@ struct LocalHistory {
     /// Declared first by a `For Each` without `As`, then again as an
     /// `Object`.
     object_again: bool,
+    /// Declared first by a typed loop, then looped over by a `For Each`
+    /// without `As`, in that order.
+    untyped_after_typed: bool,
 }
 
 /// An operand that is itself a comparison, not in parentheses.
@@ -521,26 +530,33 @@ impl Lowerer {
         if existing == new || *existing == Ty::Error || *new == Ty::Error {
             return None;
         }
-        let (was, now) = (self.ty_name(existing), self.ty_name(new));
+        let was = || self.ty_name(existing);
+        let now = || self.ty_name(new);
         Some(match clash {
-            Clash::InSub => format!("`{name}` is already declared as {was} in this Sub"),
+            Clash::InSub => format!("`{name}` is already declared as {} in this Sub", was()),
             Clash::Global => format!("`{name}` is already declared with another type"),
             Clash::DimAfterLoop => format!(
-                "`{name}` is already declared as {was} by a loop of `Process_Globals`: this \
-                 `Dim` cannot declare it again as {now}"
+                "`{name}` is already declared as {} by a loop of `Process_Globals`: this `Dim` \
+                 cannot declare it again as {}",
+                was(),
+                now()
             ),
             Clash::LoopInProcessGlobals => format!(
-                "`{name}` is already declared as {was} in `Process_Globals`: this loop cannot \
-                 declare it again as {now}"
+                "`{name}` is already declared as {} in `Process_Globals`: this loop cannot \
+                 declare it again as {}",
+                was(),
+                now()
             ),
             Clash::LocalOfModuleVariable => format!(
-                "`{name}` is a module variable of type {was}: a local cannot declare it again as \
-                 {now}"
+                "`{name}` is a module variable of type {}: a local cannot declare it again as {}",
+                was(),
+                now()
             ),
             Clash::UntypedForEach => format!(
-                "`{name}` is already declared as {was}: a `For Each` without `As` declares its \
+                "`{name}` is already declared as {}: a `For Each` without `As` declares its \
                  variable an Object, so it cannot loop over it; write `For Each {name} As \
-                 <type> In ...`"
+                 <type> In ...`",
+                was()
             ),
         })
     }
@@ -902,7 +918,7 @@ impl Lowerer {
         // Each name's declarations: `Err` for a loop, at its name.
         let mut declarations: HashMap<String, Vec<Result<GlobalDeclaration, TextRange>>> =
             HashMap::new();
-        for found in in_source_order(sub) {
+        for found in in_source_order(sub, false) {
             if let Found::Dim(node) = found {
                 let direct = node.parent().and_then(|block| block.parent()).as_ref() == Some(sub);
                 let in_if = node
@@ -1212,6 +1228,7 @@ impl Lowerer {
                     dimmed: false,
                     used_before: false,
                     object_again: false,
+                    untyped_after_typed: false,
                 };
                 (key(&v.name), history)
             })
@@ -1392,6 +1409,7 @@ impl Lowerer {
                         dimmed: dim,
                         used_before,
                         object_again: false,
+                        untyped_after_typed: false,
                     },
                 );
             }
@@ -1409,16 +1427,14 @@ impl Lowerer {
             Origin::UntypedForEach if history.object_again => {
                 Some("declared again as Object after this loop")
             }
-            first if first.is_typed_loop() && !self.globals.contains_key(k) => {
-                Some("declared by a typed loop before this one")
-            }
+            _ if history.untyped_after_typed => Some("declared by a typed loop before this one"),
             _ => None,
         }
     }
 
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
     fn hoist_locals(&mut self, body: &SyntaxNode) {
-        let found = in_source_order(body);
+        let found: Vec<Found> = in_source_order(body, true).collect();
         // The names a `Dim` or a loop declares anywhere in the Sub: an
         // assignment above one of them assigns that variable, as B4X hoists
         // declarations.
@@ -1489,6 +1505,12 @@ impl Lowerer {
                             {
                                 self.note_declaration(&text, origin, &Ty::Object, &used);
                                 self.declare_local(&text, Ty::Object, range(&name));
+                            } else if !self.globals.contains_key(&k)
+                                && let Some(history) = self.local_history.get_mut(&k)
+                                && history.first.is_typed_loop()
+                            {
+                                // In source order: after the typed loop.
+                                history.untyped_after_typed = true;
                             }
                         }
                         // A counter not declared before it, in source order,
@@ -1765,9 +1787,10 @@ impl Lowerer {
                 // (recorded over a local, a parameter and a module
                 // variable). Not recorded: over a parameter or a module
                 // variable of type `Object`, and the cases
-                // `untyped_loop_unrecorded` lists. A Sub's name was judged by `loop_variable`, which
-                // lets one through only after the program has an error over
-                // it already, and so has a variable of an unknown type.
+                // `untyped_loop_unrecorded` lists. A Sub's name was judged
+                // by `loop_variable`, which lets one through only after the
+                // program has an error over it already, and so has a
+                // variable of an unknown type.
                 if child(node, TYPE_REF).is_none()
                     && !self.in_class_globals
                     && !self.subs.contains_key(&key(&text))
@@ -1943,24 +1966,22 @@ impl Lowerer {
         {
             // B4J: "Cannot modify Const variable." (recorded), for a `For`
             // and a `For Each v As Int` in a Sub over a module `Int` `Const`.
-            let recorded = !self.in_process_globals
+            let refusal = if !self.in_process_globals
                 && self.recorded_const(var)
                 && *ty == Ty::Int
-                && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some());
-            let message = if recorded {
+                && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some())
+            {
                 Refusal::Recorded(format!("`{text}` is a `Const`: a loop cannot loop over it"))
-                    .message()
             } else if self.redeclared_const(var) {
-                redeclared_const_open(text, "may be looped over")
+                redeclared_const(text, "may be looped over")
             } else {
                 Refusal::open(
                     format!("`{text}` is a `Const`"),
                     "a loop may loop over it here",
                     "use another name",
                 )
-                .message()
             };
-            self.const_error(var, range(name), message);
+            self.const_error(var, range(name), refusal.message());
             self.refused_loop(node, text, name);
             return LoopVar::Refused;
         }

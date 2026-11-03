@@ -1916,6 +1916,17 @@ fn for_each_without_as_over_a_declared_variable() {
         "",
         "    For Each n In Array As Int(5)\n    Next\n    For Each n In Array As Int(6)\n    Next\n    Log(n)\n",
     ));
+    // Only a typed loop before it counts: one after it, over a name the
+    // untyped loop does not declare (a built-in's, a `Type`'s), leaves it
+    // as it is (accepted on origin/dev; found by the review of #88).
+    for name in ["Abs", "Point"] {
+        ok(&app(
+            "    Type Point (X As Int)\n",
+            &format!(
+                "    For Each {name} In Array As Int(1)\n    Next\n    For Each {name} As Object In Array As Int(1)\n    Next\n"
+            ),
+        ));
+    }
     // Not recorded: an Object declared again after the loop, the name
     // assigned or read before it, an Object a typed loop declared first, a
     // module variable or a parameter of type Object.

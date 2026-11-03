@@ -50,7 +50,8 @@ pub const FAMILIES: &[Family] = &[
         about: "one to three statements that declare (Dim, For, typed or \
                 untyped For Each), assign or read one name, in source order, \
                 in a Sub where it is otherwise a plain local, a parameter or a \
-                module variable of type Int or Object, or in Process_Globals",
+                module variable of type Int or Object, or in Process_Globals; \
+                the name an ordinary one, a built-in's, a Type's or a Sub's",
         generate: declarations::programs,
     },
 ];
