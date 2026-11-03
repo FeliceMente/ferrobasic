@@ -83,9 +83,9 @@ End Sub
   an error (B4J: "Current declaration does not match previous one",
   recorded); FerroBASIC applies this to any name a `For` declares, and to
   a later `Dim` or typed `For` of another type too, as declarations are
-  taken in source order (`for_each_other_type_after_counter`,
-  `dim_other_type_after_counter`, `typed_counter_other_type_after_counter`
-  ask B4J for an ordinary name). A `For Each` without `As` over it is an error wherever it is,
+  taken in source order, as B4J does for an ordinary name (recorded:
+  `for_each_other_type_after_counter`, `dim_other_type_after_counter`,
+  `typed_counter_other_type_after_counter`). A `For Each` without `As` over it is an error wherever it is,
   first or not (B4J: the same message, recorded). After a refused loop
   over it, the program has an error already, and the loops after it are
   not judged. A
@@ -211,8 +211,8 @@ End Sub
 - The counter of `For i = …` is implicitly declared as `Int` if it was not
   declared before. A name that nothing in the Sub or the module declares,
   and that is not a Sub, a built-in or a `Type`, is declared by an
-  assignment to it, as a `String` (recorded: `undeclared_variable`; its
-  type is *(open)*: `undeclared_variable_type`); with a `Dim` or a loop of
+  assignment to it, as a `String` (recorded: `undeclared_variable`,
+  `undeclared_variable_type`); with a `Dim` or a loop of
   it anywhere in the Sub, the hoisted declaration is that variable. Reading a name nothing
   declares or assigns is *(open)*, so a compile error.
 - Two declarations of the same name in one Sub: *(open)*. Provisionally they

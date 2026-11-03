@@ -78,8 +78,9 @@ related tests stay `pending-recording`.
       (recording: `level0/undeclared_variable`). FerroBASIC makes it a
       `String`, as old forum posts say, unless a `Dim` or a loop of the
       Sub declares the name, before or after (declarations are hoisted).
-- [ ] Which type such a variable has (`level0/undeclared_variable_type`),
-      and whether a read of a name nothing declares or assigns builds.
+- [x] Such a variable is a `String`: `GetType` gives `java.lang.String`,
+      and `+ 1` on it gives `6` (recording: `level0/undeclared_variable_type`).
+- [ ] Whether a read of a name nothing declares or assigns builds.
 - [x] A variable declared without `As` (`Dim x`, `Dim x = 5`) is a `String`
       (recording: `level0/dim_without_as`).
 - [x] Two `Dim`s of the same name and type in one Sub are one variable,
@@ -130,8 +131,8 @@ needs a recorded test):
 - [x] `For` evaluates the step, then the limit, then the start (recording:
       `level0/for_evaluation_order`). That the start is assigned after the
       limit is evaluated, so a limit reading the counter reads its old
-      value, follows, and `level0/for_limit_reads_counter` asks the next run
-      to confirm it.
+      value, follows: `For i = 1 To i` with `i = 3` counts to 3 (recording:
+      `level0/for_limit_reads_counter`).
 - [ ] Call depth before `java.lang.StackOverflowError` (FerroBASIC: 10,000
       frames). The error is not caught by `Try`, as Java `Error`s escape the
       generated `catch (Exception e)`.
@@ -179,8 +180,8 @@ needs a recorded test):
       4.5))` prints `3` (recording: `level0/iif_branches`).
 - [x] Every `Case` value is evaluated, in order, before any is compared, as
       when they are passed to `BA.switchObjectToInt` (recording:
-      `level0/case_values_evaluated`); `level0/case_values_evaluated_else`
-      asks the next run to confirm it when `Case Else` runs.
+      `level0/case_values_evaluated`), also when `Case Else` runs
+      (recording: `level0/case_values_evaluated_else`).
 - [ ] Exact texts of JDK-generated messages (`ClassCastException`,
       `IndexOutOfBoundsException`, …) seen through `LastException.Message`.
       `SortType`'s wrapped `IllegalArgumentException` (an item of another
@@ -201,10 +202,11 @@ needs a recorded test):
 - [x] A List used as a Map key compares by its contents, as an `ArrayList`
       does (recording: `level0/list_as_map_key`). FerroBASIC follows Java's
       `HashMap` for a List changed after it was put, or one that holds
-      itself (`level0/list_key_changed`, `list_key_self`, to record).
-- [ ] A Map used as a Map key, alone or inside a List key: compared by
-      identity in FerroBASIC; B4J's `MyMap` may compare by contents, as
-      `LinkedHashMap` does (`level0/map_as_map_key`).
+      itself, as B4J does (recordings: `level0/list_key_changed`,
+      `level0/list_key_self`).
+- [x] A Map used as a Map key, alone or inside a List key, compares by
+      identity: two Maps with the same contents are two keys (recording:
+      `level0/map_as_map_key`).
 
 Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 
@@ -215,25 +217,29 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] Whether the call of such a Sub has a value: B4J declares Subs without
       `As` as returning a `String`, so `Log(NoType)` may print `5`;
       FerroBASIC gives the call no value (`level0/untyped_sub_return_value_used`).
+      Recording run 15 builds it and prints `5`, to apply.
 - [x] A parameter without `As` is a `String` (recording:
       `level0/parameter_without_as`).
 - [x] A `Char` `=` an `Int` converts the `Int` to a `Char`, the first
       character of its text: B4J generates `_c==BA.ObjectToChar(65)`, and
       jCore's `ObjectToChar` takes `"65".charAt(0)`, `'6'`, so `"A" = 65` is
       `False` (recording and generated code: `level0/char_number_compare`).
-- [ ] The number on the left (`65 = c`); a `Char` `=` a `Long`, `Short` or
-      `Byte`, whose Java text is B4J's, so very likely as an `Int`; and a
-      `Char` `=` a `Double`, whose Java text (`1.0E-5`) can start with
-      another character than B4J's (`0.00001`) (`level0/number_eq_char`,
-      `level0/char_eq_long`, `level0/char_eq_double`). FerroBASIC refuses
-      them.
-      A `Char` with `<` is refused ("Cannot cast type: {Type=Char,…} to:
-      number", recording: `level0/char_string_compare`), next to a String
-      at least; between two Chars it is open (`level0/char_less_char`).
-- [ ] `<` between a String and a Boolean, which FerroBASIC refuses as it
-      refuses two Booleans (recorded: `level0/boolean_less`), and between
-      a String and an `Object`, which it refuses as open
-      (`level0/string_less_boolean`, `level0/string_less_object`).
+- [ ] A `Char` `=` a `Long`, `Short` or `Byte`, whose Java text is B4J's,
+      so very likely as an `Int`; and a `Char` `=` a `Double`, whose Java
+      text (`1.0E-5`) can start with another character than B4J's
+      (`0.00001`) (`level0/char_eq_long`, `level0/char_eq_double`).
+      FerroBASIC refuses them; recording run 15 builds both, to apply.
+      The number on the left is refused ("Cannot cast type:
+      {Type=Char,…} to: number", recording: `level0/number_eq_char`), as
+      FerroBASIC refuses it.
+- [x] A `Char` with `<` is refused ("Cannot cast type: {Type=Char,…} to:
+      number"), next to a String or another Char (recordings:
+      `level0/char_string_compare`, `level0/char_less_char`).
+- [x] `<` between a String and a Boolean is refused, as between two
+      Booleans (recordings: `level0/string_less_boolean`,
+      `level0/boolean_less`).
+- [ ] `<` between a String and an `Object`, which FerroBASIC refuses
+      (`level0/string_less_object`); recording run 15 builds it, to apply.
 - [x] With `=` and `<>` the left operand decides: number vs String
       compares numerically (`10 = "10.0"` is `True`), String vs number as
       Strings (`"10.0" = 10` is `False`); with `<` and `>` both compare
@@ -247,7 +253,8 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `Null` builds and raises `NumberFormatException` when it runs, as
       `BA.ObjectToNumber` parses `"null"` (recording:
       `level0/null_number_compare`); with another number type it is open
-      (`level0/double_eq_null`).
+      (`level0/double_eq_null`). Recording run 15 shows a `Double` raises it
+      too, to apply.
 - [x] A real literal may start with its decimal point (`.08`), also with
       an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
       `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the
@@ -368,14 +375,15 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/local_typed_for_each_other_type_after_counter_named_like_sub`).
       FerroBASIC now follows that rule instead of a table of recorded
       combinations.
-- [ ] A `For Each v As String` over that name again, which FerroBASIC
-      accepts as `Int` and `Double` are
-      (`level0/local_typed_for_each_string_loop_again_named_like_sub`).
-- [ ] A `For Each v As T`, a `Dim` or a typed `For v As T` of another type
-      than `Int` after a `For` over an ordinary name that nothing declared
-      before: FerroBASIC refuses them, as the counter declares the name an
-      `Int` first, the rule recorded for a name of a Sub
-      (`level0/for_each_other_type_after_counter`,
+- [x] A `For Each v As String` over that name again builds, as with `Int`
+      and `Double` (recording:
+      `level0/local_typed_for_each_string_loop_again_named_like_sub`).
+- [x] After a `For` over an ordinary name that nothing declared before, a
+      `For Each v As T` or a `Dim` of another type than `Int` is refused
+      ("Current declaration does not match previous one"), as the counter
+      declares the name an `Int` first, and so is any typed `For v As T`
+      ("Regular variable followed by '=' expected") (recordings:
+      `level0/for_each_other_type_after_counter`,
       `level0/dim_other_type_after_counter`,
       `level0/typed_counter_other_type_after_counter`).
 - [x] A `For Each v As T` in another Sub over a loop variable of
@@ -399,9 +407,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `Process_Globals`? FerroBASIC refuses it. Classes arrive at Level 1,
       so it needs a class module in the corpus to record.
 - [x] A loop variable of `Process_Globals` named like a `Type` builds
-      (recording: `level0/process_globals_loop_named_like_type`); whether the
-      `Type` stays usable, and what the name reads as, is open
-      (`level0/process_globals_loop_named_like_type_used`).
+      (recording: `level0/process_globals_loop_named_like_type`); the
+      `Type` stays usable, and the name reads as the variable (recording:
+      `level0/process_globals_loop_named_like_type_used`).
 - [ ] Named `Bit` or `Until`, B4J's compiler
       fails (recordings: `level0/process_globals_loop_named_like_bit`,
       `level0/process_globals_loop_named_like_keyword`); other keywords and
@@ -415,18 +423,20 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       not match previous one", recordings: `level0/for_each_untyped_local`,
       `level0/for_each_untyped_other_type`). `ferro-compare` found that
       FerroBASIC accepted it.
-- [ ] The same over a local `Object`, a parameter, a local that a `Dim`
-      declares only after the loop, a module variable from a Sub, a
-      variable of `Process_Globals` there, and a name never declared
-      (`level0/for_each_untyped_object`, `level0/for_each_untyped_parameter`,
-      `level0/for_each_untyped_declared_after`,
+- [x] A `For Each` without `As` declares its variable an `Object`: over an
+      `Int` module variable, from a Sub or in `Process_Globals`, over a
+      `String` parameter, and before a `Dim n As Int` of the same name, it
+      is refused ("Current declaration does not match previous one",
+      "Previous: Object" for the later `Dim`; recordings:
       `level0/for_each_untyped_module_variable`,
       `level0/process_globals_for_each_untyped`,
-      `level0/for_each_untyped_undeclared`). FerroBASIC refuses them. Over
-      an undeclared name B4J likely builds it, in a class module at least:
-      `JSONWebToken.bas`, a class of the real-world corpus, loops
-      `For Each Key In Claims.Keys` with `Key` declared nowhere; the
-      pending test asks in the main module.
+      `level0/for_each_untyped_parameter`,
+      `level0/for_each_untyped_declared_after`).
+- [ ] Over a local `Object` and over a name never declared, which
+      FerroBASIC refuses (`level0/for_each_untyped_object`,
+      `level0/for_each_untyped_undeclared`); recording run 15 builds both,
+      to apply. `JSONWebToken.bas`, a class of the real-world corpus,
+      loops `For Each Key In Claims.Keys` with `Key` declared nowhere.
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls
@@ -507,16 +517,17 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         value reading the constant (recordings:
         `level0/const_dim_after_no_value`, `level0/const_dim_after_string`,
         `level0/const_dim_after_in_if`, `level0/const_dim_after_from_const`);
-  - [ ] the same pair assigned after a `Dim` with no value, or of a
+  - [x] the same pair assigned after a `Dim` with no value, or of a
         `String`, a `String` `Dim` inside an `If`, a `Dim` with no value
-        inside an `If`, and one inside an `If` that does not run (which
-        keeps the constant's value in FerroBASIC), all of which FerroBASIC
-        accepts as the recorded ones (`level0/const_dim_after_no_value_assign`,
+        inside an `If`, and one inside an `If` that does not run, which
+        keeps the constant's value (recordings:
+        `level0/const_dim_after_no_value_assign`,
         `level0/const_dim_after_string_assign`,
         `level0/const_dim_after_in_if_string`,
         `level0/const_dim_after_in_if_no_value`,
-        `level0/const_dim_after_in_if_not_taken`); a loop over the pair or an
-        item of it, assigning it in `Process_Globals`, and other types;
+        `level0/const_dim_after_in_if_not_taken`);
+  - [ ] a loop over the pair or an item of it, assigning it in
+        `Process_Globals`, and other types;
   - [x] a `Dim` with no value in a Sub with a module constant's name is
         refused: "Cannot redeclare a const variable." (recording:
         `level0/const_local_dim_no_value`);

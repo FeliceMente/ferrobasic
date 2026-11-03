@@ -1239,8 +1239,8 @@ impl Lowerer {
                 // An assignment to a name nothing in the Sub, nor the
                 // module, declares, and that is not a Sub, a built-in or a
                 // `Type`, declares it: B4J builds `Undeclared = 5`
-                // (recorded: `undeclared_variable`). Its type is a `String`,
-                // as old forum posts say; `undeclared_variable_type` asks.
+                // (recorded: `undeclared_variable`). Its type is a `String`
+                // (recorded: `undeclared_variable_type`).
                 ASSIGN_STMT => {
                     let Some(target) = exprs(&node).into_iter().next() else {
                         continue;

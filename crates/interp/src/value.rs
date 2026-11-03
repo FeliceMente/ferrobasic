@@ -921,8 +921,8 @@ fn absorb(work: &mut Vec<Value>, mut values: Vec<Value>) {
 /// keyed by its elements, as Java's `ArrayList.hashCode` and `equals` key
 /// it (`level0/list_as_map_key`): the key is taken when the entry is put,
 /// so a List changed afterwards is no longer found by itself, as in Java.
-/// Other objects, Maps included, compare by identity (whether B4J keys a
-/// Map by its contents is an open question, `level0/map_as_map_key`).
+/// Other objects, Maps included, compare by identity, as B4J keys a Map
+/// (`level0/map_as_map_key`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HKey {
     Null,
