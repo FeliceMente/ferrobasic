@@ -14,6 +14,7 @@ fn families_have_their_sizes_and_unique_names() {
         ("const", 65_160),
         ("sub-named-loops", 1_687),
         ("comparisons", 594),
+        ("declarations", 6_660),
     ] {
         let programs = (family(name).generate)();
         assert_eq!(programs.len(), size, "{name}");

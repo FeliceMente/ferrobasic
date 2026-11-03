@@ -4,6 +4,7 @@
 
 mod comparisons;
 mod consts;
+mod declarations;
 mod sub_named_loops;
 
 /// A generated program: its name, unique in its family, and its source.
@@ -43,6 +44,14 @@ pub const FAMILIES: &[Family] = &[
                 `Log` and in `If`; and two comparisons in a row, bare or \
                 with the first in parentheses",
         generate: comparisons::programs,
+    },
+    Family {
+        name: "declarations",
+        about: "one to three statements that declare (Dim, For, typed or \
+                untyped For Each), assign or read one name, in source order, \
+                in a Sub where it is otherwise a plain local, a parameter or a \
+                module variable of type Int or Object, or in Process_Globals",
+        generate: declarations::programs,
     },
 ];
 
