@@ -958,7 +958,8 @@ fn subs_calls_and_returns() {
     let m = ok(
         "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Dim s As String = F\nEnd Sub\nSub F\nEnd Sub\n",
     );
-    assert_eq!(m.subs[2].ret, Ty::String);
+    let f = m.subs.iter().find(|s| s.name == "F").expect("Sub F");
+    assert_eq!(f.ret, Ty::String);
     // `AppStart` returns nothing.
     let d = errors(
         "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub F\n  Dim s As String = AppStart(Null)\nEnd Sub\n",
@@ -1915,12 +1916,25 @@ fn for_each_without_as_over_a_declared_variable() {
         "",
         "    For Each n In Array As Int(5)\n    Next\n    For Each n In Array As Int(6)\n    Next\n    Log(n)\n",
     ));
-    // Not recorded: an Object declared again after the loop, a module
-    // variable or a parameter of type Object.
+    // Not recorded: an Object declared again after the loop, the name
+    // assigned or read before it, an Object a typed loop declared first, a
+    // module variable or a parameter of type Object.
     for (pg, body) in [
         (
             "",
             "    For Each n In Array As Int(5)\n    Next\n    Dim n As Object\n",
+        ),
+        (
+            "",
+            "    n = 5\n    For Each n In Array As Int(5)\n    Next\n",
+        ),
+        (
+            "",
+            "    Log(n)\n    For Each n In Array As Int(5)\n    Next\n",
+        ),
+        (
+            "",
+            "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
         ),
         (
             "    Private n As Object\n",

@@ -442,10 +442,14 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/for_each_untyped_object`, `level0/for_each_untyped_undeclared`).
       `JSONWebToken.bas`, a class of the real-world corpus, loops
       `For Each Key In Claims.Keys` with `Key` declared nowhere.
-- [ ] Over a module variable or a parameter of type `Object`, and with a
-      `Dim` of the name as an `Object` after the loop: FerroBASIC refuses
-      them (`level0/for_each_untyped_module_object`,
-      `level0/for_each_untyped_object_declared_after`).
+- [ ] Over a module variable or a parameter of type `Object`, with a
+      `Dim` of the name as an `Object` after the loop, with the name
+      assigned or read before the loop (where an assignment may declare a
+      `String`), and over an `Object` that a typed loop declared first:
+      FerroBASIC refuses them (`level0/for_each_untyped_module_object`,
+      `level0/for_each_untyped_object_declared_after`,
+      `level0/for_each_untyped_assigned_before`,
+      `level0/for_each_untyped_after_typed_object`).
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls

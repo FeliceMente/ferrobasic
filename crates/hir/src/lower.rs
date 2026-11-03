@@ -54,12 +54,9 @@ struct Lowerer {
     /// variable, `false` for a refused `Dim`. Their uses mean the Sub
     /// (recorded).
     sub_named_locals: HashMap<String, bool>,
-    /// The current Sub's locals a `For Each` without `As` declares (an
-    /// `Object`, recorded: `for_each_untyped_declared_after`), and those of
-    /// them that a later `Dim` or typed loop declares again as an `Object`,
-    /// which is not recorded.
-    untyped_loop_locals: HashSet<String>,
-    untyped_loop_redeclared: HashSet<String>,
+    /// The current Sub's `Object` locals a `For Each` without `As` loops
+    /// over, by name, and how they were declared.
+    untyped_loops: HashMap<String, UntypedLoop>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -312,6 +309,38 @@ fn untyped_for_each(name: &str, other: Option<&str>) -> String {
             "`{name}` is already declared: whether a `For Each` without `As` may loop over it \
              here is not known yet, so write `For Each {name} As <type> In ...`"
         ),
+    }
+}
+
+/// How the `Object` local a `For Each` without `As` loops over was
+/// declared, when that matters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UntypedLoop {
+    /// By the loop, as nothing declared or used it before (recorded:
+    /// `for_each_untyped_undeclared`).
+    Declared,
+    /// By the loop, and again as an `Object` after it: not recorded.
+    Redeclared,
+    /// By the loop, but used before it, where an assignment may declare a
+    /// `String`: not recorded.
+    UsedBefore,
+    /// By a typed loop before it, not by a `Dim`: not recorded.
+    AfterTypedLoop,
+}
+
+impl UntypedLoop {
+    /// Why the loop over `name` is refused as not recorded, if it is.
+    fn unrecorded(self, name: &str) -> Option<String> {
+        let why = match self {
+            UntypedLoop::Declared => return None,
+            UntypedLoop::Redeclared => "declared again as Object after this loop",
+            UntypedLoop::UsedBefore => "used before this loop",
+            UntypedLoop::AfterTypedLoop => "declared by a typed loop before this one",
+        };
+        Some(format!(
+            "`{name}` is {why}: whether a `For Each` without `As` may loop over it here is not \
+             known yet, so write `For Each {name} As <type> In ...`"
+        ))
     }
 }
 
@@ -1026,8 +1055,7 @@ impl Lowerer {
             .collect();
         self.ret = sub.ret.clone();
         self.sub_named_locals.clear();
-        self.untyped_loop_locals.clear();
-        self.untyped_loop_redeclared.clear();
+        self.untyped_loops.clear();
         self.sub_named_loops.clear();
         self.in_class_globals = self.class_globals == Some(id);
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
@@ -1201,9 +1229,11 @@ impl Lowerer {
     /// declared before it: one variable, or refused as two declarations?
     /// Not recorded.
     fn note_redeclared(&mut self, name: &str, ty: &Ty) {
-        let k = key(name);
-        if *ty == Ty::Object && self.untyped_loop_locals.contains(&k) {
-            self.untyped_loop_redeclared.insert(k);
+        if *ty == Ty::Object
+            && let Some(state) = self.untyped_loops.get_mut(&key(name))
+            && *state == UntypedLoop::Declared
+        {
+            *state = UntypedLoop::Redeclared;
         }
     }
 
@@ -1227,8 +1257,21 @@ impl Lowerer {
                 _ => Vec::new(),
             })
             .collect();
+        // In source order: the names used so far, and the names a typed
+        // loop declared first.
+        let mut used: HashSet<String> = HashSet::new();
+        let mut typed_loop_first: HashSet<String> = HashSet::new();
         for node in body.descendants() {
+            let first_by_loop = |this: &Self, name: &SyntaxNode, set: &mut HashSet<String>| {
+                let text = name_of(name);
+                if this.lookup_var(&text).is_none() {
+                    set.insert(key(&text));
+                }
+            };
             match node.kind() {
+                NAME_REF => {
+                    used.insert(key(&name_of(&node)));
+                }
                 DIM_STMT => {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
@@ -1241,6 +1284,7 @@ impl Lowerer {
                     (Some(name), Some(t)) => {
                         let ty = self.resolve_type(&t);
                         self.note_redeclared(&name_of(&name), &ty);
+                        first_by_loop(self, &name, &mut typed_loop_first);
                         self.declare_dim_local(&name_of(&name), ty, range(&name), false);
                     }
                     // Not declared before it, in source order, the variable
@@ -1249,6 +1293,8 @@ impl Lowerer {
                     // recorded: `for_each_untyped_declared_after`), and a
                     // name nothing declares builds (recorded:
                     // `for_each_untyped_undeclared`).
+                    // Used before it, or declared first by a typed loop, it is
+                    // not recorded.
                     (Some(name), None) => {
                         let text = name_of(&name);
                         let k = key(&text);
@@ -1258,7 +1304,16 @@ impl Lowerer {
                             && builtins::lookup(Owner::Global, &text).is_none()
                         {
                             self.declare_local(&text, Ty::Object, range(&name));
-                            self.untyped_loop_locals.insert(k);
+                            let state = if used.contains(&k) {
+                                UntypedLoop::UsedBefore
+                            } else {
+                                UntypedLoop::Declared
+                            };
+                            self.untyped_loops.insert(k, state);
+                        } else if typed_loop_first.contains(&k) {
+                            self.untyped_loops
+                                .entry(k)
+                                .or_insert(UntypedLoop::AfterTypedLoop);
                         }
                     }
                     _ => {}
@@ -1267,6 +1322,7 @@ impl Lowerer {
                     (Some(name), Some(t)) => {
                         let ty = self.resolve_type(&t);
                         self.note_redeclared(&name_of(&name), &ty);
+                        first_by_loop(self, &name, &mut typed_loop_first);
                         self.declare_loop_local(&name_of(&name), ty, range(&name), true);
                     }
                     // A counter not declared before it, in source order, is
@@ -1539,19 +1595,19 @@ impl Lowerer {
                     return;
                 };
                 // Outside `Class_Globals`, where a loop must use a variable
-                // declared with `Dim`, a `For Each` without `As` cannot loop
-                // over a variable declared before it. A Sub's name was
-                // judged by `loop_variable`, which lets one through only
-                // after the program has an error over it already, and so
-                // has a variable of an unknown type.
-                // Such a loop declares its variable an `Object` (recorded:
+                // declared with `Dim`, a `For Each` without `As` declares its
+                // variable an `Object` (recorded:
                 // `for_each_untyped_declared_after`): it loops over a local
-                // `Object` declared before it, or by it (recorded:
-                // `for_each_untyped_object`, `for_each_untyped_undeclared`),
-                // and over a variable of another type it is refused,
-                // wherever it is declared (recorded over a local, a
-                // parameter and a module variable). Over a parameter or a
-                // module variable of type `Object` it is not recorded.
+                // `Object` that a `Dim` declared before it, or that it
+                // declares (recorded: `for_each_untyped_object`,
+                // `for_each_untyped_undeclared`), and over a variable of
+                // another type it is refused, wherever it is declared
+                // (recorded over a local, a parameter and a module
+                // variable). Not recorded: over a parameter or a module
+                // variable of type `Object`, and the cases `UntypedLoop`
+                // lists. A Sub's name was judged by `loop_variable`, which
+                // lets one through only after the program has an error over
+                // it already, and so has a variable of an unknown type.
                 if child(node, TYPE_REF).is_none()
                     && !self.in_class_globals
                     && !self.subs.contains_key(&key(&text))
@@ -1559,15 +1615,9 @@ impl Lowerer {
                 {
                     let message = match var {
                         VarRef::Local(id) if id.0 as usize >= self.params && ty == Ty::Object => {
-                            if self.untyped_loop_redeclared.contains(&key(&text)) {
-                                Some(format!(
-                                    "`{text}` is declared again as Object after this `For Each` \
-                                     without `As` declared it: whether that is one variable is \
-                                     not known yet, so declare it once"
-                                ))
-                            } else {
-                                None
-                            }
+                            self.untyped_loops
+                                .get(&key(&text))
+                                .and_then(|state| state.unrecorded(&text))
                         }
                         _ if ty == Ty::Object => Some(untyped_for_each(&text, None)),
                         _ => Some(untyped_for_each(&text, Some(&self.ty_name(&ty)))),

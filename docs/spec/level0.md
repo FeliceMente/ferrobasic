@@ -341,15 +341,16 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   declares it (recorded: `for_each_untyped_undeclared`), and a later `Dim`
   of another type is an error (B4J: "Current declaration does not match
   previous one", recorded: `for_each_untyped_declared_after`); over a
-  local `Object` declared before it, it loops with it (recorded:
+  local `Object` a `Dim` declared before it, it loops with it (recorded:
   `for_each_untyped_object`); over a local, a parameter or a module
   variable of another type it is an error, in `Process_Globals` too
   (recorded: `for_each_untyped_local`, `for_each_untyped_other_type`,
   `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
   `process_globals_for_each_untyped`). Over a parameter or a module
   variable of type `Object`, over an undeclared name in
-  `Process_Globals`, or with a later `Dim` of the name as an `Object`, it
-  is *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
+  `Process_Globals`, with a later `Dim` of the name as an `Object`, with
+  the name used before the loop, or over an `Object` a typed loop declared,
+  it is *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing
