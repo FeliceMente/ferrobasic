@@ -488,10 +488,14 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
         `level0/const_dim_after_no_value`, `level0/const_dim_after_string`,
         `level0/const_dim_after_in_if`, `level0/const_dim_after_from_const`);
   - [ ] the same pair assigned after a `Dim` with no value, or of a
-        `String`, and a `String` `Dim` inside an `If`, which FerroBASIC
+        `String`, a `String` `Dim` inside an `If`, a `Dim` with no value
+        inside an `If`, and one inside an `If` that does not run (which
+        keeps the constant's value in FerroBASIC), all of which FerroBASIC
         accepts as the recorded ones (`level0/const_dim_after_no_value_assign`,
         `level0/const_dim_after_string_assign`,
-        `level0/const_dim_after_in_if_string`); a loop over the pair or an
+        `level0/const_dim_after_in_if_string`,
+        `level0/const_dim_after_in_if_no_value`,
+        `level0/const_dim_after_in_if_not_taken`); a loop over the pair or an
         item of it, assigning it in `Process_Globals`, and other types;
   - [x] a `Dim` with no value in a Sub with a module constant's name is
         refused: "Cannot redeclare a const variable." (recording:
