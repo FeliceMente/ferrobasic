@@ -326,40 +326,43 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       of the two variables that `For` counts it cannot show, as every read
       of the name calls the Sub (FerroBASIC: the Sub's own, which the
       `For Each` declares).
-- [ ] The same with another type than `Int` after a counter of the Sub,
-      which would make the counter that type
-      (`level0/local_typed_for_each_other_type_after_counter_named_like_sub`),
-      and inside a `For` over it, which would share its counter
-      (`level0/local_typed_for_each_in_counter_named_like_sub`), and inside
-      a typed `For Each` of `Process_Globals`, whose variable is a module
-      variable (`level0/process_globals_typed_for_each_named_like_sub_nested`).
-      FerroBASIC refuses them as open.
-- [ ] A `For` over that name after a `For Each v As T` of another number
-      type than `Int` declared it, before it, inside it or after it, in a
-      Sub or from another Sub: does it count as that type? FerroBASIC
-      refuses it as open
-      (`level0/local_counter_after_double_for_each_named_like_sub`).
-- [ ] Every other loop over that name. FerroBASIC settles only the
-      recorded combinations, which `recorded_loop` in
-      `crates/hir/src/lower.rs` lists, and refuses any other as open:
-      - a `For` inside a loop over it, in a Sub or in `Process_Globals`
-        (`level0/local_counter_in_loop_named_like_sub`,
-        `level0/process_globals_counter_in_loop_named_like_sub`);
-      - a `For Each v As T` of another type than `Int` again
-        (`level0/local_typed_for_each_double_loop_again_named_like_sub`,
-        `level0/process_globals_typed_for_each_double_loop_again_named_like_sub`),
-        or in another Sub where a loop variable of `Process_Globals` has
-        the name (`level0/local_typed_for_each_double_over_module_variable_named_like_sub`);
-      - in another Sub over a loop variable of `Process_Globals`, a loop
-        after another one over the name
-        (`level0/process_globals_loop_named_like_sub_loop_elsewhere_again`,
-        `level0/local_typed_for_each_over_module_variable_loop_again_named_like_sub`);
-      - a third loop over it, one after the other or nested, as every
-        recording has at most two
-        (`level0/local_counter_named_like_sub_loop_three_times`,
-        `level0/process_globals_loop_named_like_sub_loop_three_times`,
-        `level0/local_typed_for_each_counter_typed_named_like_sub`,
-        `level0/local_typed_for_each_named_like_sub_nested_three_deep`).
+- [x] Every other `For` and `For Each v As T` over that name builds, as the
+      variable's own rules allow, and the name still calls the Sub
+      (recording run 14): a `For` inside a loop over it, in a Sub or in
+      `Process_Globals`; three loops, one after the other or nested; a
+      `For Each v As Double` again, also from another Sub over a loop
+      variable of `Process_Globals`; loops after another one in another
+      Sub; a `For` after a `For Each v As Double`, which counts in
+      `Double` steps; and nested loops share the variable (recordings:
+      `level0/local_counter_in_loop_named_like_sub`,
+      `level0/process_globals_counter_in_loop_named_like_sub`,
+      `level0/local_counter_named_like_sub_loop_three_times`,
+      `level0/process_globals_loop_named_like_sub_loop_three_times`,
+      `level0/local_typed_for_each_counter_typed_named_like_sub`,
+      `level0/local_typed_for_each_named_like_sub_nested_three_deep`,
+      `level0/local_typed_for_each_double_loop_again_named_like_sub`,
+      `level0/process_globals_typed_for_each_double_loop_again_named_like_sub`,
+      `level0/local_typed_for_each_double_over_module_variable_named_like_sub`,
+      `level0/process_globals_loop_named_like_sub_loop_elsewhere_again`,
+      `level0/local_typed_for_each_over_module_variable_loop_again_named_like_sub`,
+      `level0/local_counter_after_double_for_each_named_like_sub`,
+      `level0/local_typed_for_each_in_counter_named_like_sub`,
+      `level0/process_globals_typed_for_each_named_like_sub_nested`). A
+      `For` first declares it an `Int`, so a `For Each` of another type
+      after it is refused (recording:
+      `level0/local_typed_for_each_other_type_after_counter_named_like_sub`).
+      FerroBASIC now follows that rule instead of a table of recorded
+      combinations.
+- [ ] A `For Each v As String` over that name again, which FerroBASIC
+      accepts as `Int` and `Double` are
+      (`level0/local_typed_for_each_string_loop_again_named_like_sub`).
+- [ ] A `For Each v As T`, a `Dim` or a typed `For v As T` of another type
+      than `Int` after a `For` over an ordinary name that nothing declared
+      before: FerroBASIC refuses them, as the counter declares the name an
+      `Int` first, the rule recorded for a name of a Sub
+      (`level0/for_each_other_type_after_counter`,
+      `level0/dim_other_type_after_counter`,
+      `level0/typed_counter_other_type_after_counter`).
 - [x] A `For Each v As T` in another Sub over a loop variable of
       `Process_Globals` is a `For Each` over a module variable of type
       `T`, accepted as recorded below.

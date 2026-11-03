@@ -495,18 +495,32 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `process_globals_for_each_named_like_sub_before_typed`,
   `process_globals_for_each_named_like_sub_nested`,
   `local_typed_for_each_other_type_after_counter_named_like_sub`).
-  Recorded as built, which FerroBASIC does not follow yet: a `For Each v
-  As T` inside a `For` of the Sub over it
-  (`local_typed_for_each_in_counter_named_like_sub`) or nested in
-  `Process_Globals` (`process_globals_typed_for_each_named_like_sub_nested`);
-  a `For` over a loop variable that a `For Each v As T` of another number
-  type than `Int` declared
-  (`local_counter_after_double_for_each_named_like_sub`); and the other
-  pending tests listed in [open-questions.md](../open-questions.md).
-  Not recorded (*open*): any other combination of loops over the name, as
-  FerroBASIC settles only the recorded ones (`recorded_loop` in
-  `crates/hir/src/lower.rs`), and a `Dim` of `Class_Globals` with a Sub's
-  name.
+  Recording run 14 builds every other `For` and `For Each v As T` over
+  such a name, as the variable's own rules allow, and the name still
+  calls the Sub: a `For` inside a loop over it, three loops one after the
+  other or nested, a typed `For Each` of `Double` again, in a Sub or in
+  `Process_Globals` or from another Sub, and a `For` after a `For Each v
+  As Double`, which counts in `Double` steps; nested loops share the
+  variable, so a `For Each` inside a `For` over it ends the `For` after
+  one pass (**recorded**: `local_counter_in_loop_named_like_sub`,
+  `local_counter_named_like_sub_loop_three_times`,
+  `local_counter_after_double_for_each_named_like_sub`,
+  `local_typed_for_each_in_counter_named_like_sub`,
+  `local_typed_for_each_counter_typed_named_like_sub`,
+  `local_typed_for_each_double_loop_again_named_like_sub`,
+  `local_typed_for_each_double_over_module_variable_named_like_sub`,
+  `local_typed_for_each_named_like_sub_nested_three_deep`,
+  `local_typed_for_each_over_module_variable_loop_again_named_like_sub`,
+  `process_globals_counter_in_loop_named_like_sub`,
+  `process_globals_loop_named_like_sub_loop_elsewhere_again`,
+  `process_globals_loop_named_like_sub_loop_three_times`,
+  `process_globals_typed_for_each_double_loop_again_named_like_sub`,
+  `process_globals_typed_for_each_named_like_sub_nested`). So the name is
+  a loop variable like any other once declared, and only a `For Each`
+  without `As` is refused over it; FerroBASIC follows that rule
+  (`recorded_loop` in `crates/hir/src/lower.rs`). Not recorded (*open*):
+  a `For Each v As String` again (`local_typed_for_each_string_loop_again_named_like_sub`),
+  and a `Dim` of `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,

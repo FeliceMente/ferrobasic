@@ -70,27 +70,23 @@ End Sub
   followed by '=' expected", recorded). Every use of such a name in an
   expression, bare, with arguments or as a statement, calls the Sub,
   whatever the loop variable's type, and assigning it is an error,
-  wherever it is (recorded). A loop over such a name is settled only
-  where B4J's answer is recorded, as listed below and in `recorded_loop`
-  (`crates/hir/src/lower.rs`); any other loop over it is *(open)*, so a
-  compile error. Accepted, and the name still calls the Sub (recorded):
-  - the first loop over it in a Sub or in `Process_Globals`: a `For`, or a
-    `For Each v As T` of any type, which declares it; in another Sub, over
-    a loop variable of `Process_Globals`, a `For`, or a `For Each v As
-    Int`, which declares its own variable (only `Int` is recorded there);
-  - in a Sub or in `Process_Globals`, one after the other: a `For` after a
-    `For` or a `For Each v As Int`, and a `For Each v As Int` after
-    either; in another Sub, a `For Each v As Int` after a `For`;
-  - inside a `For Each v As Int` of a Sub, a `For Each v As Int`.
-
-  A `For` counts with a number as any `For` does (B4J: "Loop iterator
-  should be a numeric variable", recorded). A `For Each` without `As`
-  over it is an error (B4J: "Current declaration does not match previous
-  one", recorded): in a Sub or in `Process_Globals` after a `For` or a
-  `For Each v As Int` over it, inside a `For` of a Sub over it, and as the
-  first loop of another Sub over a loop variable of `Process_Globals`.
-  Every recording has at most two loops over the name, so a third, one
-  after the other or nested, is *(open)* too. After a refused or open loop
+  wherever it is (recorded). Otherwise the name is a loop variable like
+  any other, which the first loop over it in a Sub or in `Process_Globals`
+  declares: every `For`, and every `For Each v As T`, may loop over it, one
+  after the other, nested, three deep, from another Sub over a loop
+  variable of `Process_Globals`, and of any type its variable has; nested,
+  they share it (recorded: the `*_named_like_sub*` tests). A `For` counts
+  with a number as any `For` does (B4J: "Loop iterator should be a
+  numeric variable", recorded), and as the variable's type: after a
+  `For Each v As Double`, in `Double` steps (recorded). A `For` first
+  declares it an `Int`, so a later `For Each v As T` of another type is
+  an error (B4J: "Current declaration does not match previous one",
+  recorded); FerroBASIC applies this to any name a `For` declares, and to
+  a later `Dim` or typed `For` of another type too, as declarations are
+  taken in source order (`for_each_other_type_after_counter`,
+  `dim_other_type_after_counter`, `typed_counter_other_type_after_counter`
+  ask B4J for an ordinary name). A `For Each` without `As` over it is an error wherever it is,
+  first or not (B4J: the same message, recorded). After a refused loop
   over it, the program has an error already, and the loops after it are
   not judged. A
   `For Each v As T` of a Sub may have the name of a Sub and of a module
