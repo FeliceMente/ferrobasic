@@ -1400,7 +1400,9 @@ fn loops_in_process_globals() {
         assert_eq!(errors(&sub(&body, &app)), [refused(what)], "{body}{app}");
     }
     // A `For` before it declares the name an `Int`: a `For Each` of another
-    // type is refused (recorded), on the `For Each`, for any name.
+    // type is refused (recorded), on the `For Each`, for any name; so are a
+    // `Dim` and a typed `For` of another type after it (pending). The same
+    // type after it, and any type before it, are the counter's variable.
     for (name, app) in [
         ("Bump", format!("{counter_half}{double}")),
         ("Bump", format!("{counter}{typed_string}")),
@@ -1409,6 +1411,26 @@ fn loops_in_process_globals() {
             "    For i = 1 To 2\n    Next\n    For Each i As Double In Array As Double(1.5)\n    Next\n"
                 .to_string(),
         ),
+        // A `Dim` or a typed `For` of another type after it, also with the
+        // counter inside a block.
+        (
+            "i",
+            "    For i = 1 To 2\n    Next\n    Dim i As Double = 2.5\n".to_string(),
+        ),
+        (
+            "i",
+            "    If True Then\n        For i = 1 To 2\n        Next\n    End If\n    Dim i As Double = 1.5\n"
+                .to_string(),
+        ),
+        (
+            "k",
+            "    Do While False\n        For k = 1 To 2\n        Next\n    Loop\n    Dim k As String = \"x\"\n"
+                .to_string(),
+        ),
+        (
+            "i",
+            "    For i = 1 To 2\n    Next\n    For i As Double = 3 To 4\n    Next\n".to_string(),
+        ),
     ] {
         let diags = errors(&sub("", &app));
         assert_eq!(
@@ -1416,6 +1438,13 @@ fn loops_in_process_globals() {
             [format!("`{name}` is already declared as Int in this Sub")],
             "{app}"
         );
+    }
+    for app in [
+        "    For i = 1 To 2\n    Next\n    Dim i As Int = 5\n    Log(i)\n",
+        "    Dim i As Double\n    For i = 1 To 2 Step 0.5\n    Next\n    Log(i)\n",
+        "    For i = 1 To 2\n    Next\n    For i As Int = 3 To 4\n    Next\n",
+    ] {
+        ok(&sub("", app));
     }
     // After a refused loop, the program has an error already: the loops
     // after it are not judged, so no error follows from them.
