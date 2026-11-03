@@ -472,6 +472,8 @@ pub struct OrderedMap {
     /// The key each entry whose key is a List, Map or StringBuilder had
     /// when it was put, by slot, in increasing order: the key of such an
     /// object can change afterwards (its contents, or a new `Initialize`).
+    /// A removed entry's stays until the next compaction, so that removing
+    /// stays O(1).
     kept: Vec<(usize, HKey)>,
     live: usize,
     cursor: Cursor,
@@ -563,15 +565,22 @@ impl OrderedMap {
         {
             return Ok(Some(std::mem::replace(v, value)));
         }
+        // Every reservation comes first: a failure changes nothing.
         try_grow(&mut self.entries, 1)?;
         self.index.try_reserve(1).map_err(|_| out_of_memory())?;
-        if matches!(key, Value::List(_) | Value::Map(_) | Value::Sb(_)) {
+        let keep = matches!(key, Value::List(_) | Value::Map(_) | Value::Sb(_));
+        if keep {
             try_grow(&mut self.kept, 1)?;
+        }
+        let older = self.index.get(&h).copied();
+        if older.is_some() {
+            try_grow(&mut self.stale, 1)?;
+        }
+        if keep {
             self.kept.push((self.entries.len(), h.clone()));
         }
-        if let Some(&older) = self.index.get(&h) {
+        if let Some(older) = older {
             // A List key that has changed holds `h`: it moves aside.
-            try_grow(&mut self.stale, 1)?;
             self.stale.push((h.clone(), older));
         }
         self.index.insert(h, self.entries.len());
@@ -597,15 +606,13 @@ impl OrderedMap {
         let Some((k, v)) = self.entries[i].take() else {
             return Ok(None);
         };
-        if let Ok(at) = self.kept.binary_search_by_key(&i, |(slot, _)| *slot) {
-            self.kept.remove(at);
-        }
         if matches!(self.cursor.current, Some(Current::Slot(c)) if c == i) {
             self.cursor.current = Some(Current::Removed(k, v.clone()));
         }
         self.live -= 1;
         if self.live == 0 {
             self.entries.clear();
+            self.kept.clear();
         } else if self.entries.len() - self.live > self.live.max(8) {
             // Each compaction follows at least as many removals as it
             // moves entries, so removing stays O(1) amortised.
@@ -637,22 +644,32 @@ impl OrderedMap {
             }
             // Only the live keys move: their positions are updated in place,
             // in order. A key that can change is the one kept when it was
-            // put; an entry not at its key in `index` is a stale one.
-            let live = self
-                .entries
-                .iter()
-                .enumerate()
-                .filter_map(|(j, e)| Some((j, e.as_ref()?)));
+            // put; an entry not at its key in `index` is a stale one. The
+            // keys kept for removed entries go.
+            const REMOVED: usize = usize::MAX;
             let mut next_kept = 0;
-            for (i, (j, (k, _))) in live.enumerate() {
-                let computed;
-                let h = match self.kept.get_mut(next_kept) {
+            let mut i = 0;
+            for (j, entry) in self.entries.iter().enumerate() {
+                let kept = match self.kept.get_mut(next_kept) {
                     Some((slot, h)) if *slot == j => {
-                        *slot = i;
                         next_kept += 1;
-                        &*h
+                        Some((slot, &*h))
                     }
-                    _ => {
+                    _ => None,
+                };
+                let Some((k, _)) = entry else {
+                    if let Some((slot, _)) = kept {
+                        *slot = REMOVED;
+                    }
+                    continue;
+                };
+                let computed;
+                let h = match kept {
+                    Some((slot, h)) => {
+                        *slot = i;
+                        h
+                    }
+                    None => {
                         computed = HKey::shallow(k);
                         &computed
                     }
@@ -665,7 +682,9 @@ impl OrderedMap {
                         }
                     }
                 }
+                i += 1;
             }
+            self.kept.retain(|(slot, _)| *slot != REMOVED);
             self.entries.retain(Option::is_some);
         }
     }
@@ -920,7 +939,9 @@ pub enum HKey {
     /// between [`HKey::ListStart`] and [`HKey::ListEnd`], so a key never
     /// nests, and hashing, comparing and dropping it never recurse.
     List(Vec<HKey>),
+    /// Only inside [`HKey::List`]: where a nested List starts.
     ListStart,
+    /// Only inside [`HKey::List`]: where a nested List ends.
     ListEnd,
     Ref(usize),
 }
@@ -1582,6 +1603,56 @@ mod tests {
         );
         assert_eq!(found(&m, &list(&[1])), Some(2));
         assert_eq!(m.len(), 1);
+    }
+
+    /// Keys that can change keep the key they were put with: compaction
+    /// finds every entry, whether its List changed, its Map variable was
+    /// initialised again, or entries around it were removed.
+    #[test]
+    fn compaction_keeps_keys_that_change() {
+        let mut m = OrderedMap::default();
+        let map_key = Value::new_map(OrderedMap::default());
+        let lists: Vec<Value> = (0..20).map(|i| list(&[i])).collect();
+        m.put(map_key.clone(), Value::Int(-1)).unwrap();
+        for (i, l) in lists.iter().enumerate() {
+            m.put(l.clone(), Value::Int(i as i32)).unwrap();
+            m.put(Value::Int(100 + i as i32), Value::Int(100 + i as i32))
+                .unwrap();
+        }
+        // The Map variable gets a new Map; one List changes.
+        let Value::Map(w) = &map_key else {
+            unreachable!()
+        };
+        *w.borrow_mut() = Some(Rc::new(RefCell::new(OrderedMap::default())));
+        push(&lists[19], Value::Int(0));
+        // Removing every other List and every Int key compacts.
+        for (i, l) in lists.iter().enumerate().filter(|(i, _)| i % 2 == 0) {
+            assert!(m.remove(l).unwrap().is_some(), "{i}");
+        }
+        for i in 0..20 {
+            m.remove(&Value::Int(100 + i)).unwrap();
+        }
+        assert!(m.slots() < 41, "no compaction: {} slots", m.slots());
+        assert_eq!(m.len(), 11);
+        // The Map key and the changed List are found by no key now, but
+        // are still in the map, in order; the others are found.
+        assert_eq!(found(&m, &map_key), None);
+        assert_eq!(found(&m, &lists[19]), None);
+        assert!(matches!(m.entry_at(0), Some((_, Value::Int(-1)))));
+        for (n, i) in (1..20).step_by(2).enumerate() {
+            assert!(matches!(m.entry_at(n + 1), Some((_, Value::Int(v))) if v == i as i32));
+            if i != 19 {
+                assert_eq!(found(&m, &lists[i]), Some(i as i32));
+            }
+        }
+        // Removing the rest one by one empties it cleanly.
+        let keys: Vec<Value> = m.iter().map(|(k, _)| k.clone()).collect();
+        for k in &keys {
+            let _ = m.remove(k).unwrap();
+        }
+        assert_eq!(m.len(), 2);
+        m.clear();
+        assert_eq!((m.len(), m.kept.len(), m.stale.len()), (0, 0, 0));
     }
 
     /// Nested Lists are keys of their own: `[[1]]`, `[1]`, `[[], []]` and
