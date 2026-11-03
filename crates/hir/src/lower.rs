@@ -228,29 +228,83 @@ enum ConstState {
     Reported,
 }
 
+/// Why a program is refused: what B4J answers (recorded), or a question
+/// no recording settles yet, refused until one does
+/// (`docs/open-questions.md`). Every provisional refusal is worded here.
+enum Refusal {
+    Recorded(String),
+    Open {
+        /// What the name is, e.g. "`n` is a `Const`".
+        subject: String,
+        /// What is not known, e.g. "a loop may loop over it here".
+        question: String,
+        /// What to write instead, when there is a way.
+        advice: Option<String>,
+    },
+}
+
+impl Refusal {
+    fn open(subject: impl Into<String>, question: impl Into<String>, advice: &str) -> Refusal {
+        Refusal::Open {
+            subject: subject.into(),
+            question: question.into(),
+            advice: Some(advice.to_string()),
+        }
+    }
+
+    /// A question with no advice to give.
+    fn asked(subject: impl Into<String>, question: impl Into<String>) -> Refusal {
+        Refusal::Open {
+            subject: subject.into(),
+            question: question.into(),
+            advice: None,
+        }
+    }
+
+    fn message(self) -> String {
+        match self {
+            Refusal::Recorded(message) => message,
+            Refusal::Open {
+                subject,
+                question,
+                advice,
+            } => match advice {
+                Some(advice) => {
+                    format!("{subject}: whether {question} is not known yet, so {advice}")
+                }
+                None => format!("{subject}: whether {question} is not known yet"),
+            },
+        }
+    }
+}
+
 /// A declaration again of a constant's name, or a `Const` of a name declared
 /// before, of the same type: not recorded.
 fn const_again_open(name: &str, is_const: bool) -> String {
     if is_const {
-        format!(
-            "`{name}` is already declared: whether a `Const` may declare it again here is not \
-             known yet, so use another name"
+        Refusal::open(
+            format!("`{name}` is already declared"),
+            "a `Const` may declare it again here",
+            "use another name",
         )
     } else {
-        format!(
-            "`{name}` is a `Const`: whether another declaration may declare it again here is not \
-             known yet, so use another name"
+        Refusal::open(
+            format!("`{name}` is a `Const`"),
+            "another declaration may declare it again here",
+            "use another name",
         )
     }
+    .message()
 }
 
 /// A module variable declared both by a `Const` and by a `Dim`: whether it
 /// may change is not known.
 fn redeclared_const_open(name: &str, what: &str) -> String {
-    format!(
-        "`{name}` is declared both by a `Const` and by a `Dim`: whether it {what} is not known \
-         yet"
+    Refusal::asked(
+        format!("`{name}` is declared both by a `Const` and by a `Dim`"),
+        format!("it {what}"),
     )
+    .message()
 }
 
 /// A `Dim` with a Sub's name. B4J: "Variable name cannot be the same as a
@@ -288,13 +342,16 @@ fn recorded_loop(kind: LoopKind) -> bool {
     kind != LoopKind::Untyped
 }
 
-/// A `For Each` without `As` over a parameter or a module variable of
-/// type `Object`: not recorded.
-fn untyped_for_each(name: &str) -> String {
-    format!(
-        "`{name}` is already declared: whether a `For Each` without `As` may loop over it here \
-         is not known yet, so write `For Each {name} As <type> In ...`"
+/// A `For Each` without `As` over a declared variable, which it would
+/// declare an `Object`, where that is not recorded: `subject` says what
+/// the name is.
+fn untyped_for_each(name: &str, subject: &str) -> String {
+    Refusal::open(
+        format!("`{name}` is {subject}"),
+        "a `For Each` without `As` may loop over it here",
+        &format!("write `For Each {name} As <type> In ...`"),
     )
+    .message()
 }
 
 /// Which declarations of one name disagree on its type, for
@@ -751,10 +808,12 @@ impl Lowerer {
                     // Recorded for `Process_Globals` and a Sub, not here.
                     self.error(
                         range(&decl),
-                        format!(
-                            "`{name}` is a Sub: whether a variable of `Class_Globals` may have \
-                             its name is not known yet, so use another name"
-                        ),
+                        Refusal::open(
+                            format!("`{name}` is a Sub"),
+                            "a variable of `Class_Globals` may have its name",
+                            "use another name",
+                        )
+                        .message(),
                     );
                     self.declare_global(name, Ty::Error, range(&decl), Origin::Dim);
                     continue;
@@ -1033,10 +1092,14 @@ impl Lowerer {
         self.refused_loop_names.insert(key(text));
         self.error(
             range(name),
-            format!(
-                "the loop variable `{text}` of `Process_Globals` has the name of a keyword: \
-                 whether it would hide it is not known yet, so use another name"
-            ),
+            Refusal::open(
+                format!(
+                    "the loop variable `{text}` of `Process_Globals` has the name of a keyword"
+                ),
+                "it would hide it",
+                "use another name",
+            )
+            .message(),
         );
         false
     }
@@ -1257,11 +1320,12 @@ impl Lowerer {
         let message = self
             .type_clash(name, &existing, ty, Clash::LocalOfModuleVariable)
             .unwrap_or_else(|| {
-                format!(
-                    "`{name}` is also a module variable ({shown}): whether this loop declares a \
-                     new local or means the module variable is not known yet, so loop over it \
-                     without `As`"
+                Refusal::open(
+                    format!("`{name}` is also a module variable ({shown})"),
+                    "this loop declares a new local or means the module variable",
+                    "loop over it without `As`",
                 )
+                .message()
             });
         self.refused_loop_vars.insert(at);
         // After a constant refused, or asked about once, no error of its own.
@@ -1688,17 +1752,12 @@ impl Lowerer {
                 {
                     let message = match var {
                         VarRef::Local(id) if id.0 as usize >= self.params && ty == Ty::Object => {
-                            self.untyped_loop_unrecorded(&key(&text)).map(|why| {
-                                format!(
-                                    "`{text}` is {why}: whether a `For Each` without `As` may \
-                                     loop over it here is not known yet, so write `For Each \
-                                     {text} As <type> In ...`"
-                                )
-                            })
+                            self.untyped_loop_unrecorded(&key(&text))
+                                .map(|why| untyped_for_each(&text, why))
                         }
                         _ => self
                             .type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach)
-                            .or_else(|| Some(untyped_for_each(&text))),
+                            .or_else(|| Some(untyped_for_each(&text, "already declared"))),
                     };
                     if let Some(message) = message {
                         self.error(range(&name), message);
@@ -1867,14 +1926,17 @@ impl Lowerer {
                 && *ty == Ty::Int
                 && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some());
             let message = if recorded {
-                format!("`{text}` is a `Const`: a loop cannot loop over it")
+                Refusal::Recorded(format!("`{text}` is a `Const`: a loop cannot loop over it"))
+                    .message()
             } else if self.redeclared_const(var) {
                 redeclared_const_open(text, "may be looped over")
             } else {
-                format!(
-                    "`{text}` is a `Const`: whether a loop may loop over it here is not known \
-                     yet, so use another name"
+                Refusal::open(
+                    format!("`{text}` is a `Const`"),
+                    "a loop may loop over it here",
+                    "use another name",
                 )
+                .message()
             };
             self.const_error(var, range(name), message);
             self.refused_loop(node, text, name);
@@ -2259,10 +2321,11 @@ impl Lowerer {
                         } else if field {
                             format!("`{name}` is a `Const`: its fields cannot be assigned")
                         } else {
-                            format!(
-                                "`{name}` is a `Const`: whether this part of it may be assigned is \
-                             not known yet"
+                            Refusal::asked(
+                                format!("`{name}` is a `Const`"),
+                                "this part of it may be assigned",
                             )
+                            .message()
                         },
                     ));
                 }
