@@ -215,9 +215,8 @@ cargo run -p ferro-compare -- --list             # the families
   programs are written under
   `target/compare/programs`, to read or re-run one by hand.
 - The programs run several at a time (`--jobs`, by default one per
-  processor), each for at most 30 seconds (`--timeout`): about 74,000
-  programs take a little over two minutes with both builds on four
-  processors.
+  processor), each for at most 30 seconds (`--timeout`): about 94,000
+  programs take about three minutes with both builds on four processors.
 - The report counts the programs that crash (or time out) in the new build
   only, in both, or in the old one only, are newly accepted, newly refused,
   have more or fewer errors, or the same number of other ones, then shows
