@@ -263,8 +263,6 @@ fn variable_named_like_sub(name: &str) -> String {
 /// The loops of a Sub so far over a name with a Sub's name.
 #[derive(Default)]
 struct LoopsBefore {
-    /// The first loop accepted over it, which declares it.
-    first: Option<LoopKind>,
     /// A loop was refused: the program has an error, and the loops after
     /// it are not judged.
     unrecorded: bool,
@@ -277,20 +275,6 @@ enum LoopKind {
     Typed,
     /// `For Each` without `As`.
     Untyped,
-}
-
-/// Where a loop over a name with a Sub's name is.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum LoopScope {
-    /// In a Sub, over its own loop variable.
-    Sub,
-    /// In `Process_Globals`, over one of its loop variables.
-    ProcessGlobals,
-    /// In another Sub, over a loop variable of `Process_Globals`.
-    Elsewhere,
-    /// In another Sub, over its own loop variable, which has the name of a
-    /// loop variable of `Process_Globals` too.
-    SubOverModule,
 }
 
 /// Whether B4J accepts a loop over a name with a Sub's name, once the
@@ -1219,22 +1203,25 @@ impl Lowerer {
                         self.declare_dim_local(&name_of(&name), ty, range(&name), false);
                     }
                 }
-                FOR_STMT => {
-                    if let (Some(name), Some(t)) = (child(&node, NAME), child(&node, TYPE_REF)) {
+                FOR_STMT => match (child(&node, NAME), child(&node, TYPE_REF)) {
+                    (Some(name), Some(t)) => {
                         let ty = self.resolve_type(&t);
                         self.declare_loop_local(&name_of(&name), ty, range(&name), true);
                     }
-                }
+                    // A counter not declared before it, in source order, is
+                    // an Int, which a later declaration of another type
+                    // cannot change (B4J: "Current declaration does not
+                    // match previous one", recorded:
+                    // `local_typed_for_each_other_type_after_counter_named_like_sub`).
+                    (Some(name), None) => {
+                        let text = name_of(&name);
+                        if self.lookup_var(&text).is_none() {
+                            self.declare_loop_local(&text, Ty::Int, range(&name), false);
+                        }
+                    }
+                    _ => {}
+                },
                 _ => {}
-            }
-        }
-        // An undeclared `For` counter is implicitly an Int.
-        for node in body.descendants().filter(|n| n.kind() == FOR_STMT) {
-            if let Some(name) = child(&node, NAME) {
-                let text = name_of(&name);
-                if self.lookup_var(&text).is_none() {
-                    self.declare_loop_local(&text, Ty::Int, range(&name), false);
-                }
             }
         }
     }
@@ -1609,11 +1596,8 @@ impl Lowerer {
         }
         let kind = loop_kind(node);
         let refused = self.refused_loop_already(node, name, ty);
-        let before = self.sub_named_loops.entry(k).or_default();
         if refused || kind == LoopKind::Untyped {
-            before.unrecorded = true;
-        } else {
-            before.first.get_or_insert(kind);
+            self.sub_named_loops.entry(k).or_default().unrecorded = true;
         }
     }
 
@@ -1665,29 +1649,21 @@ impl Lowerer {
         }
         // A loop variable with a Sub's name: anything else was reported
         // already, or is not one.
-        let (scope, ty) = match &found {
-            Some((VarRef::Global(_), ty)) if self.loop_declared.contains(&k) => {
-                let scope = if self.in_process_globals {
-                    LoopScope::ProcessGlobals
-                } else {
-                    LoopScope::Elsewhere
-                };
-                (scope, ty.clone())
-            }
+        // Whether it is a loop variable of this Sub, or of `Process_Globals`.
+        let (own, ty) = match &found {
+            Some((VarRef::Global(_), ty)) if self.loop_declared.contains(&k) => (false, ty.clone()),
             Some((VarRef::Local(_), ty)) if self.sub_named_locals.get(&k) == Some(&true) => {
                 let module_ty = self
                     .globals
                     .get(&k)
                     .filter(|_| self.loop_declared.contains(&k))
                     .map(|id| self.module.global(*id).ty.clone());
-                let scope = match module_ty {
-                    None => LoopScope::Sub,
-                    Some(module_ty) if module_ty == *ty => LoopScope::SubOverModule,
-                    // Another type than the module variable's: reported
-                    // already (recorded).
-                    Some(_) => return LoopVar::Found(found),
-                };
-                (scope, ty.clone())
+                // Another type than the module variable's: reported already
+                // (recorded).
+                if module_ty.is_some_and(|module_ty| module_ty != *ty) {
+                    return LoopVar::Found(found);
+                }
+                (true, ty.clone())
             }
             _ => return LoopVar::Found(found),
         };
@@ -1696,28 +1672,10 @@ impl Lowerer {
         if before.is_some_and(|b| b.unrecorded) || self.refused_loop_already(node, name, &ty) {
             return LoopVar::Found(found);
         }
-        // Declarations are hoisted, so a `For Each v As T` makes the name a
-        // `T` in the whole Sub; but a `For` before it declared it an `Int`,
-        // and B4J refuses another type ("Current declaration does not match
-        // previous one", recorded:
-        // `local_typed_for_each_other_type_after_counter_named_like_sub`).
-        let counter_first = before.and_then(|b| b.first) == Some(LoopKind::Counter);
-        if scope == LoopScope::Sub && kind == LoopKind::Typed && counter_first && ty != Ty::Int {
-            self.error(
-                range(name),
-                format!(
-                    "`{text}` is a loop variable of this Sub with the name of a Sub: a `For` \
-                     before declared it an Int, so a `For Each` of another type cannot loop \
-                     over it"
-                ),
-            );
-            self.refused_loop(node, text, name);
-            return LoopVar::Refused;
-        }
         if recorded_loop(kind) {
             return LoopVar::Found(found);
         }
-        let what = if matches!(scope, LoopScope::Sub | LoopScope::SubOverModule) {
+        let what = if own {
             "a loop variable of this Sub"
         } else {
             "a module variable"

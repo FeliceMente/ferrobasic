@@ -356,6 +356,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] A `For Each v As String` over that name again, which FerroBASIC
       accepts as `Int` and `Double` are
       (`level0/local_typed_for_each_string_loop_again_named_like_sub`).
+- [ ] A `For Each v As T` of another type than `Int` after a `For` over an
+      ordinary name that nothing declared before: FerroBASIC refuses it, as
+      the counter declares the name an `Int` first, the rule recorded for a
+      name of a Sub (`level0/for_each_other_type_after_counter`).
 - [x] A `For Each v As T` in another Sub over a loop variable of
       `Process_Globals` is a `For Each` over a module variable of type
       `T`, accepted as recorded below.

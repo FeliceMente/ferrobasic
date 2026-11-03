@@ -249,8 +249,9 @@ fn locals_are_hoisted_to_the_whole_sub() {
         .iter()
         .map(|v| v.name.as_str())
         .collect();
-    assert_eq!(names, ["Args", "inner", "i"]);
-    assert_eq!(app_start(&m).locals[2].ty, Ty::Int);
+    // In source order: the counter comes first.
+    assert_eq!(names, ["Args", "i", "inner"]);
+    assert_eq!(app_start(&m).locals[1].ty, Ty::Int);
 }
 
 #[test]
@@ -1399,13 +1400,23 @@ fn loops_in_process_globals() {
         assert_eq!(errors(&sub(&body, &app)), [refused(what)], "{body}{app}");
     }
     // A `For` before it declares the name an `Int`: a `For Each` of another
-    // type is refused (recorded), though declarations are hoisted.
-    let diags = errors(&sub("", &format!("{counter_half}{double}")));
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    assert!(
-        has(&diags, "a `For` before declared it an Int"),
-        "{diags:?}"
-    );
+    // type is refused (recorded), on the `For Each`, for any name.
+    for (name, app) in [
+        ("Bump", format!("{counter_half}{double}")),
+        ("Bump", format!("{counter}{typed_string}")),
+        (
+            "i",
+            "    For i = 1 To 2\n    Next\n    For Each i As Double In Array As Double(1.5)\n    Next\n"
+                .to_string(),
+        ),
+    ] {
+        let diags = errors(&sub("", &app));
+        assert_eq!(
+            diags,
+            [format!("`{name}` is already declared as Int in this Sub")],
+            "{app}"
+        );
+    }
     // After a refused loop, the program has an error already: the loops
     // after it are not judged, so no error follows from them.
     for (body, app) in [

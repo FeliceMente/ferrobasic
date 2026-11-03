@@ -81,7 +81,9 @@ End Sub
   `For Each v As Double`, in `Double` steps (recorded). A `For` first
   declares it an `Int`, so a later `For Each v As T` of another type is
   an error (B4J: "Current declaration does not match previous one",
-  recorded). A `For Each` without `As` over it is an error wherever it is,
+  recorded); FerroBASIC applies this to any name a `For` declares, as
+  declarations are taken in source order (`for_each_other_type_after_counter`
+  asks B4J for an ordinary name). A `For Each` without `As` over it is an error wherever it is,
   first or not (B4J: the same message, recorded). After a refused loop
   over it, the program has an error already, and the loops after it are
   not judged. A
