@@ -1,8 +1,8 @@
 //! The order in which `For` and `Select` evaluate their parts, as recording
 //! run 14 shows (`for_evaluation_order`, `case_values_evaluated`). The
 //! consequences pinned here, a step or limit reading the counter and the
-//! values of a `Select` that ends in `Case Else`, are still pending
-//! recording (`for_limit_reads_counter`, `case_values_evaluated_else`).
+//! values of a `Select` that ends in `Case Else`, are recorded too by run
+//! 15 (`for_limit_reads_counter`, `case_values_evaluated_else`).
 
 mod common;
 

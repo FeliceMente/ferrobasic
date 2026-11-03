@@ -139,8 +139,9 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   that holds itself raises `StackOverflowError` from `hashCode` (Java's
   [`HashMap`](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/util/HashMap.html)
   and [`List.hashCode`](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/util/List.html#hashCode());
-  pending: `list_key_changed`, `list_key_self`). Whether a `Map` key
-  compares by its contents too is open (`map_as_map_key`).
+  **recorded**: `list_key_changed`, `list_key_self`). A `Map` key
+  compares by identity, alone or inside a List key: two Maps with the
+  same contents are two keys (**recorded**: `map_as_map_key`).
 - `Put` returns the previous value or `Null`; `Get` of a missing key returns
   `Null`; `GetDefault` returns the default when the stored value is `Null`.
 - `GetKeyAt` / `GetValueAt` go through `MyMap.getEntry`
@@ -418,18 +419,17 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
 - **`For Each` without `As`** over a local declared before it is refused,
   whatever its type: "Current declaration does not match previous one"
   (**recorded**: `for_each_untyped_local`, over an `Int` and `Int` items;
-  `for_each_untyped_other_type`, over a `String`). Over a local `Object`,
-  a parameter, a local declared only after the loop (declarations are
-  hoisted), a module variable, in `Process_Globals` or over an undeclared
-  name it is **open** (pending: `for_each_untyped_object`,
-  `for_each_untyped_parameter`, `for_each_untyped_declared_after`,
+  `for_each_untyped_other_type`, over a `String`). It declares its
+  variable an `Object`: over an `Int` module variable, from a Sub or in
+  `Process_Globals`, over a `String` parameter, and before a later `Dim n
+  As Int` ("Previous: Object"), it is refused too (**recorded**:
   `for_each_untyped_module_variable`, `process_globals_for_each_untyped`,
-  `for_each_untyped_undeclared`). Over an undeclared name B4J likely builds
-  it, in a class module at least: the real-world corpus's
+  `for_each_untyped_parameter`, `for_each_untyped_declared_after`). Over
+  a local `Object` and over a name never declared it builds (**recorded**:
+  `for_each_untyped_object`, `for_each_untyped_undeclared`; FerroBASIC
+  still refuses them, to apply). The real-world corpus's
   `JSONWebToken.bas`, a class, loops `For Each Key In Claims.Keys` in
-  `setClaims` with `Key` declared nowhere. Classes are Level 1 and may
-  differ; the pending test asks in the main module, and which type `Key`
-  gets.
+  `setClaims` with `Key` declared nowhere.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
   is implicitly declared as `Int` (**docs**, coreref), in `Process_Globals`
   too, where it is a module variable: AppStart reads it (4 after
@@ -529,9 +529,10 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `process_globals_typed_for_each_named_like_sub_nested`). So the name is
   a loop variable like any other once declared, and only a `For Each`
   without `As` is refused over it; FerroBASIC follows that rule
-  (`recorded_loop` in `crates/hir/src/lower.rs`). Not recorded (*open*):
-  a `For Each v As String` again (`local_typed_for_each_string_loop_again_named_like_sub`),
-  and a `Dim` of `Class_Globals` with a Sub's name.
+  (`recorded_loop` in `crates/hir/src/lower.rs`), also for a `For Each v
+  As String` again (**recorded**:
+  `local_typed_for_each_string_loop_again_named_like_sub`). Not recorded
+  (*open*): a `Dim` of `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,
