@@ -82,6 +82,5 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
 - [ ] Language Server with diagnostics: the same errors as `ferro check`,
       published as the user types, on the lossless CST.
 - [ ] Gate: the conformance tests pass in the interpreter and as standalone
-      binaries. On 2026-11-03 none fails on either target; 29 tests are
-      pending: 2 that recording run 14 answered, whose answers FerroBASIC
-      does not follow yet, and 27 for the next run.
+      binaries. On 2026-11-03 none fails on either target; 30 tests are
+      pending, all for the next run.

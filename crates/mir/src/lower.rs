@@ -73,6 +73,7 @@ pub fn lower(module: &ferro_hir::Module) -> Program {
         functions,
         init,
         entry,
+        package: None,
     }
 }
 

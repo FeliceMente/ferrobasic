@@ -122,7 +122,7 @@ The "not yet" rows come from the
 | `String` | 🟡 | all 18: `CharAt`, `CompareTo`, `Contains`, `EndsWith`, `EqualsIgnoreCase`, `GetBytes`, `IndexOf`, `IndexOf2`, `LastIndexOf`, `LastIndexOf2`, `Length`, `Replace`, `StartsWith`, `SubString`, `SubString2`, `ToLowerCase`, `ToUpperCase`, `Trim`. `GetBytes` only for `"UTF8"`/`"UTF-8"`. Test `string_members`. |
 | `StringBuilder` | ✅ | all 7: `Initialize`, `Append`, `Insert`, `Remove`, `Length`, `ToString`, `IsInitialized`. Test `string_builder`. |
 | `List` | ⚠️ | all 18: `Initialize`, `Initialize2`, `IsInitialized`, `Add`, `AddAll`, `AddAllAt`, `InsertAt`, `Get`, `Set`, `RemoveAt`, `Clear`, `Size`, `IndexOf`, `SubList`, `Sort`, `SortCaseInsensitive`, `SortType`, `SortTypeCaseInsensitive`. `SortType` on a list with several different problems can name another cause (D4), a sort that raises leaves the list as it was, not partly sorted (D5), and a list of plain values sorted by a field their JDK class declares raises `NoSuchFieldException`, where B4J sorts by a public one or raises `InaccessibleObjectException` for a private one (D7). Tests `list_members`, `list_add_all_empty`, `list_from_2d_array`, `list_stale_sublist`, `list_sort_type_errors`, `list_sort_type_class_fields`, `list_sort_type_initialized`, `sort_type_order_d4`, `sort_partial_d5`. |
-| `Map` | ✅ | all 13: `Initialize`, `IsInitialized`, `Put`, `Get`, `GetDefault`, `Remove`, `ContainsKey`, `Clear`, `Size`, `Keys`, `Values`, `GetKeyAt`, `GetValueAt`. Tests `map_members`, `map_order`, `map_get_key_at`. |
+| `Map` | ✅ | all 13: `Initialize`, `IsInitialized`, `Put`, `Get`, `GetDefault`, `Remove`, `ContainsKey`, `Clear`, `Size`, `Keys`, `Values`, `GetKeyAt`, `GetValueAt`. Tests `map_members`, `map_order`, `map_get_key_at`. A List key compares by its contents (test `list_as_map_key`); a Map key by identity *(open: `map_as_map_key`)*. |
 | Arrays | ✅ | `Length` |
 | `Type` records | ✅ | `Initialize`, `IsInitialized`, fields |
 | `Exception` (`LastException`) | ✅ | `Message`, `IsInitialized`; the innermost cause of what was caught (test `list_sort_type_errors`) |
@@ -142,7 +142,7 @@ The "not yet" rows come from the
 | Numbers and characters | ✅ | `NumberFormat`, `NumberFormat2`, `IsNumber`, `Asc`, `Chr`. Test `chars_and_ints`. |
 | Random numbers | ✅ | `Rnd`, `RndSeed`; a seeded sequence matches B4J. Test `random_seeded`. |
 | Collections | ✅ | `Array`, `CreateMap` |
-| Types | ⚠️ | `GetType` gives B4J's names for primitives, boxes, `String`, `List` and `Map`; other values differ *(open)* |
+| Types | ⚠️ | `GetType` gives B4J's names for primitives, boxes, `String`, `List`, `Map` and records (test `record_get_type`); other values differ *(open)* |
 | Program | 🟡 | `ExitApplication`, `ExitApplication2`. Missing: `StartMessageLoop`, `StopMessageLoop` (Level 2). Test `exit_code`. |
 | Errors | 🟡 | `LastException`. Missing: `ThrowException` (not assigned to a level yet). |
 | Conversions | ❌ | `BytesToString`, `CharsToString`: Level 1 |

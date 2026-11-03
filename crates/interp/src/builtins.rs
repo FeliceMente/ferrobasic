@@ -928,13 +928,13 @@ impl Machine<'_, '_> {
                 let (k, v) = (a(0)?.clone(), a(1)?.clone());
                 map.borrow_mut().put(k, v)?.unwrap_or(Value::Null)
             }
-            MapGet => map.borrow().get(a(0)?).cloned().unwrap_or(Value::Null),
-            MapGetDefault => match map.borrow().get(a(0)?) {
+            MapGet => map.borrow().get(a(0)?)?.cloned().unwrap_or(Value::Null),
+            MapGetDefault => match map.borrow().get(a(0)?)? {
                 Some(v) if !matches!(v, Value::Null) => v.clone(),
                 _ => a(1)?.clone(),
             },
-            MapRemove => map.borrow_mut().remove(a(0)?).unwrap_or(Value::Null),
-            MapContainsKey => Value::Bool(map.borrow().contains(a(0)?)),
+            MapRemove => map.borrow_mut().remove(a(0)?)?.unwrap_or(Value::Null),
+            MapContainsKey => Value::Bool(map.borrow().contains(a(0)?)?),
             MapClear => {
                 map.borrow_mut().clear();
                 Value::Null

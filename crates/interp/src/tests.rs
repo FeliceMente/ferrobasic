@@ -154,6 +154,7 @@ impl Pb {
             functions: self.functions.into_iter().map(Option::unwrap).collect(),
             init,
             entry: id,
+            package: None,
         };
         validate(&program).unwrap();
         program
