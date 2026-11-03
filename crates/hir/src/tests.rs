@@ -288,8 +288,17 @@ fn conflicting_declarations() {
 
 #[test]
 fn undeclared_names() {
-    let d = errors(&program("y = 5"));
-    assert!(has(&d, "`y` is not declared"), "{d:?}");
+    // An assignment declares a name nothing declared before it, as a String
+    // (recorded: `undeclared_variable`); a read alone does not.
+    let m = ok(&program("y = 5"));
+    assert!(
+        app_start(&m)
+            .locals
+            .iter()
+            .any(|v| v.name == "y" && v.ty == Ty::String),
+        "{:?}",
+        app_start(&m).locals
+    );
     let d = errors(&program("Log(z)"));
     assert!(has(&d, "`z` is not declared"), "{d:?}");
 }
@@ -901,10 +910,11 @@ fn subs_calls_and_returns() {
         "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Log(Square(12))\n  Hello\nEnd Sub\n\
         Sub Square (x As Int) As Int\n  Return x * x\nEnd Sub\nSub Hello\n  Log(\"hi\")\nEnd Sub\n",
     );
-    let d = errors(
-        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n",
+    // `Return <value>` in a Sub without `As` builds (recorded:
+    // `return_value_untyped_sub`); its call still has no value.
+    ok(
+        "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  F\nEnd Sub\nSub F\n  Return 1\nEnd Sub\n",
     );
-    assert!(has(&d, "no return type"), "{d:?}");
     let d = errors(
         "Sub Process_Globals\nEnd Sub\nSub AppStart (Args() As String)\n  Dim x As Int = F\nEnd Sub\nSub F\nEnd Sub\n",
     );
@@ -1625,8 +1635,9 @@ fn loops_in_process_globals() {
              known yet, so use another name"
         ]
     );
-    // `Bit` (recorded), a `Type` or a keyword (open) is refused once, and the loop's body is
-    // still checked, without reporting the variable again.
+    // `Bit` (recorded) or a keyword (open) is refused once, and the loop's
+    // body is still checked, without reporting the variable again; a `Type`'s
+    // name builds (recorded).
     for (body, what) in [
         (
             "    For Bit = 1 To 2\n        Log(Bit)\n    Next\n    For Bit = 1 To 2\n    Next",
@@ -1636,15 +1647,15 @@ fn loops_in_process_globals() {
             "    For Each Abs As Int In Array As Int(1)\n    Next",
             "has the name of a keyword",
         ),
-        (
-            "    Type Point (X As Int)\n    For Point = 1 To 2\n    Next",
-            "has the name of a `Type`",
-        ),
     ] {
         let diags = errors(&globals(body, "    Log(Abs(-1))"));
         assert_eq!(diags.len(), 1, "{body}: {diags:?}");
         assert!(has(&diags, what), "{body}: {diags:?}");
     }
+    ok(&globals(
+        "    Type Point (X As Int)\n    For Point = 1 To 2\n    Next",
+        "",
+    ));
     let diags = errors(&globals(
         "    For Bit = Unknown To 2\n        Log(Missing)\n    Next\n    For Each Bit As Int In Other\n    Next",
         "",
@@ -1780,8 +1791,9 @@ fn assigning_to_a_constant_or_a_sub_says_so() {
         has(&diags, "cannot assign to `F`: it is a Sub, not a variable"),
         "{diags:?}"
     );
-    let diags = errors(&program("    nothing = 3"));
-    assert!(has(&diags, "`nothing` is not declared"), "{diags:?}");
+    // An assignment to a name nothing declared declares it (recorded:
+    // `undeclared_variable`).
+    ok(&program("    nothing = 3"));
 }
 
 #[test]

@@ -94,7 +94,7 @@ End Sub
   other name (recorded). In `Class_Globals`, a `Dim` with a Sub's
   name is *(open)*. A loop variable of `Process_Globals` cannot be named
   `Bit` (B4J's compiler fails, recorded); named like a `Type` it builds
-  (recorded, not followed by FerroBASIC yet), and like a keyword or
+  (recorded), and like a keyword or
   built-in it is *(open)*, and so is `For i As T` there: declare `i`
   with `Dim` and loop without `As`. All of this is only for the main module:
   in `Class_Globals` a loop must use a variable declared with `Dim`,
@@ -209,8 +209,10 @@ End Sub
   `Type` records this means a fresh object.
 - Locals start at their default value on every call.
 - The counter of `For i = …` is implicitly declared as `Int` if it was not
-  declared before. Other undeclared names are *(open)*. Provisionally they are
-  a compile error.
+  declared before. A name nothing declared before it is declared by an
+  assignment to it, as a `String` (recorded: `undeclared_variable`; its
+  type is *(open)*: `undeclared_variable_type`). Reading a name nothing
+  declares or assigns is *(open)*, so a compile error.
 - Two declarations of the same name in one Sub: *(open)*. Provisionally they
   are allowed if the types match, and rejected otherwise.
 
@@ -300,7 +302,8 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `If c Then a : b`, only `a` is conditional.
 - **`If`**: single line `If c Then s [Else s]`, or the block form with `Else If`
   (two words) and `Else`.
-- **`Select expr`**: each `Case` holds a list of expressions. The scrutinee
+- **`Select expr`**, also written `Select Case expr` (recorded:
+  `select_case_synonym`): each `Case` holds a list of expressions. The scrutinee
   is evaluated, then every `Case` value, in order, then they are compared
   in order (recorded: `case_values_evaluated`).
   - Numbers match by numeric value (as Double), also when an `Object` holds
@@ -340,7 +343,10 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing
   `Select`** if that is closer.
 - **`Continue`** jumps to the next iteration of the innermost loop.
-- **`Return [expr]`** leaves the Sub. A Sub with an `As` type that falls off its
+- **`Return [expr]`** leaves the Sub. In a Sub without `As`, `Return expr`
+  builds (recorded: `return_value_untyped_sub`); the value is evaluated, and
+  the call has no value *(open: B4J declares such Subs as returning a
+  `String`)*. A Sub with an `As` type that falls off its
   end returns that type's default value: 0, or an empty `String` (recorded:
   `typed_sub_without_return`, `typed_string_sub_without_return`).
 - **`Try … Catch … End Try`** catches every runtime error raised in the `Try`

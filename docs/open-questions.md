@@ -22,8 +22,8 @@ related tests stay `pending-recording`.
       still open.
       Not stated in the official docs.
 - [x] Whether `Case` accepts ranges: no ([docs](research/level0-semantics.md#statements)).
-- [ ] Whether `Select Case` is rejected or accepted as a synonym of `Select`
-      (`level0/select_case_synonym`).
+- [x] `Select Case x` is accepted as a synonym of `Select x` (recording:
+      `level0/select_case_synonym`).
 - [x] `Do ... Loop While` / `Loop Until` and a bare `Do ... Loop` do not exist
       ([docs](research/level0-semantics.md#statements)).
 - [x] Smart string formatters (`$1.2{x}`, `$xml{}`)
@@ -55,8 +55,7 @@ related tests stay `pending-recording`.
       an unset `String` field is (recording: `level0/string_null_compare`).
 - [ ] Which keywords besides `In` are also accepted as names: `In` is
       ([generated](research/level0-semantics.md#keywords-used-as-names-generated)),
-      and so is `Each` (recording: `level0/keyword_name_each`; FerroBASIC
-      refuses it until it is implemented). `Step`, `To`, `Type` and `Until`
+      and so is `Each` (recording: `level0/keyword_name_each`). `Step`, `To`, `Type` and `Until`
       are not (recordings: `level0/keyword_name_step`, `_to`, `_type`,
       `_until`). The other keywords are open.
 - [x] A line break inside parentheses does not continue the line: B4J
@@ -75,8 +74,11 @@ related tests stay `pending-recording`.
       ran (recordings: `level0/for_limit_evaluated_once`,
       `level0/for_counter_after_loop`). A `Double` counter with a fractional
       step works (recording: `level0/for_double_counter`).
-- [ ] Undeclared variables other than `For` counters: implicit `String` (old
-      forum posts) or a compile error (`level0/undeclared_variable`).
+- [x] An assignment to a name nothing declared builds and declares it
+      (recording: `level0/undeclared_variable`). FerroBASIC makes it a
+      `String`, as old forum posts say.
+- [ ] Which type such a variable has (`level0/undeclared_variable_type`),
+      and whether a read of a name nothing declares or assigns builds.
 - [x] A variable declared without `As` (`Dim x`, `Dim x = 5`) is a `String`
       (recording: `level0/dim_without_as`).
 - [x] Two `Dim`s of the same name and type in one Sub are one variable,
@@ -198,8 +200,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 
 - [x] Calling a member on an `Object` (`o.Size`) is a compile error: B4J
       says "Unknown type: Object" (recording: `level0/member_on_object`).
-- [ ] `Return <value>` in a Sub declared without `As` is a compile error
-      (`level0/return_value_untyped_sub`).
+- [x] `Return <value>` in a Sub declared without `As` builds (recording:
+      `level0/return_value_untyped_sub`).
+- [ ] Whether the call of such a Sub has a value: B4J declares Subs without
+      `As` as returning a `String`, so `Log(NoType)` may print `5`;
+      FerroBASIC gives the call no value (`level0/untyped_sub_return_value_used`).
 - [x] A parameter without `As` is a `String` (recording:
       `level0/parameter_without_as`).
 - [x] A `Char` `=` an `Int` converts the `Int` to a `Char`, the first
@@ -383,9 +388,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] A `Dim` of `Class_Globals` with a Sub's name: refused as in
       `Process_Globals`? FerroBASIC refuses it. Classes arrive at Level 1,
       so it needs a class module in the corpus to record.
-- [ ] A loop variable of `Process_Globals` named like a `Type`: B4J builds
-      it (recording: `level0/process_globals_loop_named_like_type`), which
-      FerroBASIC still refuses. Named `Bit` or `Until`, B4J's compiler
+- [x] A loop variable of `Process_Globals` named like a `Type` builds
+      (recording: `level0/process_globals_loop_named_like_type`); whether the
+      `Type` stays usable, and what the name reads as, is open
+      (`level0/process_globals_loop_named_like_type_used`).
+- [ ] Named `Bit` or `Until`, B4J's compiler
       fails (recordings: `level0/process_globals_loop_named_like_bit`,
       `level0/process_globals_loop_named_like_keyword`); other keywords and
       built-in names are open.
