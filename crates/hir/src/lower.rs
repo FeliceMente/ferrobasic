@@ -321,15 +321,6 @@ struct LoopsBefore {
     unrecorded: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum LoopKind {
-    Counter,
-    /// `For Each v As T`.
-    Typed,
-    /// `For Each` without `As`.
-    Untyped,
-}
-
 /// Whether B4J accepts a loop over a name with a Sub's name, once the
 /// variable's own rules (its type, a `For` over a number) are met. Its
 /// recordings accept every `For` and `For Each v As T` over it, one after
@@ -338,8 +329,8 @@ enum LoopKind {
 /// `For Each` without `As` ("Current declaration does not match previous
 /// one"), first or not (recording runs 12 to 14: the
 /// `*_named_like_sub*` tests).
-fn recorded_loop(kind: LoopKind) -> bool {
-    kind != LoopKind::Untyped
+fn recorded_loop(origin: Origin) -> bool {
+    origin != Origin::UntypedForEach
 }
 
 /// A `For Each` without `As` over a declared variable, which it would
@@ -372,6 +363,53 @@ enum Clash {
     /// A `For Each` without `As`, which declares an `Object` (recorded:
     /// `for_each_untyped_declared_after`), over a variable of another type.
     UntypedForEach,
+}
+
+/// A statement of a body that declares, assigns or uses a name, as
+/// `in_source_order` finds it.
+enum Found {
+    /// A `Dim` or `Const`: each declarator declares its name.
+    Dim(SyntaxNode),
+    /// A loop over `name`.
+    Loop {
+        node: SyntaxNode,
+        name: SyntaxNode,
+        origin: Origin,
+        type_ref: Option<SyntaxNode>,
+    },
+    /// The target of `name = …`.
+    Assign(SyntaxNode),
+    /// A use of a name.
+    Use(SyntaxNode),
+}
+
+/// The one place that finds what a body (a Sub's, `Process_Globals`')
+/// declares, assigns and uses, in source order: a statement before the
+/// names in it.
+fn in_source_order(body: &SyntaxNode) -> Vec<Found> {
+    body.descendants()
+        .filter_map(|node| match node.kind() {
+            DIM_STMT => Some(Found::Dim(node)),
+            FOR_STMT | FOR_EACH_STMT => {
+                let name = child(&node, NAME)?;
+                let type_ref = child(&node, TYPE_REF);
+                let origin = loop_origin(&node);
+                Some(Found::Loop {
+                    node,
+                    name,
+                    origin,
+                    type_ref,
+                })
+            }
+            ASSIGN_STMT => exprs(&node)
+                .into_iter()
+                .next()
+                .filter(|target| target.kind() == NAME_REF)
+                .map(Found::Assign),
+            NAME_REF => Some(Found::Use(node)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// What declares a name.
@@ -429,11 +467,13 @@ fn is_comparison(node: &SyntaxNode) -> bool {
             .is_some_and(|t| matches!(t.kind(), EQ | NEQ | LT | GT | LT_EQ | GT_EQ))
 }
 
-fn loop_kind(node: &SyntaxNode) -> LoopKind {
+/// What a loop declares its variable as, as `in_source_order` says.
+fn loop_origin(node: &SyntaxNode) -> Origin {
     match (node.kind(), child(node, TYPE_REF).is_some()) {
-        (FOR_STMT, _) => LoopKind::Counter,
-        (_, true) => LoopKind::Typed,
-        _ => LoopKind::Untyped,
+        (FOR_STMT, false) => Origin::Counter,
+        (FOR_STMT, true) => Origin::TypedCounter,
+        (_, true) => Origin::TypedForEach,
+        (_, false) => Origin::UntypedForEach,
     }
 }
 
@@ -859,14 +899,11 @@ impl Lowerer {
     /// a later one that does not ("Current declaration does not match
     /// previous one").
     fn declare_process_globals(&mut self, sub: &SyntaxNode) {
-        let nodes = sub
-            .descendants()
-            .filter(|n| matches!(n.kind(), DIM_STMT | FOR_STMT | FOR_EACH_STMT));
         // Each name's declarations: `Err` for a loop, at its name.
         let mut declarations: HashMap<String, Vec<Result<GlobalDeclaration, TextRange>>> =
             HashMap::new();
-        for node in nodes {
-            if node.kind() == DIM_STMT {
+        for found in in_source_order(sub) {
+            if let Found::Dim(node) = found {
                 let direct = node.parent().and_then(|block| block.parent()).as_ref() == Some(sub);
                 let in_if = node
                     .parent()
@@ -899,14 +936,12 @@ impl Lowerer {
                         .or_default()
                         .push(Ok(declaration));
                 }
-            } else {
+            } else if let Found::Loop { node, name, .. } = found {
                 self.declare_loop_global(&node);
-                if let Some(name) = child(&node, NAME) {
-                    declarations
-                        .entry(key(&name_of(&name)))
-                        .or_default()
-                        .push(Err(range(&name)));
-                }
+                declarations
+                    .entry(key(&name_of(&name)))
+                    .or_default()
+                    .push(Err(range(&name)));
             }
         }
         for (k, found) in declarations {
@@ -1383,32 +1418,31 @@ impl Lowerer {
 
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
     fn hoist_locals(&mut self, body: &SyntaxNode) {
+        let found = in_source_order(body);
         // The names a `Dim` or a loop declares anywhere in the Sub: an
         // assignment above one of them assigns that variable, as B4X hoists
         // declarations.
-        let declared: HashSet<String> = body
-            .descendants()
-            .flat_map(|node| match node.kind() {
-                DIM_STMT => node
+        let declared: HashSet<String> = found
+            .iter()
+            .flat_map(|f| match f {
+                Found::Dim(node) => node
                     .descendants()
                     .filter(|d| d.kind() == DECLARATOR)
                     .filter_map(|d| child(&d, NAME))
                     .map(|n| key(&name_of(&n)))
                     .collect::<Vec<_>>(),
-                FOR_STMT | FOR_EACH_STMT => child(&node, NAME)
-                    .map(|n| vec![key(&name_of(&n))])
-                    .unwrap_or_default(),
-                _ => Vec::new(),
+                Found::Loop { name, .. } => vec![key(&name_of(name))],
+                Found::Assign(_) | Found::Use(_) => Vec::new(),
             })
             .collect();
         // In source order: the names used so far.
         let mut used: HashSet<String> = HashSet::new();
-        for node in body.descendants() {
-            match node.kind() {
-                NAME_REF => {
+        for f in found {
+            match f {
+                Found::Use(node) => {
                     used.insert(key(&name_of(&node)));
                 }
-                DIM_STMT => {
+                Found::Dim(node) => {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                         let origin = if in_const(&decl) {
@@ -1421,71 +1455,61 @@ impl Lowerer {
                         self.mark_const(&decl, &name);
                     }
                 }
-                FOR_EACH_STMT => match (child(&node, NAME), child(&node, TYPE_REF)) {
-                    (Some(name), Some(t)) => {
-                        let ty = self.resolve_type(&t);
-                        self.note_declaration(&name_of(&name), Origin::TypedForEach, &ty, &used);
-                        self.declare_dim_local(&name_of(&name), ty, range(&name), false);
-                    }
-                    // Not declared before it, in source order, the variable
-                    // of a `For Each` without `As` is an `Object`: a later
-                    // `Dim` of another type is refused ("Previous: Object",
-                    // recorded: `for_each_untyped_declared_after`), and a
-                    // name nothing declares builds (recorded:
-                    // `for_each_untyped_undeclared`).
-                    // Used before it, or declared first by a typed loop, it is
-                    // not recorded.
-                    (Some(name), None) => {
-                        let text = name_of(&name);
-                        let k = key(&text);
-                        if self.lookup_var(&text).is_none()
-                            && !self.subs.contains_key(&k)
-                            && !self.records.contains_key(&k)
-                            && builtins::lookup(Owner::Global, &text).is_none()
-                        {
-                            self.note_declaration(
-                                &text,
-                                Origin::UntypedForEach,
-                                &Ty::Object,
-                                &used,
-                            );
-                            self.declare_local(&text, Ty::Object, range(&name));
+                Found::Loop {
+                    name,
+                    origin,
+                    type_ref,
+                    ..
+                } => {
+                    let text = name_of(&name);
+                    match origin {
+                        Origin::TypedForEach | Origin::TypedCounter => {
+                            let ty = type_ref.map_or(Ty::Error, |t| self.resolve_type(&t));
+                            self.note_declaration(&text, origin, &ty, &used);
+                            if origin == Origin::TypedForEach {
+                                self.declare_dim_local(&text, ty, range(&name), false);
+                            } else {
+                                self.declare_loop_local(&text, ty, range(&name), true);
+                            }
+                        }
+                        // Not declared before it, in source order, the
+                        // variable of a `For Each` without `As` is an
+                        // `Object`: a later `Dim` of another type is refused
+                        // ("Previous: Object", recorded:
+                        // `for_each_untyped_declared_after`), and a name
+                        // nothing declares builds (recorded:
+                        // `for_each_untyped_undeclared`). Used before it, or
+                        // declared first by a typed loop, it is not recorded.
+                        Origin::UntypedForEach => {
+                            let k = key(&text);
+                            if self.lookup_var(&text).is_none()
+                                && !self.subs.contains_key(&k)
+                                && !self.records.contains_key(&k)
+                                && builtins::lookup(Owner::Global, &text).is_none()
+                            {
+                                self.note_declaration(&text, origin, &Ty::Object, &used);
+                                self.declare_local(&text, Ty::Object, range(&name));
+                            }
+                        }
+                        // A counter not declared before it, in source order,
+                        // is an Int, which a later declaration of another
+                        // type cannot change (B4J: "Current declaration does
+                        // not match previous one", recorded:
+                        // `local_typed_for_each_other_type_after_counter_named_like_sub`).
+                        _ => {
+                            if self.lookup_var(&text).is_none() {
+                                self.note_declaration(&text, origin, &Ty::Int, &used);
+                                self.declare_loop_local(&text, Ty::Int, range(&name), false);
+                            }
                         }
                     }
-                    _ => {}
-                },
-                FOR_STMT => match (child(&node, NAME), child(&node, TYPE_REF)) {
-                    (Some(name), Some(t)) => {
-                        let ty = self.resolve_type(&t);
-                        self.note_declaration(&name_of(&name), Origin::TypedCounter, &ty, &used);
-                        self.declare_loop_local(&name_of(&name), ty, range(&name), true);
-                    }
-                    // A counter not declared before it, in source order, is
-                    // an Int, which a later declaration of another type
-                    // cannot change (B4J: "Current declaration does not
-                    // match previous one", recorded:
-                    // `local_typed_for_each_other_type_after_counter_named_like_sub`).
-                    (Some(name), None) => {
-                        let text = name_of(&name);
-                        if self.lookup_var(&text).is_none() {
-                            self.note_declaration(&text, Origin::Counter, &Ty::Int, &used);
-                            self.declare_loop_local(&text, Ty::Int, range(&name), false);
-                        }
-                    }
-                    _ => {}
-                },
+                }
                 // An assignment to a name nothing in the Sub, nor the
                 // module, declares, and that is not a Sub, a built-in or a
                 // `Type`, declares it: B4J builds `Undeclared = 5`
                 // (recorded: `undeclared_variable`). Its type is a `String`
                 // (recorded: `undeclared_variable_type`).
-                ASSIGN_STMT => {
-                    let Some(target) = exprs(&node).into_iter().next() else {
-                        continue;
-                    };
-                    if target.kind() != NAME_REF {
-                        continue;
-                    }
+                Found::Assign(target) => {
                     let text = name_of(&target);
                     if self.lookup_var(&text).is_none()
                         && !declared.contains(&key(&text))
@@ -1497,7 +1521,6 @@ impl Lowerer {
                         self.declare_local(&text, Ty::String, range(&target));
                     }
                 }
-                _ => {}
             }
         }
     }
@@ -1890,9 +1913,8 @@ impl Lowerer {
         if !self.subs.contains_key(&k) {
             return;
         }
-        let kind = loop_kind(node);
         let refused = self.refused_loop_already(node, name, ty);
-        if refused || kind == LoopKind::Untyped {
+        if refused || loop_origin(node) == Origin::UntypedForEach {
             self.sub_named_loops.entry(k).or_default().unrecorded = true;
         }
     }
@@ -1966,12 +1988,12 @@ impl Lowerer {
             }
             _ => return LoopVar::Found(found),
         };
-        let kind = loop_kind(node);
+        let origin = loop_origin(node);
         let before = self.sub_named_loops.get(&k);
         if before.is_some_and(|b| b.unrecorded) || self.refused_loop_already(node, name, &ty) {
             return LoopVar::Found(found);
         }
-        if recorded_loop(kind) {
+        if recorded_loop(origin) {
             return LoopVar::Found(found);
         }
         let what = if own {
