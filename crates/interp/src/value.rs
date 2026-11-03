@@ -469,6 +469,10 @@ pub struct OrderedMap {
     /// has a List key that has changed since it was put. Empty unless a
     /// program changes a List it used as a key.
     stale: Vec<(HKey, usize)>,
+    /// The key each entry whose key is a List, Map or StringBuilder had
+    /// when it was put, by slot, in increasing order: the key of such an
+    /// object can change afterwards (its contents, or a new `Initialize`).
+    kept: Vec<(usize, HKey)>,
     live: usize,
     cursor: Cursor,
 }
@@ -561,6 +565,10 @@ impl OrderedMap {
         }
         try_grow(&mut self.entries, 1)?;
         self.index.try_reserve(1).map_err(|_| out_of_memory())?;
+        if matches!(key, Value::List(_) | Value::Map(_) | Value::Sb(_)) {
+            try_grow(&mut self.kept, 1)?;
+            self.kept.push((self.entries.len(), h.clone()));
+        }
         if let Some(&older) = self.index.get(&h) {
             // A List key that has changed holds `h`: it moves aside.
             try_grow(&mut self.stale, 1)?;
@@ -589,6 +597,9 @@ impl OrderedMap {
         let Some((k, v)) = self.entries[i].take() else {
             return Ok(None);
         };
+        if let Ok(at) = self.kept.binary_search_by_key(&i, |(slot, _)| *slot) {
+            self.kept.remove(at);
+        }
         if matches!(self.cursor.current, Some(Current::Slot(c)) if c == i) {
             self.cursor.current = Some(Current::Removed(k, v.clone()));
         }
@@ -613,6 +624,7 @@ impl OrderedMap {
         self.entries.clear();
         self.index.clear();
         self.stale.clear();
+        self.kept.clear();
         self.live = 0;
     }
 
@@ -624,22 +636,31 @@ impl OrderedMap {
                 *i = self.entries[..*i].iter().flatten().count();
             }
             // Only the live keys move: their positions are updated in place,
-            // in order, so a position already updated is below every slot
-            // still to come. A List key changed since it was put has another
-            // key now (perhaps another entry's): its position is found by
-            // the slot it holds instead.
+            // in order. A key that can change is the one kept when it was
+            // put; an entry not at its key in `index` is a stale one.
             let live = self
                 .entries
                 .iter()
                 .enumerate()
                 .filter_map(|(j, e)| Some((j, e.as_ref()?)));
+            let mut next_kept = 0;
             for (i, (j, (k, _))) in live.enumerate() {
-                match HKey::of(k).ok().and_then(|h| self.index.get_mut(&h)) {
+                let computed;
+                let h = match self.kept.get_mut(next_kept) {
+                    Some((slot, h)) if *slot == j => {
+                        *slot = i;
+                        next_kept += 1;
+                        &*h
+                    }
+                    _ => {
+                        computed = HKey::shallow(k);
+                        &computed
+                    }
+                };
+                match self.index.get_mut(h) {
                     Some(at) if *at == j => *at = i,
                     _ => {
-                        let slots = self.index.values_mut();
-                        let mut slots = slots.chain(self.stale.iter_mut().map(|(_, s)| s));
-                        if let Some(at) = slots.find(|at| **at == j) {
+                        if let Some((_, at)) = self.stale.iter_mut().find(|(_, at)| *at == j) {
                             *at = i;
                         }
                     }
@@ -895,7 +916,12 @@ pub enum HKey {
     Double(u64),
     Char(u16),
     Str(Str),
+    /// A List's elements, flattened: a List inside it is its elements
+    /// between [`HKey::ListStart`] and [`HKey::ListEnd`], so a key never
+    /// nests, and hashing, comparing and dropping it never recurse.
     List(Vec<HKey>),
+    ListStart,
+    ListEnd,
     Ref(usize),
 }
 
@@ -904,45 +930,57 @@ fn ptr<T: ?Sized>(rc: &Rc<T>) -> usize {
 }
 
 impl HKey {
-    /// The key of `v`. A List nested deeper than [`MAX_EQUALS_DEPTH`], or
-    /// one that contains itself, raises `StackOverflowError`, as Java's
-    /// recursive `ArrayList.hashCode` does.
+    /// The key of `v`. A List nested deeper than [`MAX_EQUALS_DEPTH`] (less
+    /// the depth of a [`java_equals`] it is keyed inside), or one that
+    /// contains itself, raises `StackOverflowError`, as Java's recursive
+    /// `ArrayList.hashCode` does.
     pub fn of(v: &Value) -> Result<HKey, Exc> {
-        // The Lists being keyed, outermost first: the items still to key,
-        // and the keys of those done. No Rust recursion.
-        let mut open: Vec<(std::vec::IntoIter<Value>, Vec<HKey>)> = Vec::new();
-        let mut todo = v.clone();
-        loop {
-            match HKey::shallow(&todo)? {
-                Shallow::Key(mut key) => loop {
-                    let Some((rest, keys)) = open.last_mut() else {
-                        return Ok(key);
-                    };
-                    keys.push(key);
-                    if let Some(item) = rest.next() {
-                        todo = item;
-                        break;
-                    }
-                    let (_, keys) = open.pop().unwrap_or_default();
-                    key = HKey::List(keys);
-                },
-                Shallow::List(items) => {
-                    if open.len() >= MAX_EQUALS_DEPTH {
+        let Value::List(w) = v else {
+            return Ok(HKey::shallow(v));
+        };
+        let Some(list) = w.borrow().clone() else {
+            return Ok(HKey::Null);
+        };
+        let base = EQUALS_DEPTH.get();
+        if base >= MAX_EQUALS_DEPTH {
+            return Err(Exc::bare(STACK_OVERFLOW));
+        }
+        // The Lists being walked, outermost first, each with the position
+        // of its next item. No Rust recursion, and no copy of the items.
+        let mut open: Vec<(ListRef, usize)> = vec![(list, 0)];
+        let mut keys = Vec::new();
+        while let Some((list, next)) = open.last_mut() {
+            let Some(item) = list.get(*next)? else {
+                open.pop();
+                if !open.is_empty() {
+                    try_grow(&mut keys, 1)?;
+                    keys.push(HKey::ListEnd);
+                }
+                continue;
+            };
+            *next += 1;
+            try_grow(&mut keys, 1)?;
+            let inner = match &item {
+                Value::List(w) => w.borrow().clone(),
+                _ => None,
+            };
+            match inner {
+                Some(inner) => {
+                    if base + open.len() >= MAX_EQUALS_DEPTH {
                         return Err(Exc::bare(STACK_OVERFLOW));
                     }
-                    let mut keys = Vec::new();
-                    try_grow(&mut keys, items.len())?;
-                    let mut rest = items.into_iter();
-                    todo = rest.next().unwrap_or(Value::Null);
-                    open.push((rest, keys));
+                    keys.push(HKey::ListStart);
+                    open.push((inner, 0));
                 }
+                None => keys.push(HKey::shallow(&item)),
             }
         }
+        Ok(HKey::List(keys))
     }
 
-    /// The key of `v`, or the items of a non-empty List, to key one by one.
-    fn shallow(v: &Value) -> Result<Shallow, Exc> {
-        Ok(Shallow::Key(match v {
+    /// The key of anything but an initialised List.
+    fn shallow(v: &Value) -> HKey {
+        match v {
             Value::Null => HKey::Null,
             Value::Bool(b) => HKey::Bool(*b),
             Value::Byte(x) => HKey::Byte(*x),
@@ -957,16 +995,10 @@ impl HKey {
             }),
             Value::Char(c) => HKey::Char(*c),
             Value::Str(s) => HKey::Str(s.clone()),
-            Value::List(w) => {
-                let Some(list) = w.borrow().clone() else {
-                    return Ok(Shallow::Key(HKey::Null));
-                };
-                let items = list.to_vec()?;
-                if !items.is_empty() {
-                    return Ok(Shallow::List(items));
-                }
-                HKey::List(Vec::new())
-            }
+            Value::List(w) => w
+                .borrow()
+                .as_ref()
+                .map_or(HKey::Null, |l| HKey::Ref(ptr(l))),
             Value::Map(w) => w
                 .borrow()
                 .as_ref()
@@ -979,13 +1011,8 @@ impl HKey {
             Value::Array(a) => HKey::Ref(ptr(a)),
             Value::Record(r) => HKey::Ref(ptr(r)),
             Value::View(m, keys) => HKey::Ref(ptr(m) + *keys as usize),
-        }))
+        }
     }
-}
-
-enum Shallow {
-    Key(HKey),
-    List(Vec<Value>),
 }
 
 /// How deep `equals` may go into nested collections before raising
@@ -1555,6 +1582,47 @@ mod tests {
         );
         assert_eq!(found(&m, &list(&[1])), Some(2));
         assert_eq!(m.len(), 1);
+    }
+
+    /// Nested Lists are keys of their own: `[[1]]`, `[1]`, `[[], []]` and
+    /// `[[[]]]` differ, and Lists equal by contents are one key.
+    #[test]
+    fn nested_list_keys() {
+        let nest = |inner: Vec<Value>| Value::new_list(inner, ListKind::Growable);
+        let keys = [
+            nest(vec![list(&[1])]),
+            list(&[1]),
+            nest(vec![list(&[]), list(&[])]),
+            nest(vec![nest(vec![list(&[])])]),
+            nest(vec![list(&[]), Value::Int(1)]),
+            nest(vec![list(&[1])]),
+        ];
+        let hashed: Vec<HKey> = keys.iter().map(|k| HKey::of(k).unwrap()).collect();
+        for (i, a) in hashed.iter().enumerate() {
+            for (j, b) in hashed.iter().enumerate() {
+                assert_eq!(
+                    a == b,
+                    i == j || (i, j) == (0, 5) || (i, j) == (5, 0),
+                    "{i} {j}"
+                );
+            }
+        }
+    }
+
+    /// A key nested as deep as Java allows is built, hashed, compared and
+    /// dropped without recursion: this runs on a test thread's small stack.
+    #[test]
+    fn deep_list_keys_need_no_stack() {
+        let mut deep = list(&[]);
+        for _ in 1..MAX_EQUALS_DEPTH {
+            deep = Value::new_list(vec![deep], ListKind::Growable);
+        }
+        let mut m = OrderedMap::default();
+        m.put(deep.clone(), Value::Int(1)).unwrap();
+        assert_eq!(found(&m, &deep), Some(1));
+        let deeper = Value::new_list(vec![deep], ListKind::Growable);
+        let e = m.put(deeper, Value::Int(2)).unwrap_err();
+        assert_eq!(e.kind, STACK_OVERFLOW);
     }
 
     /// A List that holds itself has no key: Java's `hashCode` overflows.
