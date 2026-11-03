@@ -34,8 +34,8 @@ struct Lowerer {
     globals: HashMap<String, GlobalId>,
     /// Loop variables of `Process_Globals` already refused with an error.
     refused_loop_names: HashSet<String>,
-    /// Module variables that a loop of `Process_Globals` declares.
-    loop_declared: HashSet<String>,
+    /// What declared each module variable first.
+    global_origins: HashMap<String, Origin>,
     /// The loops of the Sub being lowered (`Process_Globals` included) over
     /// each name with a Sub's name, in source order, up to the current one.
     sub_named_loops: HashMap<String, LoopsBefore>,
@@ -50,13 +50,9 @@ struct Lowerer {
     /// `Process_Globals`, as `declare_process_globals` decided, by the range
     /// of its declarator.
     const_declarations: HashMap<TextRange, bool>,
-    /// The current Sub's locals with a Sub's name: `true` for a loop
-    /// variable, `false` for a refused `Dim`. Their uses mean the Sub
-    /// (recorded).
-    sub_named_locals: HashMap<String, bool>,
-    /// The current Sub's `Object` locals a `For Each` without `As` loops
-    /// over, by name, and how they were declared.
-    untyped_loops: HashMap<String, UntypedLoop>,
+    /// How the current Sub declares each local name, in source order
+    /// (`hoist_locals`).
+    local_history: HashMap<String, LocalHistory>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
@@ -232,28 +228,85 @@ enum ConstState {
     Reported,
 }
 
+/// Why a program is refused: what B4J answers (recorded), or a question
+/// no recording settles yet, refused until one does
+/// (`docs/open-questions.md`). Every provisional refusal is worded here.
+enum Refusal {
+    Recorded(String),
+    Open {
+        /// What the name is, e.g. "`n` is a `Const`".
+        subject: String,
+        /// What is not known, e.g. "a loop may loop over it here".
+        question: String,
+        /// What to write instead, when there is a way.
+        advice: Option<String>,
+    },
+}
+
+impl Refusal {
+    fn open(
+        subject: impl Into<String>,
+        question: impl Into<String>,
+        advice: impl Into<String>,
+    ) -> Refusal {
+        Refusal::Open {
+            subject: subject.into(),
+            question: question.into(),
+            advice: Some(advice.into()),
+        }
+    }
+
+    /// A question with no advice to give.
+    fn asked(subject: impl Into<String>, question: impl Into<String>) -> Refusal {
+        Refusal::Open {
+            subject: subject.into(),
+            question: question.into(),
+            advice: None,
+        }
+    }
+
+    fn message(self) -> String {
+        match self {
+            Refusal::Recorded(message) => message,
+            Refusal::Open {
+                subject,
+                question,
+                advice,
+            } => match advice {
+                Some(advice) => {
+                    format!("{subject}: whether {question} is not known yet, so {advice}")
+                }
+                None => format!("{subject}: whether {question} is not known yet"),
+            },
+        }
+    }
+}
+
 /// A declaration again of a constant's name, or a `Const` of a name declared
 /// before, of the same type: not recorded.
 fn const_again_open(name: &str, is_const: bool) -> String {
     if is_const {
-        format!(
-            "`{name}` is already declared: whether a `Const` may declare it again here is not \
-             known yet, so use another name"
+        Refusal::open(
+            format!("`{name}` is already declared"),
+            "a `Const` may declare it again here",
+            "use another name",
         )
     } else {
-        format!(
-            "`{name}` is a `Const`: whether another declaration may declare it again here is not \
-             known yet, so use another name"
+        Refusal::open(
+            format!("`{name}` is a `Const`"),
+            "another declaration may declare it again here",
+            "use another name",
         )
     }
+    .message()
 }
 
 /// A module variable declared both by a `Const` and by a `Dim`: whether it
 /// may change is not known.
-fn redeclared_const_open(name: &str, what: &str) -> String {
-    format!(
-        "`{name}` is declared both by a `Const` and by a `Dim`: whether it {what} is not known \
-         yet"
+fn redeclared_const(name: &str, what: &str) -> Refusal {
+    Refusal::asked(
+        format!("`{name}` is declared both by a `Const` and by a `Dim`"),
+        format!("it {what}"),
     )
 }
 
@@ -271,15 +324,6 @@ struct LoopsBefore {
     unrecorded: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum LoopKind {
-    Counter,
-    /// `For Each v As T`.
-    Typed,
-    /// `For Each` without `As`.
-    Untyped,
-}
-
 /// Whether B4J accepts a loop over a name with a Sub's name, once the
 /// variable's own rules (its type, a `For` over a number) are met. Its
 /// recordings accept every `For` and `For Each v As T` over it, one after
@@ -288,59 +332,167 @@ enum LoopKind {
 /// `For Each` without `As` ("Current declaration does not match previous
 /// one"), first or not (recording runs 12 to 14: the
 /// `*_named_like_sub*` tests).
-fn recorded_loop(kind: LoopKind) -> bool {
-    kind != LoopKind::Untyped
+fn recorded_loop(origin: Origin) -> bool {
+    origin != Origin::UntypedForEach
 }
 
 /// A `For Each` without `As` over a declared variable, which it would
-/// declare an `Object`. B4J refuses it over a variable of another type
-/// (`other`), a local, a parameter or a module variable (recorded:
-/// `for_each_untyped_local`, `for_each_untyped_other_type`,
-/// `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
-/// `process_globals_for_each_untyped`); over a parameter or a module
-/// variable of type `Object` it is not recorded.
-fn untyped_for_each(name: &str, other: Option<&str>) -> String {
-    match other {
-        Some(ty) => format!(
-            "`{name}` is already declared as {ty}: a `For Each` without `As` declares its \
-             variable an Object, so it cannot loop over it; write `For Each {name} As <type> In ...`"
-        ),
-        None => format!(
-            "`{name}` is already declared: whether a `For Each` without `As` may loop over it \
-             here is not known yet, so write `For Each {name} As <type> In ...`"
-        ),
+/// declare an `Object`, where that is not recorded: `subject` says what
+/// the name is.
+fn untyped_for_each(name: &str, subject: &str) -> String {
+    Refusal::open(
+        format!("`{name}` is {subject}"),
+        "a `For Each` without `As` may loop over it here",
+        format!("write `For Each {name} As <type> In ...`"),
+    )
+    .message()
+}
+
+/// Which declarations of one name disagree on its type, for
+/// `Lowerer::type_clash`. B4J refuses each ("Current declaration does not
+/// match previous one", recorded).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Clash {
+    /// Two declarations of a local of the current Sub.
+    InSub,
+    /// Two declarations of a module variable.
+    Global,
+    /// A `Dim` of `Process_Globals` after a loop there declared the name.
+    DimAfterLoop,
+    /// A loop of `Process_Globals` after the name was declared there.
+    LoopInProcessGlobals,
+    /// A local of a Sub with a module variable's name.
+    LocalOfModuleVariable,
+    /// A `For Each` without `As`, which declares an `Object` (recorded:
+    /// `for_each_untyped_declared_after`), over a variable of another type.
+    UntypedForEach,
+}
+
+/// A statement of a body that declares, assigns or uses a name, as
+/// `in_source_order` finds it.
+enum Found {
+    /// A `Dim` or `Const`: each declarator declares its name.
+    Dim(SyntaxNode),
+    /// A loop over `name`.
+    Loop {
+        name: SyntaxNode,
+        origin: Origin,
+        type_ref: Option<SyntaxNode>,
+    },
+    /// The target of `name = …`.
+    Assign(SyntaxNode),
+    /// A use of a name.
+    Use(SyntaxNode),
+}
+
+/// The one place that finds what a body (a Sub's, `Process_Globals`')
+/// declares, assigns and, with `uses`, uses, in source order: a statement
+/// before the names in it.
+fn in_source_order(body: &SyntaxNode, uses: bool) -> impl Iterator<Item = Found> {
+    body.descendants()
+        .filter_map(move |node| match node.kind() {
+            DIM_STMT => Some(Found::Dim(node)),
+            FOR_STMT | FOR_EACH_STMT => {
+                let name = child(&node, NAME)?;
+                let type_ref = child(&node, TYPE_REF);
+                let origin = Origin::of_loop(node.kind(), type_ref.is_some());
+                Some(Found::Loop {
+                    name,
+                    origin,
+                    type_ref,
+                })
+            }
+            ASSIGN_STMT if uses => exprs(&node)
+                .into_iter()
+                .next()
+                .filter(|target| target.kind() == NAME_REF)
+                .map(Found::Assign),
+            NAME_REF if uses => Some(Found::Use(node)),
+            _ => None,
+        })
+}
+
+/// What declares a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    Param,
+    Dim,
+    Const,
+    /// `For n = …`, which declares an undeclared `n` an `Int`.
+    Counter,
+    /// `For n As T = …`.
+    TypedCounter,
+    /// `For Each n As T In …`.
+    TypedForEach,
+    /// `For Each n In …`, which declares an undeclared `n` an `Object`
+    /// (recorded: `for_each_untyped_declared_after`).
+    UntypedForEach,
+    /// `n = …` with `n` declared nowhere, which declares a `String`
+    /// (recorded: `undeclared_variable_type`).
+    Assignment,
+}
+
+impl Origin {
+    /// A declarator of a `Dim` or a `Const`.
+    fn of_declarator(decl: &SyntaxNode) -> Origin {
+        if in_const(decl) {
+            Origin::Const
+        } else {
+            Origin::Dim
+        }
+    }
+
+    /// A `For` or `For Each` statement, by its kind and whether it has `As`.
+    fn of_loop(kind: SyntaxKind, typed: bool) -> Origin {
+        match (kind, typed) {
+            (FOR_STMT, false) => Origin::Counter,
+            (FOR_STMT, true) => Origin::TypedCounter,
+            (_, true) => Origin::TypedForEach,
+            (_, false) => Origin::UntypedForEach,
+        }
+    }
+
+    fn is_loop(self) -> bool {
+        matches!(
+            self,
+            Origin::Counter | Origin::TypedCounter | Origin::TypedForEach | Origin::UntypedForEach
+        )
+    }
+
+    fn is_typed_loop(self) -> bool {
+        matches!(self, Origin::TypedCounter | Origin::TypedForEach)
     }
 }
 
-/// How the `Object` local a `For Each` without `As` loops over was
-/// declared, when that matters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UntypedLoop {
-    /// By the loop, as nothing declared or used it before (recorded:
-    /// `for_each_untyped_undeclared`).
-    Declared,
-    /// By the loop, and again as an `Object` after it: not recorded.
-    Redeclared,
-    /// By the loop, but used before it, where an assignment may declare a
-    /// `String`: not recorded.
-    UsedBefore,
-    /// By a typed loop before it, not by a `Dim`: not recorded.
-    AfterTypedLoop,
+/// How the current Sub declares a local name, in source order.
+#[derive(Debug, Clone, Copy)]
+struct LocalHistory {
+    /// The declaration that made it a local of this Sub.
+    first: Origin,
+    /// A `Dim` or `Const` declares it, first or later.
+    dimmed: bool,
+    /// The name is used before its first declaration.
+    used_before: bool,
+    /// Declared first by a `For Each` without `As`, then again as an
+    /// `Object`.
+    object_again: bool,
+    /// Declared first by a typed loop, then looped over by a `For Each`
+    /// without `As`, in that order.
+    untyped_after_typed: bool,
+    /// The local has a module variable's name.
+    shadows_global: bool,
 }
 
-impl UntypedLoop {
-    /// Why the loop over `name` is refused as not recorded, if it is.
-    fn unrecorded(self, name: &str) -> Option<String> {
-        let why = match self {
-            UntypedLoop::Declared => return None,
-            UntypedLoop::Redeclared => "declared again as Object after this loop",
-            UntypedLoop::UsedBefore => "used before this loop",
-            UntypedLoop::AfterTypedLoop => "declared by a typed loop before this one",
-        };
-        Some(format!(
-            "`{name}` is {why}: whether a `For Each` without `As` may loop over it here is not \
-             known yet, so write `For Each {name} As <type> In ...`"
-        ))
+impl LocalHistory {
+    fn new(first: Origin, used_before: bool, shadows_global: bool) -> LocalHistory {
+        LocalHistory {
+            first,
+            dimmed: matches!(first, Origin::Dim | Origin::Const),
+            used_before,
+            object_again: false,
+            untyped_after_typed: false,
+            shadows_global,
+        }
     }
 }
 
@@ -352,12 +504,9 @@ fn is_comparison(node: &SyntaxNode) -> bool {
             .is_some_and(|t| matches!(t.kind(), EQ | NEQ | LT | GT | LT_EQ | GT_EQ))
 }
 
-fn loop_kind(node: &SyntaxNode) -> LoopKind {
-    match (node.kind(), child(node, TYPE_REF).is_some()) {
-        (FOR_STMT, _) => LoopKind::Counter,
-        (_, true) => LoopKind::Typed,
-        _ => LoopKind::Untyped,
-    }
+/// What a loop declares its variable as, as `in_source_order` says.
+fn loop_origin(node: &SyntaxNode) -> Origin {
+    Origin::of_loop(node.kind(), child(node, TYPE_REF).is_some())
 }
 
 /// Whether a declarator belongs to a `Const` statement.
@@ -395,6 +544,44 @@ impl Lowerer {
             range,
             message: message.into(),
         });
+    }
+
+    /// The one check that a declaration again of `name` keeps its type:
+    /// `None` when the types agree, or one of them is an error reported
+    /// already; otherwise the message.
+    fn type_clash(&self, name: &str, existing: &Ty, new: &Ty, clash: Clash) -> Option<String> {
+        if existing == new || *existing == Ty::Error || *new == Ty::Error {
+            return None;
+        }
+        let was = || self.ty_name(existing);
+        let now = || self.ty_name(new);
+        Some(match clash {
+            Clash::InSub => format!("`{name}` is already declared as {} in this Sub", was()),
+            Clash::Global => format!("`{name}` is already declared with another type"),
+            Clash::DimAfterLoop => format!(
+                "`{name}` is already declared as {} by a loop of `Process_Globals`: this `Dim` \
+                 cannot declare it again as {}",
+                was(),
+                now()
+            ),
+            Clash::LoopInProcessGlobals => format!(
+                "`{name}` is already declared as {} in `Process_Globals`: this loop cannot \
+                 declare it again as {}",
+                was(),
+                now()
+            ),
+            Clash::LocalOfModuleVariable => format!(
+                "`{name}` is a module variable of type {}: a local cannot declare it again as {}",
+                was(),
+                now()
+            ),
+            Clash::UntypedForEach => format!(
+                "`{name}` is already declared as {}: a `For Each` without `As` declares its \
+                 variable an Object, so it cannot loop over it; write `For Each {name} As \
+                 <type> In ...`",
+                was()
+            ),
+        })
     }
 
     fn ty_name(&self, ty: &Ty) -> String {
@@ -700,34 +887,35 @@ impl Lowerer {
                     // Recorded for `Process_Globals` and a Sub, not here.
                     self.error(
                         range(&decl),
-                        format!(
-                            "`{name}` is a Sub: whether a variable of `Class_Globals` may have \
-                             its name is not known yet, so use another name"
-                        ),
+                        Refusal::open(
+                            format!("`{name}` is a Sub"),
+                            "a variable of `Class_Globals` may have its name",
+                            "use another name",
+                        )
+                        .message(),
                     );
-                    self.declare_global(name, Ty::Error, range(&decl));
+                    self.declare_global(name, Ty::Error, range(&decl), Origin::Dim);
                     continue;
                 }
-                self.declare_global(name.clone(), ty, range(&decl));
+                let origin = Origin::of_declarator(&decl);
+                self.declare_global(name.clone(), ty, range(&decl), origin);
                 self.mark_const(&decl, &name);
             }
         }
     }
 
-    fn declare_global(&mut self, name: String, ty: Ty, at: TextRange) {
+    fn declare_global(&mut self, name: String, ty: Ty, at: TextRange, origin: Origin) {
         match self.globals.get(&key(&name)) {
             Some(&id) => {
                 let existing = &self.module.global(id).ty;
-                if *existing != ty && *existing != Ty::Error && ty != Ty::Error {
-                    self.error(
-                        at,
-                        format!("`{name}` is already declared with another type"),
-                    );
+                if let Some(message) = self.type_clash(&name, existing, &ty, Clash::Global) {
+                    self.error(at, message);
                 }
             }
             None => {
                 let id = GlobalId(self.module.globals.len() as u32);
                 self.globals.insert(key(&name), id);
+                self.global_origins.insert(key(&name), origin);
                 self.module.globals.push(Var {
                     name,
                     ty,
@@ -746,14 +934,11 @@ impl Lowerer {
     /// a later one that does not ("Current declaration does not match
     /// previous one").
     fn declare_process_globals(&mut self, sub: &SyntaxNode) {
-        let nodes = sub
-            .descendants()
-            .filter(|n| matches!(n.kind(), DIM_STMT | FOR_STMT | FOR_EACH_STMT));
         // Each name's declarations: `Err` for a loop, at its name.
         let mut declarations: HashMap<String, Vec<Result<GlobalDeclaration, TextRange>>> =
             HashMap::new();
-        for node in nodes {
-            if node.kind() == DIM_STMT {
+        for found in in_source_order(sub, false) {
+            if let Found::Dim(node) = found {
                 let direct = node.parent().and_then(|block| block.parent()).as_ref() == Some(sub);
                 let in_if = node
                     .parent()
@@ -774,21 +959,26 @@ impl Lowerer {
                         direct,
                         in_if,
                     };
-                    self.declare_dim_global(name.clone(), ty, range(&decl));
+                    let origin = Origin::of_declarator(&decl);
+                    self.declare_dim_global(name.clone(), ty, range(&decl), origin);
                     self.mark_const(&decl, &name);
                     declarations
                         .entry(key(&name))
                         .or_default()
                         .push(Ok(declaration));
                 }
-            } else {
-                self.declare_loop_global(&node);
-                if let Some(name) = child(&node, NAME) {
-                    declarations
-                        .entry(key(&name_of(&name)))
-                        .or_default()
-                        .push(Err(range(&name)));
-                }
+            } else if let Found::Loop {
+                name,
+                origin,
+                type_ref,
+                ..
+            } = found
+            {
+                self.declare_loop_global(&name, origin, type_ref.as_ref());
+                declarations
+                    .entry(key(&name_of(&name)))
+                    .or_default()
+                    .push(Err(range(&name)));
             }
         }
         for (k, found) in declarations {
@@ -855,10 +1045,15 @@ impl Lowerer {
                 // type is the clash reported already.
                 match &found[2] {
                     Ok(d) if d.ty == ty => {
-                        self.error(d.at, redeclared_const_open(&name, "may be declared again"));
+                        self.error(
+                            d.at,
+                            redeclared_const(&name, "may be declared again").message(),
+                        );
                     }
                     Ok(_) => {}
-                    Err(at) => self.error(*at, redeclared_const_open(&name, "may be looped over")),
+                    Err(at) => {
+                        self.error(*at, redeclared_const(&name, "may be looped over").message())
+                    }
                 }
                 self.const_states.insert(id, ConstState::Reported);
                 self.const_declarations
@@ -888,7 +1083,7 @@ impl Lowerer {
 
     /// A `Dim` of `Process_Globals`. After a loop that declared the name, the
     /// same type is that variable, as after a `Dim`; another type is refused.
-    fn declare_dim_global(&mut self, name: String, ty: Ty, at: TextRange) {
+    fn declare_dim_global(&mut self, name: String, ty: Ty, at: TextRange, origin: Origin) {
         let k = key(&name);
         if self.subs.contains_key(&k) {
             // B4J: "Variable name cannot be the same as a sub name" (recorded).
@@ -896,33 +1091,33 @@ impl Lowerer {
             return;
         }
         if let Some(&id) = self.globals.get(&k)
-            && self.loop_declared.contains(&k)
+            && self.declared_by_loop(&k)
         {
-            let existing = self.module.global(id).ty.clone();
-            if existing != ty && existing != Ty::Error && ty != Ty::Error {
-                let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
-                self.error(
-                    at,
-                    format!(
-                        "`{name}` is already declared as {existing} by a loop of \
-                         `Process_Globals`: this `Dim` cannot declare it again as {ty}"
-                    ),
-                );
+            let existing = &self.module.global(id).ty;
+            if let Some(message) = self.type_clash(&name, existing, &ty, Clash::DimAfterLoop) {
+                self.error(at, message);
             }
             return;
         }
-        self.declare_global(name, ty, at);
+        self.declare_global(name, ty, at, origin);
     }
 
-    fn declare_loop_global(&mut self, node: &SyntaxNode) {
-        let Some(name) = child(node, NAME) else {
-            return;
-        };
-        let text = name_of(&name);
+    /// Whether a loop of `Process_Globals` declared this module variable.
+    fn declared_by_loop(&self, k: &str) -> bool {
+        self.global_origins.get(k).is_some_and(|o| o.is_loop())
+    }
+
+    fn declare_loop_global(
+        &mut self,
+        name: &SyntaxNode,
+        origin: Origin,
+        type_ref: Option<&SyntaxNode>,
+    ) {
+        let text = name_of(name);
         let k = key(&text);
-        let ty = match (node.kind(), child(node, TYPE_REF)) {
-            (FOR_STMT, None) => Ty::Int,
-            (FOR_EACH_STMT, Some(t)) => self.resolve_type(&t),
+        let ty = match (origin, type_ref) {
+            (Origin::Counter, _) => Ty::Int,
+            (Origin::TypedForEach, Some(t)) => self.resolve_type(t),
             // `For i As T` there is open (refused when lowered), and a
             // `For Each` without `As` uses a declared variable.
             _ => return,
@@ -935,25 +1130,19 @@ impl Lowerer {
             // (its type is checked when lowered). Otherwise the same type is
             // that variable, whichever declarations and in which order
             // (recorded), and another type is refused (recorded).
-            let existing = self.module.global(id).ty.clone();
-            let counter_over_dim = node.kind() == FOR_STMT && !self.loop_declared.contains(&k);
-            if counter_over_dim || existing == ty || existing == Ty::Error || ty == Ty::Error {
-                return;
+            let counter_over_dim = origin == Origin::Counter && !self.declared_by_loop(&k);
+            let existing = &self.module.global(id).ty;
+            if !counter_over_dim
+                && let Some(message) =
+                    self.type_clash(&text, existing, &ty, Clash::LoopInProcessGlobals)
+            {
+                self.refused_loop_names.insert(k);
+                self.error(range(name), message);
             }
-            let (existing, ty) = (self.ty_name(&existing), self.ty_name(&ty));
-            self.refused_loop_names.insert(k);
-            self.error(
-                range(&name),
-                format!(
-                    "`{text}` is already declared as {existing} in `Process_Globals`: this \
-                     loop cannot declare it again as {ty}"
-                ),
-            );
             return;
         }
-        if self.loop_name_free(&text, &name) {
-            self.loop_declared.insert(k);
-            self.declare_global(text, ty, range(&name));
+        if self.loop_name_free(&text, name) {
+            self.declare_global(text, ty, range(name), origin);
         }
     }
 
@@ -982,10 +1171,14 @@ impl Lowerer {
         self.refused_loop_names.insert(key(text));
         self.error(
             range(name),
-            format!(
-                "the loop variable `{text}` of `Process_Globals` has the name of a keyword: \
-                 whether it would hide it is not known yet, so use another name"
-            ),
+            Refusal::open(
+                format!(
+                    "the loop variable `{text}` of `Process_Globals` has the name of a keyword"
+                ),
+                "it would hide it",
+                "use another name",
+            )
+            .message(),
         );
         false
     }
@@ -1054,8 +1247,11 @@ impl Lowerer {
             .map(|(i, v)| (key(&v.name), LocalId(i as u32)))
             .collect();
         self.ret = sub.ret.clone();
-        self.sub_named_locals.clear();
-        self.untyped_loops.clear();
+        self.local_history = self
+            .locals
+            .iter()
+            .map(|v| (key(&v.name), LocalHistory::new(Origin::Param, false, false)))
+            .collect();
         self.sub_named_loops.clear();
         self.in_class_globals = self.class_globals == Some(id);
         self.in_process_globals = self.module.process_globals == Some(id) || self.in_class_globals;
@@ -1100,13 +1296,9 @@ impl Lowerer {
         match self.local_names.get(&key(name)) {
             Some(&id) => {
                 let existing = &self.locals[id.0 as usize].ty;
-                if *existing != ty && *existing != Ty::Error && ty != Ty::Error {
-                    let existing = self.ty_name(existing);
+                if let Some(message) = self.type_clash(name, existing, &ty, Clash::InSub) {
                     self.refused_loop_vars.insert(at);
-                    self.error(
-                        at,
-                        format!("`{name}` is already declared as {existing} in this Sub"),
-                    );
+                    self.error(at, message);
                 }
             }
             None => {
@@ -1144,18 +1336,14 @@ impl Lowerer {
             if !self.local_names.contains_key(&k) {
                 self.push_local(name, ty, at);
             }
-            // A loop of that name still means the Sub.
-            self.sub_named_locals.entry(k).or_insert(false);
             return;
         }
-        if !self.local_names.contains_key(&k) {
-            if self.subs.contains_key(&k) {
-                self.sub_named_locals.insert(k, true);
-            } else if let Some(&id) = self.globals.get(&k)
-                && self.module.global(id).ty == ty
-            {
-                return;
-            }
+        if !self.local_names.contains_key(&k)
+            && !self.subs.contains_key(&k)
+            && let Some(&id) = self.globals.get(&k)
+            && self.module.global(id).ty == ty
+        {
+            return;
         }
         self.declare_local(name, ty, at);
     }
@@ -1165,27 +1353,20 @@ impl Lowerer {
     /// (B4J: "Regular variable followed by '=' expected", recorded).
     fn declare_loop_local(&mut self, name: &str, ty: Ty, at: TextRange, typed: bool) {
         let k = key(name);
-        let declared = self.local_names.contains_key(&k);
-        if self.subs.contains_key(&k) {
-            if typed {
-                // Whatever declared the name first (recorded without one).
-                self.refused_loop_vars.insert(at);
-                self.error(
-                    at,
-                    format!(
-                        "`{name}` is a Sub: a `For` counter with its name cannot be declared \
-                         with `As`, so loop without `As`"
-                    ),
-                );
-                if !declared {
-                    self.sub_named_locals.insert(k, true);
-                    self.push_local(name, ty, at);
-                }
-                return;
+        if typed && self.subs.contains_key(&k) {
+            // Whatever declared the name first (recorded without one).
+            self.refused_loop_vars.insert(at);
+            self.error(
+                at,
+                format!(
+                    "`{name}` is a Sub: a `For` counter with its name cannot be declared \
+                     with `As`, so loop without `As`"
+                ),
+            );
+            if !self.local_names.contains_key(&k) {
+                self.push_local(name, ty, at);
             }
-            if !declared {
-                self.sub_named_locals.insert(k, true);
-            }
+            return;
         }
         self.declare_local(name, ty, at);
     }
@@ -1203,153 +1384,180 @@ impl Lowerer {
         if existing == Ty::Error {
             return;
         }
-        let shown = self.ty_name(&existing);
         if existing == *ty && self.subs.contains_key(&key(name)) {
             return;
         }
         let message = if existing == *ty {
-            format!(
-                "`{name}` is also a module variable ({shown}): whether this loop declares a \
-                 new local or means the module variable is not known yet, so loop over it \
-                 without `As`"
+            Refusal::open(
+                format!(
+                    "`{name}` is also a module variable ({})",
+                    self.ty_name(&existing)
+                ),
+                "this loop declares a new local or means the module variable",
+                "loop over it without `As`",
             )
+            .message()
         } else {
-            let ty = self.ty_name(ty);
-            format!(
-                "`{name}` is a module variable of type {shown}: a local cannot declare it \
-                 again as {ty}"
-            )
+            let Some(clash) = self.type_clash(name, &existing, ty, Clash::LocalOfModuleVariable)
+            else {
+                return;
+            };
+            clash
         };
         self.refused_loop_vars.insert(at);
         // After a constant refused, or asked about once, no error of its own.
         self.const_error(&VarRef::Global(id), at, message);
     }
 
-    /// A declaration as an `Object` of a name a `For Each` without `As`
-    /// declared before it: one variable, or refused as two declarations?
-    /// Not recorded.
-    fn note_redeclared(&mut self, name: &str, ty: &Ty) {
-        if *ty == Ty::Object
-            && let Some(state) = self.untyped_loops.get_mut(&key(name))
-            && *state == UntypedLoop::Declared
-        {
-            *state = UntypedLoop::Redeclared;
+    /// Declares a local name with `declare`, in source order, and notes
+    /// the declaration: the first one that makes it a local of this Sub (a
+    /// `Dim` of a module variable's name and type makes none), then any
+    /// `Dim`, or a declaration again as an `Object`.
+    fn declare_noted(
+        &mut self,
+        name: &str,
+        origin: Origin,
+        ty: &Ty,
+        used: &HashSet<String>,
+        declare: impl FnOnce(&mut Self),
+    ) {
+        let k = key(name);
+        let fresh = !self.local_names.contains_key(&k);
+        declare(self);
+        match self.local_history.get_mut(&k) {
+            Some(history) => {
+                history.dimmed |= matches!(origin, Origin::Dim | Origin::Const);
+                if *ty == Ty::Object
+                    && history.first == Origin::UntypedForEach
+                    && !history.used_before
+                {
+                    history.object_again = true;
+                }
+            }
+            None if fresh && self.local_names.contains_key(&k) => {
+                let history =
+                    LocalHistory::new(origin, used.contains(&k), self.globals.contains_key(&k));
+                self.local_history.insert(k, history);
+            }
+            None => {}
+        }
+    }
+
+    /// Why a `For Each` without `As` over a local `Object` is not recorded,
+    /// if it is not: declared by the loop, then again as an `Object`, or
+    /// after a use of the name; or declared first by a typed loop.
+    fn untyped_loop_unrecorded(&self, k: &str) -> Option<&'static str> {
+        let history = self.local_history.get(k)?;
+        match history.first {
+            Origin::UntypedForEach if history.used_before => Some("used before this loop"),
+            Origin::UntypedForEach if history.object_again => {
+                Some("declared again as Object after this loop")
+            }
+            _ if history.untyped_after_typed => Some("declared by a typed loop before this one"),
+            _ => None,
         }
     }
 
     /// Every local of a Sub is visible in the whole Sub: declare them all first.
     fn hoist_locals(&mut self, body: &SyntaxNode) {
+        let found: Vec<Found> = in_source_order(body, true).collect();
         // The names a `Dim` or a loop declares anywhere in the Sub: an
         // assignment above one of them assigns that variable, as B4X hoists
         // declarations.
-        let declared: HashSet<String> = body
-            .descendants()
-            .flat_map(|node| match node.kind() {
-                DIM_STMT => node
+        let declared: HashSet<String> = found
+            .iter()
+            .flat_map(|f| match f {
+                Found::Dim(node) => node
                     .descendants()
                     .filter(|d| d.kind() == DECLARATOR)
                     .filter_map(|d| child(&d, NAME))
                     .map(|n| key(&name_of(&n)))
                     .collect::<Vec<_>>(),
-                FOR_STMT | FOR_EACH_STMT => child(&node, NAME)
-                    .map(|n| vec![key(&name_of(&n))])
-                    .unwrap_or_default(),
-                _ => Vec::new(),
+                Found::Loop { name, .. } => vec![key(&name_of(name))],
+                Found::Assign(_) | Found::Use(_) => Vec::new(),
             })
             .collect();
-        // In source order: the names used so far, and the names a typed
-        // loop declared first.
+        // In source order: the names used so far.
         let mut used: HashSet<String> = HashSet::new();
-        let mut typed_loop_first: HashSet<String> = HashSet::new();
-        for node in body.descendants() {
-            let first_by_loop = |this: &Self, name: &SyntaxNode, set: &mut HashSet<String>| {
-                let text = name_of(name);
-                if this.lookup_var(&text).is_none() {
-                    set.insert(key(&text));
-                }
-            };
-            match node.kind() {
-                NAME_REF => {
+        for f in found {
+            match f {
+                Found::Use(node) => {
                     used.insert(key(&name_of(&node)));
                 }
-                DIM_STMT => {
+                Found::Dim(node) => {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
-                        self.note_redeclared(&name, &ty);
-                        self.declare_dim_local(&name, ty, range(&decl), true);
+                        let origin = Origin::of_declarator(&decl);
+                        self.declare_noted(&name, origin, &ty.clone(), &used, |this| {
+                            this.declare_dim_local(&name, ty, range(&decl), true)
+                        });
                         self.mark_const(&decl, &name);
                     }
                 }
-                FOR_EACH_STMT => match (child(&node, NAME), child(&node, TYPE_REF)) {
-                    (Some(name), Some(t)) => {
-                        let ty = self.resolve_type(&t);
-                        self.note_redeclared(&name_of(&name), &ty);
-                        first_by_loop(self, &name, &mut typed_loop_first);
-                        self.declare_dim_local(&name_of(&name), ty, range(&name), false);
-                    }
-                    // Not declared before it, in source order, the variable
-                    // of a `For Each` without `As` is an `Object`: a later
-                    // `Dim` of another type is refused ("Previous: Object",
-                    // recorded: `for_each_untyped_declared_after`), and a
-                    // name nothing declares builds (recorded:
-                    // `for_each_untyped_undeclared`).
-                    // Used before it, or declared first by a typed loop, it is
-                    // not recorded.
-                    (Some(name), None) => {
-                        let text = name_of(&name);
-                        let k = key(&text);
-                        if self.lookup_var(&text).is_none()
-                            && !self.subs.contains_key(&k)
-                            && !self.records.contains_key(&k)
-                            && builtins::lookup(Owner::Global, &text).is_none()
-                        {
-                            self.declare_local(&text, Ty::Object, range(&name));
-                            let state = if used.contains(&k) {
-                                UntypedLoop::UsedBefore
-                            } else {
-                                UntypedLoop::Declared
-                            };
-                            self.untyped_loops.insert(k, state);
-                        } else if typed_loop_first.contains(&k) {
-                            self.untyped_loops
-                                .entry(k)
-                                .or_insert(UntypedLoop::AfterTypedLoop);
+                Found::Loop {
+                    name,
+                    origin,
+                    type_ref,
+                    ..
+                } => {
+                    let text = name_of(&name);
+                    match origin {
+                        Origin::TypedForEach | Origin::TypedCounter => {
+                            let ty = type_ref.map_or(Ty::Error, |t| self.resolve_type(&t));
+                            self.declare_noted(&text, origin, &ty.clone(), &used, |this| {
+                                if origin == Origin::TypedForEach {
+                                    this.declare_dim_local(&text, ty, range(&name), false);
+                                } else {
+                                    this.declare_loop_local(&text, ty, range(&name), true);
+                                }
+                            });
+                        }
+                        // Not declared before it, in source order, the
+                        // variable of a `For Each` without `As` is an
+                        // `Object`: a later `Dim` of another type is refused
+                        // ("Previous: Object", recorded:
+                        // `for_each_untyped_declared_after`), and a name
+                        // nothing declares builds (recorded:
+                        // `for_each_untyped_undeclared`). Used before it, or
+                        // declared first by a typed loop, it is not recorded.
+                        Origin::UntypedForEach => {
+                            let k = key(&text);
+                            if self.lookup_var(&text).is_none()
+                                && !self.subs.contains_key(&k)
+                                && !self.records.contains_key(&k)
+                                && builtins::lookup(Owner::Global, &text).is_none()
+                            {
+                                self.declare_noted(&text, origin, &Ty::Object, &used, |this| {
+                                    this.declare_local(&text, Ty::Object, range(&name))
+                                });
+                            } else if let Some(history) = self.local_history.get_mut(&k)
+                                && history.first.is_typed_loop()
+                                && !history.shadows_global
+                            {
+                                // In source order: after the typed loop.
+                                history.untyped_after_typed = true;
+                            }
+                        }
+                        // A counter not declared before it, in source order,
+                        // is an Int, which a later declaration of another
+                        // type cannot change (B4J: "Current declaration does
+                        // not match previous one", recorded:
+                        // `local_typed_for_each_other_type_after_counter_named_like_sub`).
+                        _ => {
+                            if self.lookup_var(&text).is_none() {
+                                self.declare_noted(&text, origin, &Ty::Int, &used, |this| {
+                                    this.declare_loop_local(&text, Ty::Int, range(&name), false)
+                                });
+                            }
                         }
                     }
-                    _ => {}
-                },
-                FOR_STMT => match (child(&node, NAME), child(&node, TYPE_REF)) {
-                    (Some(name), Some(t)) => {
-                        let ty = self.resolve_type(&t);
-                        self.note_redeclared(&name_of(&name), &ty);
-                        first_by_loop(self, &name, &mut typed_loop_first);
-                        self.declare_loop_local(&name_of(&name), ty, range(&name), true);
-                    }
-                    // A counter not declared before it, in source order, is
-                    // an Int, which a later declaration of another type
-                    // cannot change (B4J: "Current declaration does not
-                    // match previous one", recorded:
-                    // `local_typed_for_each_other_type_after_counter_named_like_sub`).
-                    (Some(name), None) => {
-                        let text = name_of(&name);
-                        if self.lookup_var(&text).is_none() {
-                            self.declare_loop_local(&text, Ty::Int, range(&name), false);
-                        }
-                    }
-                    _ => {}
-                },
+                }
                 // An assignment to a name nothing in the Sub, nor the
                 // module, declares, and that is not a Sub, a built-in or a
                 // `Type`, declares it: B4J builds `Undeclared = 5`
                 // (recorded: `undeclared_variable`). Its type is a `String`
                 // (recorded: `undeclared_variable_type`).
-                ASSIGN_STMT => {
-                    let Some(target) = exprs(&node).into_iter().next() else {
-                        continue;
-                    };
-                    if target.kind() != NAME_REF {
-                        continue;
-                    }
+                Found::Assign(target) => {
                     let text = name_of(&target);
                     if self.lookup_var(&text).is_none()
                         && !declared.contains(&key(&text))
@@ -1357,10 +1565,11 @@ impl Lowerer {
                         && !self.subs.contains_key(&key(&text))
                         && builtins::lookup(Owner::Global, &text).is_none()
                     {
-                        self.declare_local(&text, Ty::String, range(&target));
+                        self.declare_noted(&text, Origin::Assignment, &Ty::String, &used, |this| {
+                            this.declare_local(&text, Ty::String, range(&target))
+                        });
                     }
                 }
-                _ => {}
             }
         }
     }
@@ -1604,10 +1813,11 @@ impl Lowerer {
                 // another type it is refused, wherever it is declared
                 // (recorded over a local, a parameter and a module
                 // variable). Not recorded: over a parameter or a module
-                // variable of type `Object`, and the cases `UntypedLoop`
-                // lists. A Sub's name was judged by `loop_variable`, which
-                // lets one through only after the program has an error over
-                // it already, and so has a variable of an unknown type.
+                // variable of type `Object`, and the cases
+                // `untyped_loop_unrecorded` lists. A Sub's name was judged
+                // by `loop_variable`, which lets one through only after the
+                // program has an error over it already, and so has a
+                // variable of an unknown type.
                 if child(node, TYPE_REF).is_none()
                     && !self.in_class_globals
                     && !self.subs.contains_key(&key(&text))
@@ -1615,12 +1825,11 @@ impl Lowerer {
                 {
                     let message = match var {
                         VarRef::Local(id) if id.0 as usize >= self.params && ty == Ty::Object => {
-                            self.untyped_loops
-                                .get(&key(&text))
-                                .and_then(|state| state.unrecorded(&text))
+                            self.untyped_loop_unrecorded(&key(&text))
+                                .map(|why| untyped_for_each(&text, why))
                         }
-                        _ if ty == Ty::Object => Some(untyped_for_each(&text, None)),
-                        _ => Some(untyped_for_each(&text, Some(&self.ty_name(&ty)))),
+                        _ if ty == Ty::Object => Some(untyped_for_each(&text, "already declared")),
+                        _ => self.type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach),
                     };
                     if let Some(message) = message {
                         self.error(range(&name), message);
@@ -1753,9 +1962,8 @@ impl Lowerer {
         if !self.subs.contains_key(&k) {
             return;
         }
-        let kind = loop_kind(node);
         let refused = self.refused_loop_already(node, name, ty);
-        if refused || kind == LoopKind::Untyped {
+        if refused || loop_origin(node) == Origin::UntypedForEach {
             self.sub_named_loops.entry(k).or_default().unrecorded = true;
         }
     }
@@ -1784,21 +1992,22 @@ impl Lowerer {
         {
             // B4J: "Cannot modify Const variable." (recorded), for a `For`
             // and a `For Each v As Int` in a Sub over a module `Int` `Const`.
-            let recorded = !self.in_process_globals
+            let refusal = if !self.in_process_globals
                 && self.recorded_const(var)
                 && *ty == Ty::Int
-                && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some());
-            let message = if recorded {
-                format!("`{text}` is a `Const`: a loop cannot loop over it")
+                && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some())
+            {
+                Refusal::Recorded(format!("`{text}` is a `Const`: a loop cannot loop over it"))
             } else if self.redeclared_const(var) {
-                redeclared_const_open(text, "may be looped over")
+                redeclared_const(text, "may be looped over")
             } else {
-                format!(
-                    "`{text}` is a `Const`: whether a loop may loop over it here is not known \
-                     yet, so use another name"
+                Refusal::open(
+                    format!("`{text}` is a `Const`"),
+                    "a loop may loop over it here",
+                    "use another name",
                 )
             };
-            self.const_error(var, range(name), message);
+            self.const_error(var, range(name), refusal.message());
             self.refused_loop(node, text, name);
             return LoopVar::Refused;
         }
@@ -1810,12 +2019,12 @@ impl Lowerer {
         // already, or is not one.
         // Whether it is a loop variable of this Sub, or of `Process_Globals`.
         let (own, ty) = match &found {
-            Some((VarRef::Global(_), ty)) if self.loop_declared.contains(&k) => (false, ty.clone()),
-            Some((VarRef::Local(_), ty)) if self.sub_named_locals.get(&k) == Some(&true) => {
+            Some((VarRef::Global(_), ty)) if self.declared_by_loop(&k) => (false, ty.clone()),
+            Some((VarRef::Local(_), ty)) if self.sub_named_local(&k) == Some(true) => {
                 let module_ty = self
                     .globals
                     .get(&k)
-                    .filter(|_| self.loop_declared.contains(&k))
+                    .filter(|_| self.declared_by_loop(&k))
                     .map(|id| self.module.global(*id).ty.clone());
                 // Another type than the module variable's: reported already
                 // (recorded).
@@ -1826,12 +2035,12 @@ impl Lowerer {
             }
             _ => return LoopVar::Found(found),
         };
-        let kind = loop_kind(node);
+        let origin = loop_origin(node);
         let before = self.sub_named_loops.get(&k);
         if before.is_some_and(|b| b.unrecorded) || self.refused_loop_already(node, name, &ty) {
             return LoopVar::Found(found);
         }
-        if recorded_loop(kind) {
+        if recorded_loop(origin) {
             return LoopVar::Found(found);
         }
         let what = if own {
@@ -1930,7 +2139,7 @@ impl Lowerer {
                 // expected" inside its loop: recorded).
                 // A `Dim` with a Sub's name was reported already: assigning it
                 // is not reported again.
-                let refused_dim = self.sub_named_locals.get(&key(&name)) == Some(&false);
+                let refused_dim = self.sub_named_local(&key(&name)) == Some(false);
                 let found = if refused_dim {
                     self.lookup_var(&name)
                 } else {
@@ -1951,7 +2160,7 @@ impl Lowerer {
                         let recorded_pair =
                             !self.in_process_globals && self.pair(&var) == Some(Pair::DimConst);
                         let message = if self.redeclared_const(&var) && !recorded_pair {
-                            redeclared_const_open(&name, "may be assigned")
+                            redeclared_const(&name, "may be assigned").message()
                         } else {
                             format!("`{name}` is a `Const`: it cannot be assigned")
                         };
@@ -2137,7 +2346,7 @@ impl Lowerer {
             {
                 format!("`{name}` is a `Const` of the module: a `Dim` cannot declare it again")
             } else if self.redeclared_const(var) {
-                redeclared_const_open(&name, "may be declared again")
+                redeclared_const(&name, "may be declared again").message()
             } else {
                 const_again_open(&name, is_const)
             };
@@ -2175,16 +2384,17 @@ impl Lowerer {
                     return Some((
                         *var,
                         if self.redeclared_const(var) {
-                            redeclared_const_open(name, "may change")
+                            redeclared_const(name, "may change").message()
                         } else if item {
                             format!("`{name}` is a `Const`: its items cannot be assigned")
                         } else if field {
                             format!("`{name}` is a `Const`: its fields cannot be assigned")
                         } else {
-                            format!(
-                                "`{name}` is a `Const`: whether this part of it may be assigned is \
-                             not known yet"
+                            Refusal::asked(
+                                format!("`{name}` is a `Const`"),
+                                "this part of it may be assigned",
                             )
+                            .message()
                         },
                     ));
                 }
@@ -2396,10 +2606,27 @@ impl Lowerer {
         let k = key(name);
         let sub_named = self.subs.contains_key(&k)
             && match found.0 {
-                VarRef::Global(_) => self.loop_declared.contains(&k),
-                VarRef::Local(_) => self.sub_named_locals.contains_key(&k),
+                VarRef::Global(_) => self.declared_by_loop(&k),
+                VarRef::Local(_) => self.sub_named_local(&k).is_some(),
             };
         (!sub_named).then_some(found)
+    }
+
+    /// A local of the current Sub with a Sub's name that a `Dim` or a loop
+    /// declares: `true` when a loop declared it first, `false` for a
+    /// refused `Dim`. Its uses mean the Sub (recorded).
+    fn sub_named_local(&self, k: &str) -> Option<bool> {
+        if !self.subs.contains_key(k) {
+            return None;
+        }
+        let history = self.local_history.get(k)?;
+        if history.first.is_loop() {
+            Some(true)
+        } else if history.dimmed {
+            Some(false)
+        } else {
+            None
+        }
     }
 
     /// A bare name, or the callee of `name(args)` when `args` is given.
