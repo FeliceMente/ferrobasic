@@ -1454,10 +1454,12 @@ impl Lowerer {
 
     /// Why a `For Each` without `As` over a local `Object` of this Sub that
     /// it declared is refused, if it is. After an assignment of the name,
-    /// which declares a `String`, B4J refuses it (recorded:
-    /// `for_each_untyped_assigned_before`). After a read of the name alone,
-    /// or with a declaration again as an `Object` after it, it is not
-    /// recorded.
+    /// which declares a `String`, or a read of it, B4J refuses it
+    /// (recorded: `for_each_untyped_assigned_before`,
+    /// `for_each_untyped_read_before`). With a declaration again as an
+    /// `Object` after it, it builds, and the `Dim` gives a new `Object`
+    /// (recorded: `for_each_untyped_object_declared_after`), which
+    /// FerroBASIC cannot give yet (deviation D8).
     fn untyped_loop_refusal(&self, text: &str) -> Option<String> {
         let history = self.local_history.get(&key(text))?;
         if history.first != Origin::UntypedForEach {
@@ -1466,11 +1468,20 @@ impl Lowerer {
         if history.assigned_before {
             self.type_clash(text, &Ty::String, &Ty::Object, Clash::UntypedForEach)
         } else if history.used_before {
-            Some(untyped_for_each(text, "used before this loop"))
+            // B4J: "Undeclared variable 'u' is used before it was assigned
+            // any value." (recorded: `for_each_untyped_read_before`).
+            Some(
+                Refusal::Recorded(format!(
+                    "`{text}` is read before this `For Each` declares it, and before it is \
+                     assigned a value: declare it first, e.g. `Dim {text} As Object`"
+                ))
+                .message(),
+            )
         } else if history.object_again {
-            Some(untyped_for_each(
-                text,
-                "declared again as Object after this loop",
+            Some(format!(
+                "`{text}` is declared again as Object after this `For Each`: B4J builds that, \
+                 and its `Dim` gives `{text}` a new Object, which FerroBASIC does not do yet \
+                 (docs/deviations.md, D8); declare `{text}` once"
             ))
         } else {
             None
@@ -1846,17 +1857,13 @@ impl Lowerer {
                         VarRef::Local(id) if id.0 as usize >= self.params && ty == Ty::Object => {
                             self.untyped_loop_refusal(&text)
                         }
-                        // Over a module variable `Object` that a `Dim` declared,
-                        // from a Sub (recorded: `for_each_untyped_module_object`);
-                        // one a loop of `Process_Globals` declared is not
-                        // recorded.
-                        VarRef::Global(_)
-                            if ty == Ty::Object
-                                && !self.in_process_globals
-                                && self.global_origins.get(&key(&text)) == Some(&Origin::Dim) =>
-                        {
-                            None
-                        }
+                        // Over a parameter `Object`, and over a module variable
+                        // `Object` from a Sub, however it was declared
+                        // (recorded: `for_each_untyped_param_object`,
+                        // `for_each_untyped_module_object`,
+                        // `for_each_untyped_pg_loop_object`).
+                        VarRef::Local(_) if ty == Ty::Object => None,
+                        VarRef::Global(_) if ty == Ty::Object && !self.in_process_globals => None,
                         _ if ty == Ty::Object => Some(untyped_for_each(&text, "already declared")),
                         _ => self.type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach),
                     };
@@ -3091,9 +3098,10 @@ impl Lowerer {
             (Error, _) | (_, Error) => return error_expr(at),
             // `n = Null`: B4J converts the `Null` with `BA.ObjectToNumber`,
             // which parses its text, `"null"`: a `NumberFormatException`
-            // when it runs (recorded with an `Int`, a `Double` and a `Long`:
-            // `null_number_compare`, `double_eq_null`, `long_eq_null`).
-            (Int | Double | Long, Null) if !ordering => {
+            // when it runs, whatever the number's type (recorded:
+            // `null_number_compare`, `double_eq_null`, `long_eq_null`,
+            // `number_types_eq_null`).
+            (l, Null) if l.is_numeric() && !ordering => {
                 let right = self.coerce(right, &String);
                 let left = self.coerce(left, &Double);
                 let right = self.coerce(right, &Double);

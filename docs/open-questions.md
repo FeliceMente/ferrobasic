@@ -80,7 +80,11 @@ related tests stay `pending-recording`.
       Sub declares the name, before or after (declarations are hoisted).
 - [x] Such a variable is a `String`: `GetType` gives `java.lang.String`,
       and `+ 1` on it gives `6` (recording: `level0/undeclared_variable_type`).
-- [ ] Whether a read of a name nothing declares or assigns builds.
+- [ ] Whether a read of a name nothing declares or assigns builds. Before
+      a `For Each` without `As` that declares it, it does not: "Undeclared
+      variable 'u' is used before it was assigned any value." (recording:
+      `level0/for_each_untyped_read_before`); with nothing declaring it
+      anywhere, FerroBASIC refuses it as undeclared.
 - [x] A variable declared without `As` (`Dim x`, `Dim x = 5`) is a `String`
       (recording: `level0/dim_without_as`).
 - [x] Two `Dim`s of the same name and type in one Sub are one variable,
@@ -258,9 +262,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `Null` builds and raises `NumberFormatException` when it runs, as
       `BA.ObjectToNumber` parses `"null"` (recording:
       `level0/null_number_compare`), and so do a `Double` and a `Long`
-      (recordings: `level0/double_eq_null`, `level0/long_eq_null`). A
-      `Float`, a `Short` and a `Byte` are open
-      (`level0/number_types_eq_null`); FerroBASIC refuses them.
+      (recordings: `level0/double_eq_null`, `level0/long_eq_null`), and a
+      `Float`, a `Short` and a `Byte` (recording:
+      `level0/number_types_eq_null`).
 - [x] A real literal may start with its decimal point (`.08`), also with
       an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
       `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the
@@ -443,31 +447,31 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/for_each_untyped_object`, `level0/for_each_untyped_undeclared`).
       `JSONWebToken.bas`, a class of the real-world corpus, loops
       `For Each Key In Claims.Keys` with `Key` declared nowhere.
-- [x] Over a module variable of type `Object`, from a Sub, and over an
-      `Object` that a typed loop declared first, it builds (recordings:
+- [x] Over any `Object` from a Sub it builds: a module variable, declared
+      by a `Dim` or by a loop of `Process_Globals`, a parameter, and an
+      `Object` that a typed loop declared first (recordings:
       `level0/for_each_untyped_module_object`,
+      `level0/for_each_untyped_pg_loop_object`,
+      `level0/for_each_untyped_param_object`,
       `level0/for_each_untyped_after_typed_object`). After an assignment of
       the name, which declares a `String`, it is refused ("Current
       declaration does not match previous one", recording:
-      `level0/for_each_untyped_assigned_before`).
-- [ ] With the name only read before the loop, over a parameter of type
-      `Object`, and from a Sub over a module variable `Object` that a loop
-      of `Process_Globals` declared: FerroBASIC refuses them
-      (`level0/for_each_untyped_read_before`,
-      `level0/for_each_untyped_param_object`,
-      `level0/for_each_untyped_pg_loop_object`).
-- [ ] With a `Dim` of the name as an `Object` after the loop, B4J builds it
-      (recording run 16), and the `Dim` gives the variable a new `Object`
-      (next question). FerroBASIC refuses it until it gives one too; the
-      test now prints the variable's type, which does not change from run
-      to run (`level0/for_each_untyped_object_declared_after`).
-- [ ] `Dim o As Object` with no value: recording run 16 printed
-      `java.lang.Object@65ab7765` after one, so B4J gives the variable a
-      new `Object`. FerroBASIC gives `Null`, so `Log(o)`, `o = Null` and
-      `GetType(o)` differ from B4J until it gives a new `Object` too:
-      deviation D8 (`level0/object_dim_default`, whose output the next run
-      saves, prints `o = Null` and the type; a hash changes on every run,
-      so no test can print the object itself).
+      `level0/for_each_untyped_assigned_before`), and after a read of it
+      ("Undeclared variable 'u' is used before it was assigned any
+      value.", recording: `level0/for_each_untyped_read_before`).
+- [ ] Inside `Process_Globals`, over a variable `Object` declared there:
+      FerroBASIC refuses it (`level0/process_globals_for_each_untyped_object`).
+- [x] With a `Dim` of the name as an `Object` after the loop, B4J builds it
+      and the `Dim` gives the variable a new `Object`: `5`, `6`,
+      `java.lang.Object` (recording run 17:
+      `level0/for_each_untyped_object_declared_after`). FerroBASIC refuses
+      it until it gives a new `Object` too (D8, below); its recording is
+      applied then.
+- [x] `Dim o As Object` with no value gives the variable a new `Object`:
+      `o = Null` is `False` and `GetType(o)` is `java.lang.Object` (recording
+      run 17 of `level0/object_dim_default`). FerroBASIC gives `Null`:
+      deviation D8, until it gives a new `Object` too. A hash changes on
+      every run, so no test can print the object itself.
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls

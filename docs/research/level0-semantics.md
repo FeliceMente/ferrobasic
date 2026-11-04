@@ -380,7 +380,8 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `char_eq_float`). The number on the left does not compile
   (**recorded**: `number_eq_char`). A `Double` or a `Long` `=` `Null`
   raises `NumberFormatException` as an `Int` does (**recorded**:
-  `double_eq_null`, `long_eq_null`), and `<` between a String and an `Object` parses both
+  `double_eq_null`, `long_eq_null`), and so do a `Float`, a `Short` and a
+  `Byte` (**recorded**: `number_types_eq_null`), and `<` between a String and an `Object` parses both
   (`"10" < o` with `o = "5"` is `False`, **recorded**:
   `string_less_object`).
 - The relative precedence of `And` versus `Or`, and of both versus comparisons,
@@ -442,7 +443,13 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   declares a `String`, it is refused (**recorded**:
   `for_each_untyped_assigned_before`). After the loop, `Dim n As Object`
   builds and gives `n` a new `Object`: it printed `java.lang.Object@<hash>`
-  (recording run 16, `for_each_untyped_object_declared_after`). The real-world corpus's
+  (recording run 16, `for_each_untyped_object_declared_after`; run 17
+  prints its type, `java.lang.Object`). It builds over a parameter `Object`
+  and over a module variable `Object` that a loop of `Process_Globals`
+  declared too (**recorded**: `for_each_untyped_param_object`,
+  `for_each_untyped_pg_loop_object`), and is refused after a read of the
+  name: "Undeclared variable 'u' is used before it was assigned any
+  value." (**recorded**: `for_each_untyped_read_before`). The real-world corpus's
   `JSONWebToken.bas`, a class, loops `For Each Key In Claims.Keys` in
   `setClaims` with `Key` declared nowhere.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
