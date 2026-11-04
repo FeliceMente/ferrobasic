@@ -133,7 +133,7 @@ End Sub
 | Double | IEEE 754, 64-bit | 0 | `double` | `double` |
 | Char | UTF-16 code unit | `Chr(0)` | `char` | `i16` |
 | String | immutable UTF-16 text | `""` | `java.lang.String` | pointer to a refcounted runtime string |
-| Object | any value or `Null` | `Null` *(open: after `Dim o As Object`, B4J prints a new `java.lang.Object`, recording run 16; `object_dim_default`)* | `Object` | pointer with a type header |
+| Object | any value or `Null` | `Null` (B4J gives `Dim o As Object` a new `java.lang.Object`: deviation D8) | `Object` | pointer with a type header |
 | List, Map | reference to a collection, uninitialised by default | uninitialised | wrapper | runtime object |
 | arrays `T()` | fixed size, zero-based, any rank | per element | `T[]` | runtime object |
 | `Type` records | reference to an object with fields | an object whose fields hold Java defaults (0, `False`, `Null` for String and objects); `Initialize` then sets B4X's defaults (`""`, fresh uninitialised List/Map) and makes `IsInitialized` True. Fields can be read and written before `Initialize`. | class | runtime object |
@@ -343,7 +343,7 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   of another type is an error (B4J: "Current declaration does not match
   previous one", recorded: `for_each_untyped_declared_after`); over a
   local `Object` declared before it, by a `Dim` or a typed loop, and over a
-  module variable `Object` from a Sub, it loops with it (recorded:
+  module variable `Object` a `Dim` declared, from a Sub, it loops with it (recorded:
   `for_each_untyped_object`, `for_each_untyped_after_typed_object`,
   `for_each_untyped_module_object`); over a local, a parameter or a module
   variable of another type it is an error, in `Process_Globals` too, and so
@@ -351,7 +351,8 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   (recorded: `for_each_untyped_local`, `for_each_untyped_other_type`,
   `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
   `process_globals_for_each_untyped`, `for_each_untyped_assigned_before`).
-  Over a parameter of type `Object`, over an undeclared name in
+  Over a parameter of type `Object`, over a module variable `Object` a loop
+  of `Process_Globals` declared, over an undeclared name in
   `Process_Globals`, with a later `Dim` of the name as an `Object`, or with
   the name only read before the loop, it is *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.

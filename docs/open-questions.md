@@ -450,10 +450,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       the name, which declares a `String`, it is refused ("Current
       declaration does not match previous one", recording:
       `level0/for_each_untyped_assigned_before`).
-- [ ] With the name only read before the loop, and over a parameter of
-      type `Object`: FerroBASIC refuses them
+- [ ] With the name only read before the loop, over a parameter of type
+      `Object`, and from a Sub over a module variable `Object` that a loop
+      of `Process_Globals` declared: FerroBASIC refuses them
       (`level0/for_each_untyped_read_before`,
-      `level0/for_each_untyped_param_object`).
+      `level0/for_each_untyped_param_object`,
+      `level0/for_each_untyped_pg_loop_object`).
 - [ ] With a `Dim` of the name as an `Object` after the loop, B4J builds it
       (recording run 16), and the `Dim` gives the variable a new `Object`
       (next question). FerroBASIC refuses it until it gives one too; the
@@ -462,9 +464,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [ ] `Dim o As Object` with no value: recording run 16 printed
       `java.lang.Object@65ab7765` after one, so B4J gives the variable a
       new `Object`. FerroBASIC gives `Null`, so `Log(o)`, `o = Null` and
-      `GetType(o)` differ from B4J until it gives a new `Object` too
-      (`level0/object_dim_default` asks for the type and `o = Null`; a hash
-      changes on every run, so no test can print the object itself).
+      `GetType(o)` differ from B4J until it gives a new `Object` too:
+      deviation D8 (`level0/object_dim_default`, whose output the next run
+      saves, prints `o = Null` and the type; a hash changes on every run,
+      so no test can print the object itself).
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls

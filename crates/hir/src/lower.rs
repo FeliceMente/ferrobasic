@@ -477,6 +477,17 @@ struct LocalHistory {
 }
 
 impl LocalHistory {
+    /// A parameter: declared before the body, so before anything in it.
+    fn param() -> Self {
+        LocalHistory {
+            first: Origin::Param,
+            dimmed: false,
+            used_before: false,
+            assigned_before: false,
+            object_again: false,
+        }
+    }
+
     fn new(first: Origin, before: &SoFar, k: &str) -> Self {
         LocalHistory {
             first,
@@ -1249,11 +1260,7 @@ impl Lowerer {
         self.local_history = self
             .locals
             .iter()
-            .map(|v| {
-                let k = key(&v.name);
-                let history = LocalHistory::new(Origin::Param, &SoFar::default(), &k);
-                (k, history)
-            })
+            .map(|v| (key(&v.name), LocalHistory::param()))
             .collect();
         self.sub_named_loops.clear();
         self.in_class_globals = self.class_globals == Some(id);
@@ -1839,9 +1846,17 @@ impl Lowerer {
                         VarRef::Local(id) if id.0 as usize >= self.params && ty == Ty::Object => {
                             self.untyped_loop_refusal(&text)
                         }
-                        // Over a module variable `Object` from a Sub (recorded:
-                        // `for_each_untyped_module_object`).
-                        VarRef::Global(_) if ty == Ty::Object && !self.in_process_globals => None,
+                        // Over a module variable `Object` that a `Dim` declared,
+                        // from a Sub (recorded: `for_each_untyped_module_object`);
+                        // one a loop of `Process_Globals` declared is not
+                        // recorded.
+                        VarRef::Global(_)
+                            if ty == Ty::Object
+                                && !self.in_process_globals
+                                && self.global_origins.get(&key(&text)) == Some(&Origin::Dim) =>
+                        {
+                            None
+                        }
                         _ if ty == Ty::Object => Some(untyped_for_each(&text, "already declared")),
                         _ => self.type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach),
                     };
@@ -3099,18 +3114,13 @@ impl Lowerer {
             // `c = 65`: B4J converts the number with `BA.ObjectToChar`, the
             // first character of its text, `'6'` (generated
             // `_c==BA.ObjectToChar(65)` and recording: `char_number_compare`;
-            // a `Long`, `Short`, `Byte` and `Double` too: `char_eq_long`,
-            // `char_eq_double`). Java's text of a Double (`1.0E-5`) starts
-            // as B4J's does, which only drops a trailing `.0`.
-            // A `Float` is converted as an object, `Float.toString`
-            // (`1.0E-5`), not as B4J prints it, widened to a Double
-            // (recorded: `char_eq_float`).
+            // a `Long`, `Short`, `Byte`, `Double` and `Float` too:
+            // `char_eq_long`, `char_eq_double`, `char_eq_float`).
+            // `ObjectToChar` takes an `Object`: every number is boxed, and
+            // its own `toString` gives the text (`1.0E-5` for a Float, not
+            // B4J's text of it widened to a Double).
             (Char, Int | Long | Short | Byte | Double | Float) if !ordering => {
-                let right = if right.ty == Float {
-                    self.coerce(right, &Object)
-                } else {
-                    right
-                };
+                let right = self.coerce(right, &Object);
                 let right = self.coerce(right, &String);
                 let right = self.coerce(right, &Char);
                 return Expr {

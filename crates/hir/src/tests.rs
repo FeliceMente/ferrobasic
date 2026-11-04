@@ -232,13 +232,15 @@ fn ordering_compares_numbers() {
     let m = ok(&program("Dim c As Char = \"A\"\nDim b As Boolean = c = 65"));
     assert_eq!(
         show(&last_value(&m)),
-        "Eq:Char(var, conv(String->Char, conv(Int->String, 65)))"
+        "Eq:Char(var, conv(String->Char, conv(Object->String, conv(Int->Object, 65))))"
     );
     for ty in ["Long", "Short", "Byte", "Double"] {
         let m = ok(&program(&format!(
             "Dim c As Char = \"A\"\nDim n As {ty}\nDim b As Boolean = c = n"
         )));
-        let shown = format!("Eq:Char(var, conv(String->Char, conv({ty}->String, var)))");
+        let shown = format!(
+            "Eq:Char(var, conv(String->Char, conv(Object->String, conv({ty}->Object, var))))"
+        );
         assert_eq!(show(&last_value(&m)), shown);
     }
     let m = ok(&program(
@@ -1955,6 +1957,22 @@ fn for_each_without_as_over_a_declared_variable() {
         "    Private n As Object\n",
         "    For Each n In Array As Int(5)\n    Next\n",
     ));
+    // Not recorded: the same loop inside `Process_Globals`, and from a Sub
+    // over a module variable that a loop of `Process_Globals` declared.
+    for (pg, body) in [
+        (
+            "    Private n As Object\n    For Each n In Array As Int(5)\n    Next\n",
+            "",
+        ),
+        (
+            "    For Each n As Object In Array As Int(1)\n    Next\n",
+            "    For Each n In Array As Int(5)\n    Next\n",
+        ),
+    ] {
+        let diags = errors(&app(pg, body));
+        assert_eq!(diags.len(), 1, "{pg}{body}: {diags:?}");
+        assert!(has(&diags, "not known yet"), "{pg}{body}: {diags:?}");
+    }
     // Not recorded: an Object declared again after the loop, the name
     // read before it, and a parameter of type Object (below).
     for (pg, body) in [
