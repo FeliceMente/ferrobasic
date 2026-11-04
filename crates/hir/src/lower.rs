@@ -470,11 +470,22 @@ struct LocalHistory {
     /// Where the name is first used, when that is before its first
     /// declaration.
     used_before: Option<TextRange>,
-    /// Declared first by a `For Each` without `As`, then again as an
-    /// `Object`.
-    object_again: bool,
     /// The name is assigned before its first declaration.
     assigned_before: bool,
+    /// Declared first by a `For Each` without `As`, then again as an
+    /// `Object` in a way no recording settles (a bare `Dim` is recorded:
+    /// `for_each_untyped_object_declared_after`).
+    again: Option<Again>,
+}
+
+/// How a name first declared by a `For Each` without `As` is declared again
+/// as an `Object`, when no recording settles it.
+#[derive(Debug, Clone, Copy)]
+enum Again {
+    /// `For Each n As Object`.
+    TypedLoop,
+    /// `Dim n As Object = value`.
+    Valued,
 }
 
 impl LocalHistory {
@@ -485,7 +496,7 @@ impl LocalHistory {
             dimmed: false,
             used_before: None,
             assigned_before: false,
-            object_again: false,
+            again: None,
         }
     }
 
@@ -495,7 +506,7 @@ impl LocalHistory {
             dimmed: matches!(first, Origin::Dim | Origin::Const),
             used_before: before.used.get(k).copied(),
             assigned_before: before.assigned.contains(k),
-            object_again: false,
+            again: None,
         }
     }
 }
@@ -1421,15 +1432,24 @@ impl Lowerer {
         self.const_error(&VarRef::Global(id), at, message);
     }
 
+    /// Notes that `name`, if a `For Each` without `As` declared it first, is
+    /// declared again as an `Object` in a way no recording settles.
+    fn note_again(&mut self, name: &str, again: Again) {
+        if let Some(history) = self.local_history.get_mut(&key(name))
+            && history.first == Origin::UntypedForEach
+        {
+            history.again.get_or_insert(again);
+        }
+    }
+
     /// Declares a local name with `declare`, in source order, and notes
     /// the declaration: the first one that makes it a local of this Sub (a
     /// `Dim` of a module variable's name and type makes none), then any
-    /// `Dim`, or a declaration again as an `Object`.
+    /// `Dim`.
     fn declare_noted(
         &mut self,
         name: &str,
         origin: Origin,
-        ty: &Ty,
         before: &SoFar,
         declare: impl FnOnce(&mut Self),
     ) {
@@ -1439,12 +1459,6 @@ impl Lowerer {
         match self.local_history.get_mut(&k) {
             Some(history) => {
                 history.dimmed |= matches!(origin, Origin::Dim | Origin::Const);
-                if *ty == Ty::Object
-                    && history.first == Origin::UntypedForEach
-                    && history.used_before.is_none()
-                {
-                    history.object_again = true;
-                }
             }
             None if fresh && self.local_names.contains_key(&k) => {
                 let history = LocalHistory::new(origin, before, &k);
@@ -1458,12 +1472,11 @@ impl Lowerer {
     /// it declared is refused, if it is. After an assignment of the name,
     /// which declares a `String`, or a read of it, B4J refuses it
     /// (recorded: `for_each_untyped_assigned_before`,
-    /// `for_each_untyped_read_before`). With a declaration again as an
-    /// `Object` after it, it builds, and the `Dim` gives a new `Object`
-    /// (recorded: `for_each_untyped_object_declared_after`), which
-    /// FerroBASIC cannot give yet (deviation D8).
-    /// The refusal, and where it is reported when that is not at the loop:
-    /// B4J reports a read at the read.
+    /// `for_each_untyped_read_before`). With a `Dim` of it as an `Object`
+    /// with no value after it, it builds, and that `Dim` gives a new
+    /// `Object` (recorded: `for_each_untyped_object_declared_after`). Returns the
+    /// refusal, and where it is reported when that is not at the loop: B4J
+    /// reports a read at the read.
     fn untyped_loop_refusal(&self, text: &str) -> Option<(Refusal, Option<TextRange>)> {
         let history = self.local_history.get(&key(text))?;
         if history.first != Origin::UntypedForEach {
@@ -1480,12 +1493,16 @@ impl Lowerer {
                  assigned a value: declare it first, e.g. `Dim {text} As Object`"
             ));
             Some((refusal, Some(read)))
-        } else if history.object_again {
-            let refusal = Refusal::Recorded(format!(
-                "`{text}` is declared again as Object after this `For Each`: B4J builds that, \
-                 and its `Dim` gives `{text}` a new Object, which FerroBASIC does not do yet \
-                 (docs/deviations.md, D8); declare `{text}` once"
-            ));
+        } else if let Some(again) = history.again {
+            let what = match again {
+                Again::TypedLoop => "by a typed `For Each`",
+                Again::Valued => "with a value",
+            };
+            let refusal = Refusal::open(
+                format!("`{text}` is declared again {what} after this one"),
+                "a `For Each` without `As` may loop over it here",
+                format!("write `For Each {text} As <type> In ...`"),
+            );
             Some((refusal, None))
         } else {
             None
@@ -1525,7 +1542,10 @@ impl Lowerer {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                         let origin = Origin::of_declarator(&decl);
-                        self.declare_noted(&name, origin, &ty.clone(), &so_far, |this| {
+                        if origin == Origin::Dim && ty == Ty::Object && !exprs(&decl).is_empty() {
+                            self.note_again(&name, Again::Valued);
+                        }
+                        self.declare_noted(&name, origin, &so_far, |this| {
                             this.declare_dim_local(&name, ty, range(&decl), true)
                         });
                         self.mark_const(&decl, &name);
@@ -1541,7 +1561,10 @@ impl Lowerer {
                     match origin {
                         Origin::TypedForEach | Origin::TypedCounter => {
                             let ty = type_ref.map_or(Ty::Error, |t| self.resolve_type(&t));
-                            self.declare_noted(&text, origin, &ty.clone(), &so_far, |this| {
+                            if origin == Origin::TypedForEach && ty == Ty::Object {
+                                self.note_again(&text, Again::TypedLoop);
+                            }
+                            self.declare_noted(&text, origin, &so_far, |this| {
                                 if origin == Origin::TypedForEach {
                                     this.declare_dim_local(&text, ty, range(&name), false);
                                 } else {
@@ -1565,7 +1588,7 @@ impl Lowerer {
                                 && !self.records.contains_key(&k)
                                 && builtins::lookup(Owner::Global, &text).is_none()
                             {
-                                self.declare_noted(&text, origin, &Ty::Object, &so_far, |this| {
+                                self.declare_noted(&text, origin, &so_far, |this| {
                                     this.declare_local(&text, Ty::Object, range(&name))
                                 });
                             }
@@ -1577,7 +1600,7 @@ impl Lowerer {
                         // `local_typed_for_each_other_type_after_counter_named_like_sub`).
                         _ => {
                             if self.lookup_var(&text).is_none() {
-                                self.declare_noted(&text, origin, &Ty::Int, &so_far, |this| {
+                                self.declare_noted(&text, origin, &so_far, |this| {
                                     this.declare_loop_local(&text, Ty::Int, range(&name), false)
                                 });
                             }
@@ -1597,13 +1620,9 @@ impl Lowerer {
                         && !self.subs.contains_key(&key(&text))
                         && builtins::lookup(Owner::Global, &text).is_none()
                     {
-                        self.declare_noted(
-                            &text,
-                            Origin::Assignment,
-                            &Ty::String,
-                            &so_far,
-                            |this| this.declare_local(&text, Ty::String, range(&target)),
-                        );
+                        self.declare_noted(&text, Origin::Assignment, &so_far, |this| {
+                            this.declare_local(&text, Ty::String, range(&target))
+                        });
                     }
                     so_far.assigned.insert(key(&text));
                 }

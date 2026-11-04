@@ -383,6 +383,9 @@ pub enum Value {
     Record(Rc<RecordObj>),
     /// `Map.Keys` (`true`) or `Map.Values`.
     View(MapRef, bool),
+    /// A plain `java.lang.Object`, which `Dim o As Object` creates: it has
+    /// only an identity.
+    Plain(Rc<()>),
 }
 
 impl Value {
@@ -1030,6 +1033,7 @@ impl HKey {
                 .map_or(HKey::Null, |s| HKey::Ref(ptr(s))),
             Value::Exc(e) => e.as_ref().map_or(HKey::Null, |e| HKey::Ref(ptr(e))),
             Value::Array(a) => HKey::Ref(ptr(a)),
+            Value::Plain(p) => HKey::Ref(ptr(p)),
             Value::Record(r) => HKey::Ref(ptr(r)),
             Value::View(m, keys) => HKey::Ref(ptr(m) + *keys as usize),
         }
@@ -1138,6 +1142,7 @@ pub const DEFAULT_PACKAGE: &str = "b4j.example";
 pub fn java_class_name(v: &Value, program: &Program) -> Option<String> {
     Some(match v {
         Value::Null => return None,
+        Value::Plain(_) => "java.lang.Object".into(),
         Value::Bool(_) => "java.lang.Boolean".into(),
         Value::Byte(_) => "java.lang.Byte".into(),
         Value::Short(_) => "java.lang.Short".into(),
@@ -1439,7 +1444,11 @@ impl<'p, 'o> Printer<'p, 'o> {
                 // Java prints the identity hash code, which no test can compare.
                 let mut name = "[".repeat(a.rank.max(1));
                 name.push_str(&array_descriptor(&a.elem));
-                self.put(&format!("{name}@{:x}", (ptr(a) >> 4) & 0x7fff_ffff))?;
+                self.put(&format!("{name}@{:x}", identity_hash(ptr(a))))?;
+            }
+            // So does `Object.toString`, for a plain `Object`.
+            Value::Plain(p) => {
+                self.put(&format!("java.lang.Object@{:x}", identity_hash(ptr(p))))?;
             }
             Value::Record(r) => self.record(r)?,
             Value::View(m, keys) => {
@@ -1505,6 +1514,13 @@ impl<'p, 'o> Printer<'p, 'o> {
         self.jobs.push(Print::Raw(v));
         Ok(())
     }
+}
+
+/// The hash `Object.toString` prints after `@`, derived from the address
+/// as a stand-in for Java's identity hash: it changes from run to run, so no
+/// recording compares it.
+fn identity_hash(address: usize) -> usize {
+    (address >> 4) & 0x7fff_ffff
 }
 
 fn identity(v: &Value) -> Option<usize> {

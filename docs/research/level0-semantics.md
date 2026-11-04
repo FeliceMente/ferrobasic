@@ -442,9 +442,20 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `for_each_untyped_undeclared`); after an assignment of the name, which
   declares a `String`, it is refused (**recorded**:
   `for_each_untyped_assigned_before`). After the loop, `Dim n As Object`
-  builds and gives `n` a new `Object`: it printed `java.lang.Object@<hash>`
+  builds and gives `n` a new `Object` (B4J generates `new Object()` for a
+  `Dim … As Object` with no value): it printed `java.lang.Object@<hash>`
   (recording run 16, `for_each_untyped_object_declared_after`; run 17
-  prints its type, `java.lang.Object`). It builds over a parameter `Object`
+  prints its type, `java.lang.Object`). A later `Dim n As Object = value`
+  or `For Each n As Object` is not recorded and is refused meanwhile
+  (*open*). Converted to a number, such a new `Object` raises
+  `NumberFormatException: For input string: "java.lang.Object@<hash>"`:
+  [`BA.ObjectToNumber` and
+  `ObjectToLongNumber`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L435-L450) parse `String.valueOf(o)`
+  for anything but a `Number` (**source**: `object_plain_to_number`). Whether
+  a module variable or a `Type` field `Object` with no value is a new
+  `Object` too, also after a `Dim` in a Sub resets the module variable, is
+  *open*: FerroBASIC gives `Null` there (`object_dim_global_default`,
+  `local_dim_resets_module_object`, `record_object_field_default`). It builds over a parameter `Object`
   and over a module variable `Object` that a loop of `Process_Globals`
   declared too (**recorded**: `for_each_untyped_param_object`,
   `for_each_untyped_pg_loop_object`), and is refused after a read of the
