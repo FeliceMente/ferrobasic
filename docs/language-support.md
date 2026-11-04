@@ -47,7 +47,7 @@ The "not yet" rows come from the
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `Boolean`, `Byte`, `Short`, `Int`, `Long`, `Float`, `Double`, `Char` | ✅ | [level0.md](spec/level0.md#types); tests `chars_and_ints`, `number_parsing` |
-| `String`, `Object`, `Null` | ✅ | |
+| `String`, `Object`, `Null` | ✅ | an `Object` that holds no number converts to a number as its text does, so `Null`, a List or a Boolean raise `NumberFormatException` and a Char `"7"` is 7, as `BA.ObjectToNumber` does (pending tests `object_list_to_int`, `object_null_to_int`, `object_char_to_int`, `object_boolean_to_double`); a String with a fraction converted to a `Long` *(open)* (pending test `object_string_to_long`) |
 | Arrays of any rank: `Dim a(10) As Int`, `Dim m(3, 4) As Double` | ⚠️ | memory use differs (D2); tests `array_row_order`, `deep_equals` |
 | `Type` records, also with array fields | ⚠️ | a record nested in Lists about 49 levels deep, or holding itself, prints differently (D6); tests `record_printing`, `self_printing_record` |
 | `List`, `Map`, `StringBuilder`, `Exception` | ✅ | see "Built-in objects" below |

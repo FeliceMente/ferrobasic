@@ -507,6 +507,19 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [x] A new `Object` converted to a number: `BA.ObjectToNumber` parses its
       text, a `NumberFormatException` (source, then recording run 18:
       `level0/object_plain_to_number`), as FerroBASIC does.
+- [x] Any other non-number in an `Object` converted to a number (an
+      initialised List, `Null`, a Char, a Boolean): `BA.ObjectToNumber`
+      parses `String.valueOf(o)`, so a `NumberFormatException` (`"null"`
+      for `Null`), and a Char `"7"` is 7 (source; that the compiler calls
+      it for `Dim i As Int = o` is forum level; provisional output for
+      `level0/object_list_to_int`, `level0/object_null_to_int`,
+      `level0/object_char_to_int`, `level0/object_boolean_to_double`,
+      which the next run records). FerroBASIC raised `ClassCastException`
+      and `NullPointerException` before.
+- [ ] A String in an `Object` converted to a `Long`: `"1.5"` gives 1 in
+      FerroBASIC (`Double.parseDouble`, as for an `Int`); if B4J uses
+      `BA.ObjectToLongNumber`, `Long.parseLong` raises
+      `NumberFormatException` instead (`level0/object_string_to_long`).
 - [ ] How a new `Object` prints: `java.lang.Object@<hash>`, the identity
       hash, which changes on every run, as an array's does; FerroBASIC
       prints a hash too, which no recording can compare.
