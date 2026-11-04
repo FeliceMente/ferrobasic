@@ -330,7 +330,8 @@ fn to_number(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value, E
         Value::Str(_) => cast(&Value::Double(parse_number(&v)?)),
         Value::Null => Err(Exc::bare(NULL_POINTER)),
         // `BA.ObjectToNumber` and `ObjectToLongNumber` parse
-        // `String.valueOf(o)`: `For input string: "java.lang.Object@…"`.
+        // `String.valueOf(o)`, so this always raises `For input string:
+        // "java.lang.Object@…"`.
         Value::Plain(_) => {
             let text = to_string_from(&v, &Ty::Object, program)?;
             cast(&Value::Double(parse_number(&text)?))

@@ -473,9 +473,11 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       output for `level0/object_dim_default` in recording run 17, then a
       deviation test). FerroBASIC gives one too (it was deviation D8); the
       next run records the test.
-- [ ] A module variable `Object` with no value, and a `Type` field
-      `Object` after `Initialize`: a new `Object` too? FerroBASIC keeps
-      `Null` for both meanwhile (`level0/object_dim_global_default`,
+- [ ] A module variable `Object` with no value, a `Dim` in a Sub that
+      resets a module variable `Object`, and a `Type` field `Object` after
+      `Initialize`: a new `Object` too? FerroBASIC gives `Null` for all
+      three meanwhile (`level0/object_dim_global_default`,
+      `level0/local_dim_resets_module_object`,
       `level0/record_object_field_default`). And how new Objects compare
       and key a Map: by identity in FerroBASIC
       (`level0/object_plain_identity`).

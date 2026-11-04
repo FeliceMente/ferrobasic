@@ -83,4 +83,5 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       published as the user types, on the lossless CST.
 - [ ] Gate: the conformance tests pass in the interpreter and as standalone
       binaries. On 2026-11-04 none fails on either target; 8 tests are
-      pending, all for the next run.
+      pending and 1 passes against a provisional output, all for the next
+      run.
