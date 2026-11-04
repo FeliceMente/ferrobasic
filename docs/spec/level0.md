@@ -289,9 +289,9 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
     is parsed too (recorded: `string_less_object`);
   - `x = Null` / `x <> Null` test for null; with an `Int` on the left, the
     `Null` is converted as its text, `"null"`, which raises
-    `NumberFormatException` (recorded: `null_number_compare`), and with a
-    `Double` or a `Long` too (recorded: `double_eq_null`, `long_eq_null`);
-    with another number type it is *(open)*, so an error;
+    `NumberFormatException` (recorded: `null_number_compare`), and with
+    every other number type too (recorded: `double_eq_null`,
+    `long_eq_null`, `number_types_eq_null`);
   - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
     errors (recorded: `chained_comparison_less`,
     `chained_comparison_equal`), while `x = a = b` assigns one comparison;
@@ -342,19 +342,22 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   declares it (recorded: `for_each_untyped_undeclared`), and a later `Dim`
   of another type is an error (B4J: "Current declaration does not match
   previous one", recorded: `for_each_untyped_declared_after`); over a
-  local `Object` declared before it, by a `Dim` or a typed loop, and over a
-  module variable `Object` a `Dim` declared, from a Sub, it loops with it (recorded:
-  `for_each_untyped_object`, `for_each_untyped_after_typed_object`,
-  `for_each_untyped_module_object`); over a local, a parameter or a module
-  variable of another type it is an error, in `Process_Globals` too, and so
-  it is after an assignment of the name, which declares a `String`
-  (recorded: `for_each_untyped_local`, `for_each_untyped_other_type`,
+  local `Object` declared before it, by a `Dim` or a typed loop, over a
+  parameter `Object`, and over a module variable `Object`, from a Sub, it
+  loops with it (recorded: `for_each_untyped_object`,
+  `for_each_untyped_after_typed_object`, `for_each_untyped_param_object`,
+  `for_each_untyped_module_object`, `for_each_untyped_pg_loop_object`);
+  over a local, a parameter or a module variable of another type it is an
+  error, in `Process_Globals` too, and so it is after an assignment of the
+  name, which declares a `String`, or a read of it (recorded:
+  `for_each_untyped_local`, `for_each_untyped_other_type`,
   `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
-  `process_globals_for_each_untyped`, `for_each_untyped_assigned_before`).
-  Over a parameter of type `Object`, over a module variable `Object` a loop
-  of `Process_Globals` declared, over an undeclared name in
-  `Process_Globals`, with a later `Dim` of the name as an `Object`, or with
-  the name only read before the loop, it is *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
+  `process_globals_for_each_untyped`, `for_each_untyped_assigned_before`,
+  `for_each_untyped_read_before`). With a later `Dim` of the name as an
+  `Object` B4J builds it, and FerroBASIC refuses it until it gives that
+  `Dim` a new `Object` (deviation D8). Inside `Process_Globals` over a
+  variable `Object`, or over an undeclared name there, it is *(open)*, so
+  an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing

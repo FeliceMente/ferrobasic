@@ -205,15 +205,25 @@ fn ordering_compares_numbers() {
     let d = errors(&program("Dim n As Int\nDim b As Boolean = n < Null"));
     assert!(has(&d, "cannot compare Int with Null"), "{d:?}");
     // So do a `Double` and a `Long` (recorded: `double_eq_null`,
-    // `long_eq_null`); the other number types were not recorded.
+    // `long_eq_null`).
     for ty in ["Double", "Long"] {
         let m = ok(&program(&format!(
             "Dim n As {ty}\nDim b As Boolean = n = Null"
         )));
         assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
     }
-    let d = errors(&program("Dim n As Float\nDim b As Boolean = n = Null"));
-    assert!(has(&d, "cannot compare Float with Null"), "{d:?}");
+    // So do the other number types (recorded: `number_types_eq_null`);
+    // `Null` on the left stays refused.
+    for ty in ["Float", "Short", "Byte"] {
+        for (op, shown) in [("=", "Eq:Numeric("), ("<>", "Ne:Numeric(")] {
+            let m = ok(&program(&format!(
+                "Dim n As {ty}\nDim b As Boolean = n {op} Null"
+            )));
+            assert!(show(&last_value(&m)).starts_with(shown), "{ty} {op}");
+        }
+    }
+    let d = errors(&program("Dim n As Float\nDim b As Boolean = Null = n"));
+    assert!(has(&d, "cannot compare"), "{d:?}");
     // A Boolean does not convert to a number either (recorded:
     // `boolean_less`), next to a String too.
     for expr in ["\"a\" < True", "True > \"a\"", "False < True"] {
@@ -1957,44 +1967,45 @@ fn for_each_without_as_over_a_declared_variable() {
         "    Private n As Object\n",
         "    For Each n In Array As Int(5)\n    Next\n",
     ));
-    // Not recorded: the same loop inside `Process_Globals`, and from a Sub
-    // over a module variable that a loop of `Process_Globals` declared.
-    for (pg, body) in [
-        (
-            "    Private n As Object\n    For Each n In Array As Int(5)\n    Next\n",
-            "",
-        ),
-        (
-            "    For Each n As Object In Array As Int(1)\n    Next\n",
-            "    For Each n In Array As Int(5)\n    Next\n",
-        ),
-    ] {
-        let diags = errors(&app(pg, body));
-        assert_eq!(diags.len(), 1, "{pg}{body}: {diags:?}");
-        assert!(has(&diags, "not known yet"), "{pg}{body}: {diags:?}");
-    }
-    // Not recorded: an Object declared again after the loop, the name
-    // read before it, and a parameter of type Object (below).
-    for (pg, body) in [
-        (
-            "",
-            "    For Each n In Array As Int(5)\n    Next\n    Dim n As Object\n",
-        ),
-        (
-            "",
-            "    Log(n)\n    For Each n In Array As Int(5)\n    Next\n",
-        ),
-    ] {
-        let diags = errors(&app(pg, body));
-        assert_eq!(diags.len(), 1, "{pg}{body}: {diags:?}");
-        assert!(has(&diags, "not known yet"), "{pg}{body}: {diags:?}");
-    }
-    let diags = errors(
+    // Also over a module variable that a loop of `Process_Globals`
+    // declared, and over a parameter `Object` (recorded:
+    // `for_each_untyped_pg_loop_object`, `for_each_untyped_param_object`).
+    ok(&app(
+        "    For Each n As Object In Array As Int(1)\n    Next\n",
+        "    For Each n In Array As Int(5)\n    Next\n",
+    ));
+    ok(
         "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Show(\"a\")\nEnd Sub\n\n\
-         Sub Show (n As Object)\n    For Each n In Array As String(\"x\")\n    Next\nEnd Sub\n",
+        Sub Show (n As Object)\n    For Each n In Array As String(\"x\")\n    Next\nEnd Sub\n",
     );
+    // A read of the name before the loop is refused (recorded:
+    // `for_each_untyped_read_before`).
+    let diags = errors(&app(
+        "",
+        "    Log(n)\n    For Each n In Array As Int(5)\n    Next\n",
+    ));
     assert_eq!(diags.len(), 1, "{diags:?}");
-    assert!(has(&diags, "is not known yet"), "{diags:?}");
+    assert!(
+        has(&diags, "is read here before a later `For Each` declares it"),
+        "{diags:?}"
+    );
+    // Not recorded: the loop inside `Process_Globals` over a variable
+    // there.
+    let diags = errors(&app(
+        "    Private n As Object\n    For Each n In Array As Int(5)\n    Next\n",
+        "",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "not known yet"), "{diags:?}");
+    // With a `Dim` of the name as an Object after it, B4J builds it, and
+    // its `Dim` gives a new Object, which FerroBASIC cannot give yet
+    // (deviation D8): refused.
+    let diags = errors(&app(
+        "",
+        "    For Each n In Array As Int(5)\n    Next\n    Dim n As Object\n",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "docs/deviations.md, D8"), "{diags:?}");
     // A variable of an unknown type has its error where the type is.
     let diags = errors(&app(
         "",

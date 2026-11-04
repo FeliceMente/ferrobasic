@@ -1,8 +1,17 @@
 # Conformance test metadata. See docs/compatibility-testing.md.
-status = "pending-recording"   # pending-recording | recorded | deviation | negative
-ferro_rejects = true   # rejected until a recording shows what B4X does
+status = "deviation"   # pending-recording | recorded | deviation | negative
+deviation = "D8"   # docs/deviations.md
+ferro_rejects = true   # refused while D8 stands: its Dim would give Null
 level = 0
 features = ["for-each"]
+
+# No .provisional: the reference output is
+#   5
+#   6
+#   java.lang.Object
+# B4J 10.70 (OpenJDK 19, Windows 10) printed exactly it (recording run 17,
+# 2026-11-04). FerroBASIC knowingly refuses the program: the Dim after the
+# loop would give `n` Null, not a new Object (D8), so it would print null.
 
 # Filled in by tools/recorder when the expected output is recorded:
 # [recording]
