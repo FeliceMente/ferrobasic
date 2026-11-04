@@ -13,7 +13,7 @@ fn families_have_their_sizes_and_unique_names() {
     for (name, size) in [
         ("const", 65_160),
         ("sub-named-loops", 1_687),
-        ("comparisons", 594),
+        ("comparisons", 972),
         ("declarations", 26_640),
     ] {
         let programs = (family(name).generate)();

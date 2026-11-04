@@ -215,10 +215,12 @@ fn ordering_compares_numbers() {
     // So do the other number types (recorded: `number_types_eq_null`);
     // `Null` on the left stays refused.
     for ty in ["Float", "Short", "Byte"] {
-        let m = ok(&program(&format!(
-            "Dim n As {ty}\nDim b As Boolean = n = Null"
-        )));
-        assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
+        for (op, shown) in [("=", "Eq:Numeric("), ("<>", "Ne:Numeric(")] {
+            let m = ok(&program(&format!(
+                "Dim n As {ty}\nDim b As Boolean = n {op} Null"
+            )));
+            assert!(show(&last_value(&m)).starts_with(shown), "{ty} {op}");
+        }
     }
     let d = errors(&program("Dim n As Float\nDim b As Boolean = Null = n"));
     assert!(has(&d, "cannot compare"), "{d:?}");
@@ -1984,7 +1986,7 @@ fn for_each_without_as_over_a_declared_variable() {
     ));
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert!(
-        has(&diags, "is read before this `For Each` declares it"),
+        has(&diags, "is read here before a later `For Each` declares it"),
         "{diags:?}"
     );
     // Not recorded: the loop inside `Process_Globals` over a variable

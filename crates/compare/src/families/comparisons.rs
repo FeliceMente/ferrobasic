@@ -1,14 +1,18 @@
 //! Comparisons between operands of every type, and chains of them
-//! (recording run 14).
+//! (recording runs 14 to 17).
 
 use super::Program;
 
-/// The operands, by a short code. `c`, `o` and `l` are declared by every
-/// program: a Char, an Object holding a String, and a List.
+/// The operands, by a short code. `c`, `o`, `l`, `f`, `s` and `b` are
+/// declared by every program: a Char, an Object holding a String, a List,
+/// a Float, a Short and a Byte.
 const OPERANDS: &[(&str, &str)] = &[
     ("int", "10"),
     ("dbl", "2.5"),
     ("lng", "3000000000"),
+    ("flt", "f"),
+    ("sht", "s"),
+    ("byt", "b"),
     ("str", "\"10\""),
     ("chr", "c"),
     ("bool", "True"),
@@ -62,7 +66,7 @@ pub fn programs() -> Vec<Program> {
 
 fn program(name: String, expr: &str) -> Program {
     let source = format!(
-        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Dim c As Char = \"A\"\n    Dim o As Object = \"5\"\n    Dim l As List\n    l.Initialize\n    Log({expr})\n    If {expr} Then\n        Log(\"then\")\n    End If\nEnd Sub\n"
+        "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n    Dim c As Char = \"A\"\n    Dim o As Object = \"5\"\n    Dim l As List\n    l.Initialize\n    Dim f As Float = 2.5\n    Dim s As Short = 10\n    Dim b As Byte = 10\n    Log({expr})\n    If {expr} Then\n        Log(\"then\")\n    End If\nEnd Sub\n"
     );
     Program { name, source }
 }

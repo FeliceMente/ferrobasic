@@ -467,8 +467,9 @@ struct LocalHistory {
     first: Origin,
     /// A `Dim` or `Const` declares it, first or later.
     dimmed: bool,
-    /// The name is used before its first declaration.
-    used_before: bool,
+    /// Where the name is first used, when that is before its first
+    /// declaration.
+    used_before: Option<TextRange>,
     /// Declared first by a `For Each` without `As`, then again as an
     /// `Object`.
     object_again: bool,
@@ -482,7 +483,7 @@ impl LocalHistory {
         LocalHistory {
             first: Origin::Param,
             dimmed: false,
-            used_before: false,
+            used_before: None,
             assigned_before: false,
             object_again: false,
         }
@@ -492,7 +493,7 @@ impl LocalHistory {
         LocalHistory {
             first,
             dimmed: matches!(first, Origin::Dim | Origin::Const),
-            used_before: before.used.contains(k),
+            used_before: before.used.get(k).copied(),
             assigned_before: before.assigned.contains(k),
             object_again: false,
         }
@@ -502,7 +503,8 @@ impl LocalHistory {
 /// The names a Sub uses and assigns, so far in source order.
 #[derive(Default)]
 struct SoFar {
-    used: HashSet<String>,
+    /// Each name used, at its first use.
+    used: HashMap<String, TextRange>,
     assigned: HashSet<String>,
 }
 
@@ -1439,7 +1441,7 @@ impl Lowerer {
                 history.dimmed |= matches!(origin, Origin::Dim | Origin::Const);
                 if *ty == Ty::Object
                     && history.first == Origin::UntypedForEach
-                    && !history.used_before
+                    && history.used_before.is_none()
                 {
                     history.object_again = true;
                 }
@@ -1460,29 +1462,31 @@ impl Lowerer {
     /// `Object` after it, it builds, and the `Dim` gives a new `Object`
     /// (recorded: `for_each_untyped_object_declared_after`), which
     /// FerroBASIC cannot give yet (deviation D8).
-    fn untyped_loop_refusal(&self, text: &str) -> Option<String> {
+    /// The refusal, and where it is reported when that is not at the loop:
+    /// B4J reports a read at the read.
+    fn untyped_loop_refusal(&self, text: &str) -> Option<(Refusal, Option<TextRange>)> {
         let history = self.local_history.get(&key(text))?;
         if history.first != Origin::UntypedForEach {
             return None;
         }
         if history.assigned_before {
-            self.type_clash(text, &Ty::String, &Ty::Object, Clash::UntypedForEach)
-        } else if history.used_before {
+            let clash = self.type_clash(text, &Ty::String, &Ty::Object, Clash::UntypedForEach)?;
+            Some((Refusal::Recorded(clash), None))
+        } else if let Some(read) = history.used_before {
             // B4J: "Undeclared variable 'u' is used before it was assigned
             // any value." (recorded: `for_each_untyped_read_before`).
-            Some(
-                Refusal::Recorded(format!(
-                    "`{text}` is read before this `For Each` declares it, and before it is \
-                     assigned a value: declare it first, e.g. `Dim {text} As Object`"
-                ))
-                .message(),
-            )
+            let refusal = Refusal::Recorded(format!(
+                "`{text}` is read here before a later `For Each` declares it, and before it is \
+                 assigned a value: declare it first, e.g. `Dim {text} As Object`"
+            ));
+            Some((refusal, Some(read)))
         } else if history.object_again {
-            Some(format!(
+            let refusal = Refusal::Recorded(format!(
                 "`{text}` is declared again as Object after this `For Each`: B4J builds that, \
                  and its `Dim` gives `{text}` a new Object, which FerroBASIC does not do yet \
                  (docs/deviations.md, D8); declare `{text}` once"
-            ))
+            ));
+            Some((refusal, None))
         } else {
             None
         }
@@ -1512,7 +1516,10 @@ impl Lowerer {
         for f in found {
             match f {
                 Found::Use(node) => {
-                    so_far.used.insert(key(&name_of(&node)));
+                    so_far
+                        .used
+                        .entry(key(&name_of(&node)))
+                        .or_insert(range(&node));
                 }
                 Found::Dim(node) => {
                     for (decl, ty) in self.declarators(&node) {
@@ -1853,9 +1860,11 @@ impl Lowerer {
                     && !self.subs.contains_key(&key(&text))
                     && ty != Ty::Error
                 {
-                    let message = match var {
+                    let at = range(&name);
+                    let refusal = match var {
                         VarRef::Local(id) if id.0 as usize >= self.params && ty == Ty::Object => {
                             self.untyped_loop_refusal(&text)
+                                .map(|(refusal, read)| (refusal.message(), read.unwrap_or(at)))
                         }
                         // Over a parameter `Object`, and over a module variable
                         // `Object` from a Sub, however it was declared
@@ -1864,11 +1873,15 @@ impl Lowerer {
                         // `for_each_untyped_pg_loop_object`).
                         VarRef::Local(_) if ty == Ty::Object => None,
                         VarRef::Global(_) if ty == Ty::Object && !self.in_process_globals => None,
-                        _ if ty == Ty::Object => Some(untyped_for_each(&text, "already declared")),
-                        _ => self.type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach),
+                        _ if ty == Ty::Object => {
+                            Some((untyped_for_each(&text, "already declared"), at))
+                        }
+                        _ => self
+                            .type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach)
+                            .map(|message| (message, at)),
                     };
-                    if let Some(message) = message {
-                        self.error(range(&name), message);
+                    if let Some((message, at)) = refusal {
+                        self.error(at, message);
                         self.refused_loop(node, &text, &name);
                         return;
                     }
