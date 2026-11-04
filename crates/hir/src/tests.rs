@@ -204,12 +204,16 @@ fn ordering_compares_numbers() {
     assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
     let d = errors(&program("Dim n As Int\nDim b As Boolean = n < Null"));
     assert!(has(&d, "cannot compare Int with Null"), "{d:?}");
-    // So does a `Double` (recorded: `double_eq_null`); the other number
-    // types were not recorded.
-    let m = ok(&program("Dim n As Double\nDim b As Boolean = n = Null"));
-    assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
-    let d = errors(&program("Dim n As Long\nDim b As Boolean = n = Null"));
-    assert!(has(&d, "cannot compare Long with Null"), "{d:?}");
+    // So do a `Double` and a `Long` (recorded: `double_eq_null`,
+    // `long_eq_null`); the other number types were not recorded.
+    for ty in ["Double", "Long"] {
+        let m = ok(&program(&format!(
+            "Dim n As {ty}\nDim b As Boolean = n = Null"
+        )));
+        assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
+    }
+    let d = errors(&program("Dim n As Float\nDim b As Boolean = n = Null"));
+    assert!(has(&d, "cannot compare Float with Null"), "{d:?}");
     // A Boolean does not convert to a number either (recorded:
     // `boolean_less`), next to a String too.
     for expr in ["\"a\" < True", "True > \"a\"", "False < True"] {
@@ -222,8 +226,9 @@ fn ordering_compares_numbers() {
     // A Char `=` an Int converts the Int to a Char, the first character of
     // its text (recorded: `char_number_compare`), and so does a Long, a
     // Short, a Byte and a Double (recorded: `char_eq_long`,
-    // `char_eq_double`). The other way round is refused (recorded:
-    // `number_eq_char`); a Float was not recorded.
+    // `char_eq_double`); a Float through its object's text, `1.0E-5`
+    // (recorded: `char_eq_float`). The other way round is refused
+    // (recorded: `number_eq_char`).
     let m = ok(&program("Dim c As Char = \"A\"\nDim b As Boolean = c = 65"));
     assert_eq!(
         show(&last_value(&m)),
@@ -236,12 +241,15 @@ fn ordering_compares_numbers() {
         let shown = format!("Eq:Char(var, conv(String->Char, conv({ty}->String, var)))");
         assert_eq!(show(&last_value(&m)), shown);
     }
-    for (decl, expr) in [("", "65 = c"), ("Dim f As Float\n", "c = f")] {
-        let d = errors(&program(&format!(
-            "Dim c As Char = \"A\"\n{decl}Dim b As Boolean = {expr}"
-        )));
-        assert!(has(&d, "cannot compare"), "{expr}: {d:?}");
-    }
+    let m = ok(&program(
+        "Dim c As Char = \"A\"\nDim f As Float\nDim b As Boolean = c = f",
+    ));
+    assert_eq!(
+        show(&last_value(&m)),
+        "Eq:Char(var, conv(String->Char, conv(Object->String, conv(Float->Object, var))))"
+    );
+    let d = errors(&program("Dim c As Char = \"A\"\nDim b As Boolean = 65 = c"));
+    assert!(has(&d, "cannot compare"), "{d:?}");
     // An Object next to a String with `<` is parsed as a number too
     // (recorded: `string_less_object`).
     for expr in ["\"10\" < o", "o >= \"10\""] {
@@ -1927,9 +1935,28 @@ fn for_each_without_as_over_a_declared_variable() {
             ),
         ));
     }
+    // After an assignment of the name, which declares a String, it is
+    // refused (recorded: `for_each_untyped_assigned_before`).
+    assert_eq!(
+        errors(&app(
+            "",
+            "    n = 5\n    For Each n In Array As Int(5)\n    Next\n"
+        )),
+        [refused("String")]
+    );
+    // It builds after a typed loop `As Object`, and over a module variable
+    // `Object` from a Sub (recorded: `for_each_untyped_after_typed_object`,
+    // `for_each_untyped_module_object`).
+    ok(&app(
+        "",
+        "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
+    ));
+    ok(&app(
+        "    Private n As Object\n",
+        "    For Each n In Array As Int(5)\n    Next\n",
+    ));
     // Not recorded: an Object declared again after the loop, the name
-    // assigned or read before it, an Object a typed loop declared first, a
-    // module variable or a parameter of type Object.
+    // read before it, and a parameter of type Object (below).
     for (pg, body) in [
         (
             "",
@@ -1937,19 +1964,7 @@ fn for_each_without_as_over_a_declared_variable() {
         ),
         (
             "",
-            "    n = 5\n    For Each n In Array As Int(5)\n    Next\n",
-        ),
-        (
-            "",
             "    Log(n)\n    For Each n In Array As Int(5)\n    Next\n",
-        ),
-        (
-            "",
-            "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
-        ),
-        (
-            "    Private n As Object\n",
-            "    For Each n In Array As Int(5)\n    Next\n",
         ),
     ] {
         let diags = errors(&app(pg, body));

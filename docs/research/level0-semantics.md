@@ -375,10 +375,12 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `"A" = 65` is `False` (**recorded** and **generated**:
   `char_number_compare`); a `Long`, `Short`, `Byte` or `Double` the same
   way: `"1" = 0.00001` is `True`, from `1.0E-5` (**recorded**:
-  `char_eq_long`, `char_eq_double`). The number on the left does not
-  compile (**recorded**: `number_eq_char`). A `Double` `=` `Null` raises
-  `NumberFormatException` as an `Int` does (**recorded**:
-  `double_eq_null`), and `<` between a String and an `Object` parses both
+  `char_eq_long`, `char_eq_double`), and a `Float` from its boxed text,
+  `Float.toString`, not B4J's text of it widened to a Double (**recorded**:
+  `char_eq_float`). The number on the left does not compile
+  (**recorded**: `number_eq_char`). A `Double` or a `Long` `=` `Null`
+  raises `NumberFormatException` as an `Int` does (**recorded**:
+  `double_eq_null`, `long_eq_null`), and `<` between a String and an `Object` parses both
   (`"10" < o` with `o = "5"` is `False`, **recorded**:
   `string_less_object`).
 - The relative precedence of `And` versus `Or`, and of both versus comparisons,
@@ -432,8 +434,15 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   As Int` ("Previous: Object"), it is refused too (**recorded**:
   `for_each_untyped_module_variable`, `process_globals_for_each_untyped`,
   `for_each_untyped_parameter`, `for_each_untyped_declared_after`). Over
-  a local `Object` and over a name never declared it builds (**recorded**:
-  `for_each_untyped_object`, `for_each_untyped_undeclared`). The real-world corpus's
+  a local `Object` (declared by a `Dim` or a typed loop), over a module
+  variable `Object` from a Sub, and over a name never declared it builds
+  (**recorded**: `for_each_untyped_object`,
+  `for_each_untyped_after_typed_object`, `for_each_untyped_module_object`,
+  `for_each_untyped_undeclared`); after an assignment of the name, which
+  declares a `String`, it is refused (**recorded**:
+  `for_each_untyped_assigned_before`). After the loop, `Dim n As Object`
+  builds and gives `n` a new `Object`: it printed `java.lang.Object@<hash>`
+  (recording run 16, `for_each_untyped_object_declared_after`). The real-world corpus's
   `JSONWebToken.bas`, a class, loops `For Each Key In Claims.Keys` in
   `setClaims` with `Key` declared nowhere.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
