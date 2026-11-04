@@ -459,20 +459,18 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/for_each_untyped_assigned_before`), and after a read of it
       ("Undeclared variable 'u' is used before it was assigned any
       value.", recording: `level0/for_each_untyped_read_before`).
-- [x] Inside `Process_Globals`, over a variable `Object` a `Dim`
-      declared there, B4J builds it (recording run 18:
-      `level0/process_globals_for_each_untyped_object`), and so does
-      FerroBASIC.
-- [ ] Inside `Process_Globals`, over a variable `Object` a typed loop
-      declared there, or with the `Dim` after the loop: FerroBASIC refuses
-      them (`level0/process_globals_for_each_untyped_after_typed_object`,
-      `level0/process_globals_for_each_untyped_before_dim_object`).
-- [ ] In `Process_Globals`, a module variable read or assigned before its
-      `Dim … As Object` there: refused, as a read before the declaration is
-      in a Sub, or a String, as an assignment declares there? FerroBASIC
-      accepts both, one variable, and the read gives `Null`
-      (`level0/process_globals_read_before_dim_object`,
-      `level0/process_globals_assign_before_dim_object`).
+- [x] Inside `Process_Globals`, over a variable `Object` declared there,
+      by a `Dim` before or after the loop or by a typed loop, B4J builds it
+      (recording run 18: `level0/process_globals_for_each_untyped_object`;
+      run 19: `level0/process_globals_for_each_untyped_before_dim_object`,
+      `level0/process_globals_for_each_untyped_after_typed_object`), and so
+      does FerroBASIC.
+- [x] In `Process_Globals`, a module variable read or assigned before its
+      `Dim … As Object` there builds, one variable, and the read gives
+      `Null` (recording run 19:
+      `level0/process_globals_read_before_dim_object`,
+      `level0/process_globals_assign_before_dim_object`), as FerroBASIC
+      does.
 - [x] Followed by a `For Each … As Object`, or by a `Dim … As Object` with
       a value, over the same name, B4J builds it, one variable: `5`, `6`,
       `7` (recording run 18: `level0/for_each_untyped_then_typed_object`,

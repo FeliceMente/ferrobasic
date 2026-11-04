@@ -359,10 +359,11 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `for_each_untyped_object_declared_after`,
   `for_each_untyped_then_object_valued`,
   `for_each_untyped_then_typed_object`). Inside `Process_Globals` it builds
-  over a variable `Object` a `Dim` declared there before it (recorded:
-  `process_globals_for_each_untyped_object`); over one a typed loop declared
-  there, with the `Dim` after it, or over an undeclared name there, it is
-  *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
+  over a variable `Object` declared there, by a `Dim` before or after it or
+  by a typed loop (recorded: `process_globals_for_each_untyped_object`,
+  `process_globals_for_each_untyped_before_dim_object`,
+  `process_globals_for_each_untyped_after_typed_object`); over an undeclared
+  name there it is *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing

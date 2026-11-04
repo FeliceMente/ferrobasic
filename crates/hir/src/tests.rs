@@ -1995,24 +1995,17 @@ fn for_each_without_as_over_a_declared_variable() {
         "    Private n As Object\n    For Each n In Array As Int(5)\n    Next\n",
         "",
     ));
-    // With the `Dim` after it, or over one a loop declared there, it is not
-    // recorded.
-    let diags = errors(&app(
+    // So it does with the `Dim` after it, and over one a typed loop declared
+    // there (recorded: `process_globals_for_each_untyped_before_dim_object`,
+    // `process_globals_for_each_untyped_after_typed_object`).
+    ok(&app(
         "    For Each n In Array As Int(5)\n    Next\n    Private n As Object\n",
         "",
     ));
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    assert!(has(&diags, "not known yet"), "{diags:?}");
-    assert!(
-        has(&diags, "declared later in `Process_Globals`"),
-        "{diags:?}"
-    );
-    let diags = errors(&app(
+    ok(&app(
         "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
         "",
     ));
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    assert!(has(&diags, "not known yet"), "{diags:?}");
     // With a `Dim` of the name as an Object after it, it builds, and the
     // `Dim` gives a new Object (recorded:
     // `for_each_untyped_object_declared_after`).
