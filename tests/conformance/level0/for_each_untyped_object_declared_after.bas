@@ -7,7 +7,7 @@ Sub AppStart (Args() As String)
     ' Object: one variable. Recording run 16 builds it, and the Dim then
     ' gives the variable a new Object (it printed java.lang.Object@<hash>,
     ' which changes on every run): its type is printed instead
-    ' (docs/open-questions.md). FerroBASIC refuses it.
+    ' (docs/open-questions.md).
     For Each n In Array As Int(5, 6)
         Log(n)
     Next

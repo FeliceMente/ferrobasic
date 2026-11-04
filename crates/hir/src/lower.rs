@@ -472,20 +472,6 @@ struct LocalHistory {
     used_before: Option<TextRange>,
     /// The name is assigned before its first declaration.
     assigned_before: bool,
-    /// Declared first by a `For Each` without `As`, then again as an
-    /// `Object` in a way no recording settles (a bare `Dim` is recorded:
-    /// `for_each_untyped_object_declared_after`).
-    again: Option<Again>,
-}
-
-/// How a name first declared by a `For Each` without `As` is declared again
-/// as an `Object`, when no recording settles it.
-#[derive(Debug, Clone, Copy)]
-enum Again {
-    /// `For Each n As Object`.
-    TypedLoop,
-    /// `Dim n As Object = value`.
-    Valued,
 }
 
 impl LocalHistory {
@@ -496,7 +482,6 @@ impl LocalHistory {
             dimmed: false,
             used_before: None,
             assigned_before: false,
-            again: None,
         }
     }
 
@@ -506,7 +491,6 @@ impl LocalHistory {
             dimmed: matches!(first, Origin::Dim | Origin::Const),
             used_before: before.used.get(k).copied(),
             assigned_before: before.assigned.contains(k),
-            again: None,
         }
     }
 }
@@ -1432,16 +1416,6 @@ impl Lowerer {
         self.const_error(&VarRef::Global(id), at, message);
     }
 
-    /// Notes that `name`, if a `For Each` without `As` declared it first, is
-    /// declared again as an `Object` in a way no recording settles.
-    fn note_again(&mut self, name: &str, again: Again) {
-        if let Some(history) = self.local_history.get_mut(&key(name))
-            && history.first == Origin::UntypedForEach
-        {
-            history.again.get_or_insert(again);
-        }
-    }
-
     /// Declares a local name with `declare`, in source order, and notes
     /// the declaration: the first one that makes it a local of this Sub (a
     /// `Dim` of a module variable's name and type makes none), then any
@@ -1472,9 +1446,12 @@ impl Lowerer {
     /// it declared is refused, if it is. After an assignment of the name,
     /// which declares a `String`, or a read of it, B4J refuses it
     /// (recorded: `for_each_untyped_assigned_before`,
-    /// `for_each_untyped_read_before`). With a `Dim` of it as an `Object`
-    /// with no value after it, it builds, and that `Dim` gives a new
-    /// `Object` (recorded: `for_each_untyped_object_declared_after`). Returns the
+    /// `for_each_untyped_read_before`). Declared again as an `Object` after
+    /// it, by a `Dim` with or without a value or by a `For Each … As
+    /// Object`, it builds, as one variable (recorded:
+    /// `for_each_untyped_object_declared_after`,
+    /// `for_each_untyped_then_object_valued`,
+    /// `for_each_untyped_then_typed_object`). Returns the
     /// refusal, and where it is reported when that is not at the loop: B4J
     /// reports a read at the read.
     fn untyped_loop_refusal(&self, text: &str) -> Option<(Refusal, Option<TextRange>)> {
@@ -1493,17 +1470,6 @@ impl Lowerer {
                  assigned a value: declare it first, e.g. `Dim {text} As Object`"
             ));
             Some((refusal, Some(read)))
-        } else if let Some(again) = history.again {
-            let what = match again {
-                Again::TypedLoop => "by a typed `For Each`",
-                Again::Valued => "with a value",
-            };
-            let refusal = Refusal::open(
-                format!("`{text}` is declared again {what} after this one"),
-                "a `For Each` without `As` may loop over it here",
-                format!("write `For Each {text} As <type> In ...`"),
-            );
-            Some((refusal, None))
         } else {
             None
         }
@@ -1542,9 +1508,6 @@ impl Lowerer {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                         let origin = Origin::of_declarator(&decl);
-                        if origin == Origin::Dim && ty == Ty::Object && !exprs(&decl).is_empty() {
-                            self.note_again(&name, Again::Valued);
-                        }
                         self.declare_noted(&name, origin, &so_far, |this| {
                             this.declare_dim_local(&name, ty, range(&decl), true)
                         });
@@ -1561,9 +1524,6 @@ impl Lowerer {
                     match origin {
                         Origin::TypedForEach | Origin::TypedCounter => {
                             let ty = type_ref.map_or(Ty::Error, |t| self.resolve_type(&t));
-                            if origin == Origin::TypedForEach && ty == Ty::Object {
-                                self.note_again(&text, Again::TypedLoop);
-                            }
                             self.declare_noted(&text, origin, &so_far, |this| {
                                 if origin == Origin::TypedForEach {
                                     this.declare_dim_local(&text, ty, range(&name), false);
@@ -1892,6 +1852,18 @@ impl Lowerer {
                         // `for_each_untyped_pg_loop_object`).
                         VarRef::Local(_) if ty == Ty::Object => None,
                         VarRef::Global(_) if ty == Ty::Object && !self.in_process_globals => None,
+                        // In `Process_Globals`, over a module variable
+                        // `Object` a `Dim` declared there before it
+                        // (recorded: `process_globals_for_each_untyped_object`);
+                        // over one a loop declared, or a `Dim` after it, not
+                        // recorded.
+                        VarRef::Global(id)
+                            if ty == Ty::Object
+                                && self.global_origins.get(&key(&text)) == Some(&Origin::Dim)
+                                && self.module.global(id).range.start() < at.start() =>
+                        {
+                            None
+                        }
                         _ if ty == Ty::Object => {
                             Some((untyped_for_each(&text, "already declared"), at))
                         }

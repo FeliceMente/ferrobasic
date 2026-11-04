@@ -4,8 +4,8 @@ End Sub
 Sub AppStart (Args() As String)
     ' A For Each without `As`, which declares its variable an Object, then
     ' a For Each As Object over the same name: one variable, as with a Dim
-    ' (for_each_untyped_object_declared_after)? FerroBASIC refuses it
-    ' (docs/open-questions.md).
+    ' (for_each_untyped_object_declared_after). Recording run 18 builds
+    ' it.
     For Each n In Array As Int(5, 6)
         Log(n)
     Next

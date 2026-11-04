@@ -201,15 +201,15 @@ pub enum Rvalue {
     /// Object, an empty array of rank 1 for array types, and a fresh
     /// **uninitialised** object for `List`, `Map`, `StringBuilder` and records.
     /// `Dim x As T` without initialiser assigns this each time it runs, but
-    /// for a local `Object`.
+    /// for an `Object`.
     Default(Ty),
-    /// A local `Dim o As Object` without initialiser, each time it runs: a
-    /// new `java.lang.Object`, as B4J generates `new Object()` (recorded:
-    /// `for_each_untyped_object_declared_after`; pending:
-    /// `object_dim_default`). A module variable and a `Type` field stay
-    /// `Null` until recordings settle them (`object_dim_global_default`,
-    /// `record_object_field_default`); an array's elements are `Null`, as
-    /// in any Java `Object[]`.
+    /// `Dim o As Object` without initialiser, each time it runs, local or
+    /// module variable, and an `Object` field of a `Type` when `Initialize`
+    /// runs: a new `java.lang.Object`, as B4J generates `new Object()`
+    /// (recorded: `object_dim_default`, `object_dim_global_default`,
+    /// `local_dim_resets_module_object`, `record_object_field_default`).
+    /// An array's elements are `Null`, as in any Java `Object[]`, and so
+    /// are the fields of a `Type` never initialised.
     NewObject,
     /// The implicit or explicit conversions of `docs/spec/level0.md`.
     /// Raises e.g. `java.lang.NumberFormatException`.

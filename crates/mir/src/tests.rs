@@ -707,27 +707,21 @@ fn inexact_constant_steps_use_the_run_time_sign_test() {
 }
 
 #[test]
-fn dim_object_without_value_is_a_new_object_only_for_a_local() {
+fn dim_object_without_value_is_a_new_object() {
     let p = lower_text(
-        "Sub Process_Globals\n    Private g As Object\n    Type P (o As Object)\nEnd Sub\n\n\
+        "Sub Process_Globals\n    Private g As Object\n    Type P (o As Object, n As Int)\nEnd Sub\n\n\
          Sub AppStart (Args() As String)\n    Dim o As Object\n    Dim a(2) As Object\n    \
          Dim r As P\n    r.Initialize\n    Log(o)\n    Log(a(0))\n    Log(g)\nEnd Sub\n",
     );
-    let news = all_rvalues(app(&p))
-        .filter(|r| matches!(r, Rvalue::NewObject))
-        .count();
-    assert_eq!(news, 1, "{}", dump(&p));
+    let news = |name: &str| {
+        all_rvalues(func(&p, name))
+            .filter(|r| matches!(r, Rvalue::NewObject))
+            .count()
+    };
+    // The local; the module variable; the record's `Object` field. An
+    // `Object` array's elements stay `Null`.
+    assert_eq!(news("AppStart"), 1, "{}", dump(&p));
+    assert_eq!(news("Process_Globals"), 1, "{}", dump(&p));
+    assert_eq!(news("P.Initialize"), 1, "{}", dump(&p));
     assert!(all_rvalues(app(&p)).any(|r| matches!(r, Rvalue::NewArray { .. })));
-    // The module variable, and the record's field, keep their `Null`
-    // default.
-    for f in &p.functions {
-        if f.name != "AppStart" {
-            assert!(
-                !all_rvalues(f).any(|r| matches!(r, Rvalue::NewObject)),
-                "{}",
-                dump(&p)
-            );
-        }
-    }
-    assert!(dump(&p).contains("new Object"));
 }

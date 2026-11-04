@@ -91,8 +91,9 @@ fn lower_sub(module: &h::Module, sub: &h::Sub) -> Function {
     b.finish(sub.name.clone(), sub.params, sub.ret.clone())
 }
 
-/// `<Type>.Initialize`: assigns every field its default value, or a new
-/// array for fields declared with bounds.
+/// `<Type>.Initialize`: assigns every field its default value, a new
+/// `Object` for an `Object` field, or a new array for fields declared with
+/// bounds.
 fn lower_record_init(module: &h::Module, id: RecordId, record: &h::Record) -> Function {
     let locals = vec![Local {
         name: Some("record".into()),
@@ -109,6 +110,9 @@ fn lower_record_init(module: &h::Module, id: RecordId, record: &h::Record) -> Fu
                     dims,
                 }
             }
+            // A new `Object`, as for a `Dim` (recorded:
+            // `record_object_field_default`).
+            Ty::Object => Rvalue::NewObject,
             ty => Rvalue::Default(ty.clone()),
         };
         let value = b.as_operand(value, &field.ty);
@@ -325,11 +329,7 @@ impl<'m> Builder<'m> {
             StmtKind::Dim { var, init } => {
                 let ty = self.var_ty(*var);
                 let value = match init {
-                    // A module variable keeps `Null` until a recording
-                    // settles it (`object_dim_global_default`).
-                    DimInit::Default if ty == Ty::Object && matches!(var, VarRef::Local(_)) => {
-                        Rvalue::NewObject
-                    }
+                    DimInit::Default if ty == Ty::Object => Rvalue::NewObject,
                     DimInit::Default => Rvalue::Default(ty),
                     DimInit::Value(e) => self.rvalue(e),
                     DimInit::Array(bounds) => {

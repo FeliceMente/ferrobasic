@@ -1989,10 +1989,22 @@ fn for_each_without_as_over_a_declared_variable() {
         has(&diags, "is read here before a later `For Each` declares it"),
         "{diags:?}"
     );
-    // Not recorded: the loop inside `Process_Globals` over a variable
-    // there.
-    let diags = errors(&app(
+    // Inside `Process_Globals`, over a variable a `Dim` declared there, it
+    // builds (recorded: `process_globals_for_each_untyped_object`).
+    ok(&app(
         "    Private n As Object\n    For Each n In Array As Int(5)\n    Next\n",
+        "",
+    ));
+    // With the `Dim` after it, or over one a loop declared there, it is not
+    // recorded.
+    let diags = errors(&app(
+        "    For Each n In Array As Int(5)\n    Next\n    Private n As Object\n",
+        "",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "not known yet"), "{diags:?}");
+    let diags = errors(&app(
+        "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
         "",
     ));
     assert_eq!(diags.len(), 1, "{diags:?}");
@@ -2004,20 +2016,17 @@ fn for_each_without_as_over_a_declared_variable() {
         "",
         "    For Each n In Array As Int(5)\n    Next\n    Dim n As Object\n",
     ));
-    // Again by a `For Each … As Object` it is not recorded.
-    let diags = errors(&app(
+    // So it does declared again by a `For Each … As Object`, or by a `Dim`
+    // with a value (recorded: `for_each_untyped_then_typed_object`,
+    // `for_each_untyped_then_object_valued`).
+    ok(&app(
         "",
         "    For Each n In Array As Int(5)\n    Next\n    For Each n As Object In Array As Int(1)\n    Next\n",
     ));
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    assert!(has(&diags, "not known yet"), "{diags:?}");
-    // Nor by a `Dim` with a value.
-    let diags = errors(&app(
+    ok(&app(
         "",
         "    For Each n In Array As Int(5)\n    Next\n    Dim n As Object = 7\n",
     ));
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    assert!(has(&diags, "declared again with a value"), "{diags:?}");
     // A variable of an unknown type has its error where the type is.
     let diags = errors(&app(
         "",
