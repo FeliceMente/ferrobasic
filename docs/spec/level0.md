@@ -133,7 +133,7 @@ End Sub
 | Double | IEEE 754, 64-bit | 0 | `double` | `double` |
 | Char | UTF-16 code unit | `Chr(0)` | `char` | `i16` |
 | String | immutable UTF-16 text | `""` | `java.lang.String` | pointer to a refcounted runtime string |
-| Object | any value or `Null` | `Null` | `Object` | pointer with a type header |
+| Object | any value or `Null` | `Null` (B4J gives `Dim o As Object` a new `java.lang.Object`: deviation D8) | `Object` | pointer with a type header |
 | List, Map | reference to a collection, uninitialised by default | uninitialised | wrapper | runtime object |
 | arrays `T()` | fixed size, zero-based, any rank | per element | `T[]` | runtime object |
 | `Type` records | reference to an object with fields | an object whose fields hold Java defaults (0, `False`, `Null` for String and objects); `Initialize` then sets B4X's defaults (`""`, fresh uninitialised List/Map) and makes `IsInitialized` True. Fields can be read and written before `Initialize`. | class | runtime object |
@@ -290,16 +290,17 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   - `x = Null` / `x <> Null` test for null; with an `Int` on the left, the
     `Null` is converted as its text, `"null"`, which raises
     `NumberFormatException` (recorded: `null_number_compare`), and with a
-    `Double` too (recorded: `double_eq_null`); with another number type it
-    is *(open)*, so an error;
+    `Double` or a `Long` too (recorded: `double_eq_null`, `long_eq_null`);
+    with another number type it is *(open)*, so an error;
   - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
     errors (recorded: `chained_comparison_less`,
     `chained_comparison_equal`), while `x = a = b` assigns one comparison;
   - a Char `=` an `Int` converts the `Int` to a Char, the first character
     of its text, so `"A" = 65` is `False` (recorded: `char_number_compare`),
     and so does a `Long`, `Short`, `Byte` or `Double` (recorded:
-    `char_eq_long`, `char_eq_double`); the number on the left is an error
-    (recorded: `number_eq_char`), and a `Float` is *(open)*, so an error.
+    `char_eq_long`, `char_eq_double`), and a `Float` through its object's
+    text, `Float.toString` (recorded: `char_eq_float`); the number on the
+    left is an error (recorded: `number_eq_char`).
 
 ## Statements
 
@@ -341,16 +342,19 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   declares it (recorded: `for_each_untyped_undeclared`), and a later `Dim`
   of another type is an error (B4J: "Current declaration does not match
   previous one", recorded: `for_each_untyped_declared_after`); over a
-  local `Object` a `Dim` declared before it, it loops with it (recorded:
-  `for_each_untyped_object`); over a local, a parameter or a module
-  variable of another type it is an error, in `Process_Globals` too
+  local `Object` declared before it, by a `Dim` or a typed loop, and over a
+  module variable `Object` a `Dim` declared, from a Sub, it loops with it (recorded:
+  `for_each_untyped_object`, `for_each_untyped_after_typed_object`,
+  `for_each_untyped_module_object`); over a local, a parameter or a module
+  variable of another type it is an error, in `Process_Globals` too, and so
+  it is after an assignment of the name, which declares a `String`
   (recorded: `for_each_untyped_local`, `for_each_untyped_other_type`,
   `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
-  `process_globals_for_each_untyped`). Over a parameter or a module
-  variable of type `Object`, over an undeclared name in
-  `Process_Globals`, with a later `Dim` of the name as an `Object`, with
-  the name used before the loop, or over an `Object` a typed loop declared,
-  it is *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
+  `process_globals_for_each_untyped`, `for_each_untyped_assigned_before`).
+  Over a parameter of type `Object`, over a module variable `Object` a loop
+  of `Process_Globals` declared, over an undeclared name in
+  `Process_Globals`, with a later `Dim` of the name as an `Object`, or with
+  the name only read before the loop, it is *(open)*, so an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing
@@ -360,7 +364,7 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `String`, as B4J declares it: `Return 5` builds (recorded:
   `return_value_untyped_sub`), and the call's value prints `5` (recorded:
   `untyped_sub_return_value_used`); one that returns nothing returns `""`
-  *(that it is a `String` is open: `untyped_sub_return_type`)*.
+  (recorded: `untyped_sub_return_type`).
   `Process_Globals` and `AppStart` return nothing. A Sub with an `As` type that falls off its
   end returns that type's default value: 0, or an empty `String` (recorded:
   `typed_sub_without_return`, `typed_string_sub_without_return`).

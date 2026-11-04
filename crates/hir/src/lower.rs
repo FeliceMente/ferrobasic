@@ -458,10 +458,6 @@ impl Origin {
             Origin::Counter | Origin::TypedCounter | Origin::TypedForEach | Origin::UntypedForEach
         )
     }
-
-    fn is_typed_loop(self) -> bool {
-        matches!(self, Origin::TypedCounter | Origin::TypedForEach)
-    }
 }
 
 /// How the current Sub declares a local name, in source order.
@@ -476,24 +472,38 @@ struct LocalHistory {
     /// Declared first by a `For Each` without `As`, then again as an
     /// `Object`.
     object_again: bool,
-    /// Declared first by a typed loop, then looped over by a `For Each`
-    /// without `As`, in that order.
-    untyped_after_typed: bool,
-    /// The local has a module variable's name.
-    shadows_global: bool,
+    /// The name is assigned before its first declaration.
+    assigned_before: bool,
 }
 
 impl LocalHistory {
-    fn new(first: Origin, used_before: bool, shadows_global: bool) -> LocalHistory {
+    /// A parameter: declared before the body, so before anything in it.
+    fn param() -> Self {
+        LocalHistory {
+            first: Origin::Param,
+            dimmed: false,
+            used_before: false,
+            assigned_before: false,
+            object_again: false,
+        }
+    }
+
+    fn new(first: Origin, before: &SoFar, k: &str) -> Self {
         LocalHistory {
             first,
             dimmed: matches!(first, Origin::Dim | Origin::Const),
-            used_before,
+            used_before: before.used.contains(k),
+            assigned_before: before.assigned.contains(k),
             object_again: false,
-            untyped_after_typed: false,
-            shadows_global,
         }
     }
+}
+
+/// The names a Sub uses and assigns, so far in source order.
+#[derive(Default)]
+struct SoFar {
+    used: HashSet<String>,
+    assigned: HashSet<String>,
 }
 
 /// An operand that is itself a comparison, not in parentheses.
@@ -1250,7 +1260,7 @@ impl Lowerer {
         self.local_history = self
             .locals
             .iter()
-            .map(|v| (key(&v.name), LocalHistory::new(Origin::Param, false, false)))
+            .map(|v| (key(&v.name), LocalHistory::param()))
             .collect();
         self.sub_named_loops.clear();
         self.in_class_globals = self.class_globals == Some(id);
@@ -1418,7 +1428,7 @@ impl Lowerer {
         name: &str,
         origin: Origin,
         ty: &Ty,
-        used: &HashSet<String>,
+        before: &SoFar,
         declare: impl FnOnce(&mut Self),
     ) {
         let k = key(name);
@@ -1435,26 +1445,35 @@ impl Lowerer {
                 }
             }
             None if fresh && self.local_names.contains_key(&k) => {
-                let history =
-                    LocalHistory::new(origin, used.contains(&k), self.globals.contains_key(&k));
+                let history = LocalHistory::new(origin, before, &k);
                 self.local_history.insert(k, history);
             }
             None => {}
         }
     }
 
-    /// Why a `For Each` without `As` over a local `Object` is not recorded,
-    /// if it is not: declared by the loop, then again as an `Object`, or
-    /// after a use of the name; or declared first by a typed loop.
-    fn untyped_loop_unrecorded(&self, k: &str) -> Option<&'static str> {
-        let history = self.local_history.get(k)?;
-        match history.first {
-            Origin::UntypedForEach if history.used_before => Some("used before this loop"),
-            Origin::UntypedForEach if history.object_again => {
-                Some("declared again as Object after this loop")
-            }
-            _ if history.untyped_after_typed => Some("declared by a typed loop before this one"),
-            _ => None,
+    /// Why a `For Each` without `As` over a local `Object` of this Sub that
+    /// it declared is refused, if it is. After an assignment of the name,
+    /// which declares a `String`, B4J refuses it (recorded:
+    /// `for_each_untyped_assigned_before`). After a read of the name alone,
+    /// or with a declaration again as an `Object` after it, it is not
+    /// recorded.
+    fn untyped_loop_refusal(&self, text: &str) -> Option<String> {
+        let history = self.local_history.get(&key(text))?;
+        if history.first != Origin::UntypedForEach {
+            return None;
+        }
+        if history.assigned_before {
+            self.type_clash(text, &Ty::String, &Ty::Object, Clash::UntypedForEach)
+        } else if history.used_before {
+            Some(untyped_for_each(text, "used before this loop"))
+        } else if history.object_again {
+            Some(untyped_for_each(
+                text,
+                "declared again as Object after this loop",
+            ))
+        } else {
+            None
         }
     }
 
@@ -1477,18 +1496,18 @@ impl Lowerer {
                 Found::Assign(_) | Found::Use(_) => Vec::new(),
             })
             .collect();
-        // In source order: the names used so far.
-        let mut used: HashSet<String> = HashSet::new();
+        // In source order: the names used and assigned so far.
+        let mut so_far = SoFar::default();
         for f in found {
             match f {
                 Found::Use(node) => {
-                    used.insert(key(&name_of(&node)));
+                    so_far.used.insert(key(&name_of(&node)));
                 }
                 Found::Dim(node) => {
                     for (decl, ty) in self.declarators(&node) {
                         let name = child(&decl, NAME).map(|n| name_of(&n)).unwrap_or_default();
                         let origin = Origin::of_declarator(&decl);
-                        self.declare_noted(&name, origin, &ty.clone(), &used, |this| {
+                        self.declare_noted(&name, origin, &ty.clone(), &so_far, |this| {
                             this.declare_dim_local(&name, ty, range(&decl), true)
                         });
                         self.mark_const(&decl, &name);
@@ -1504,7 +1523,7 @@ impl Lowerer {
                     match origin {
                         Origin::TypedForEach | Origin::TypedCounter => {
                             let ty = type_ref.map_or(Ty::Error, |t| self.resolve_type(&t));
-                            self.declare_noted(&text, origin, &ty.clone(), &used, |this| {
+                            self.declare_noted(&text, origin, &ty.clone(), &so_far, |this| {
                                 if origin == Origin::TypedForEach {
                                     this.declare_dim_local(&text, ty, range(&name), false);
                                 } else {
@@ -1518,8 +1537,9 @@ impl Lowerer {
                         // ("Previous: Object", recorded:
                         // `for_each_untyped_declared_after`), and a name
                         // nothing declares builds (recorded:
-                        // `for_each_untyped_undeclared`). Used before it, or
-                        // declared first by a typed loop, it is not recorded.
+                        // `for_each_untyped_undeclared`). After an
+                        // assignment of the name, it is refused
+                        // (`untyped_loop_refusal`).
                         Origin::UntypedForEach => {
                             let k = key(&text);
                             if self.lookup_var(&text).is_none()
@@ -1527,15 +1547,9 @@ impl Lowerer {
                                 && !self.records.contains_key(&k)
                                 && builtins::lookup(Owner::Global, &text).is_none()
                             {
-                                self.declare_noted(&text, origin, &Ty::Object, &used, |this| {
+                                self.declare_noted(&text, origin, &Ty::Object, &so_far, |this| {
                                     this.declare_local(&text, Ty::Object, range(&name))
                                 });
-                            } else if let Some(history) = self.local_history.get_mut(&k)
-                                && history.first.is_typed_loop()
-                                && !history.shadows_global
-                            {
-                                // In source order: after the typed loop.
-                                history.untyped_after_typed = true;
                             }
                         }
                         // A counter not declared before it, in source order,
@@ -1545,7 +1559,7 @@ impl Lowerer {
                         // `local_typed_for_each_other_type_after_counter_named_like_sub`).
                         _ => {
                             if self.lookup_var(&text).is_none() {
-                                self.declare_noted(&text, origin, &Ty::Int, &used, |this| {
+                                self.declare_noted(&text, origin, &Ty::Int, &so_far, |this| {
                                     this.declare_loop_local(&text, Ty::Int, range(&name), false)
                                 });
                             }
@@ -1565,10 +1579,15 @@ impl Lowerer {
                         && !self.subs.contains_key(&key(&text))
                         && builtins::lookup(Owner::Global, &text).is_none()
                     {
-                        self.declare_noted(&text, Origin::Assignment, &Ty::String, &used, |this| {
-                            this.declare_local(&text, Ty::String, range(&target))
-                        });
+                        self.declare_noted(
+                            &text,
+                            Origin::Assignment,
+                            &Ty::String,
+                            &so_far,
+                            |this| this.declare_local(&text, Ty::String, range(&target)),
+                        );
                     }
+                    so_far.assigned.insert(key(&text));
                 }
             }
         }
@@ -1825,8 +1844,18 @@ impl Lowerer {
                 {
                     let message = match var {
                         VarRef::Local(id) if id.0 as usize >= self.params && ty == Ty::Object => {
-                            self.untyped_loop_unrecorded(&key(&text))
-                                .map(|why| untyped_for_each(&text, why))
+                            self.untyped_loop_refusal(&text)
+                        }
+                        // Over a module variable `Object` that a `Dim` declared,
+                        // from a Sub (recorded: `for_each_untyped_module_object`);
+                        // one a loop of `Process_Globals` declared is not
+                        // recorded.
+                        VarRef::Global(_)
+                            if ty == Ty::Object
+                                && !self.in_process_globals
+                                && self.global_origins.get(&key(&text)) == Some(&Origin::Dim) =>
+                        {
+                            None
                         }
                         _ if ty == Ty::Object => Some(untyped_for_each(&text, "already declared")),
                         _ => self.type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach),
@@ -3062,9 +3091,9 @@ impl Lowerer {
             (Error, _) | (_, Error) => return error_expr(at),
             // `n = Null`: B4J converts the `Null` with `BA.ObjectToNumber`,
             // which parses its text, `"null"`: a `NumberFormatException`
-            // when it runs (recorded with an `Int` and a `Double`:
-            // `null_number_compare`, `double_eq_null`).
-            (Int | Double, Null) if !ordering => {
+            // when it runs (recorded with an `Int`, a `Double` and a `Long`:
+            // `null_number_compare`, `double_eq_null`, `long_eq_null`).
+            (Int | Double | Long, Null) if !ordering => {
                 let right = self.coerce(right, &String);
                 let left = self.coerce(left, &Double);
                 let right = self.coerce(right, &Double);
@@ -3085,10 +3114,13 @@ impl Lowerer {
             // `c = 65`: B4J converts the number with `BA.ObjectToChar`, the
             // first character of its text, `'6'` (generated
             // `_c==BA.ObjectToChar(65)` and recording: `char_number_compare`;
-            // a `Long`, `Short`, `Byte` and `Double` too: `char_eq_long`,
-            // `char_eq_double`). Java's text of a Double (`1.0E-5`) starts
-            // as B4J's does, which only drops a trailing `.0`.
-            (Char, Int | Long | Short | Byte | Double) if !ordering => {
+            // a `Long`, `Short`, `Byte`, `Double` and `Float` too:
+            // `char_eq_long`, `char_eq_double`, `char_eq_float`).
+            // `ObjectToChar` takes an `Object`: every number is boxed, and
+            // its own `toString` gives the text (`1.0E-5` for a Float, not
+            // B4J's text of it widened to a Double).
+            (Char, Int | Long | Short | Byte | Double | Float) if !ordering => {
+                let right = self.coerce(right, &Object);
                 let right = self.coerce(right, &String);
                 let right = self.coerce(right, &Char);
                 return Expr {
