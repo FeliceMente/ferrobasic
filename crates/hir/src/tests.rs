@@ -1997,15 +1997,20 @@ fn for_each_without_as_over_a_declared_variable() {
     ));
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert!(has(&diags, "not known yet"), "{diags:?}");
-    // With a `Dim` of the name as an Object after it, B4J builds it, and
-    // its `Dim` gives a new Object, which FerroBASIC cannot give yet
-    // (deviation D8): refused.
-    let diags = errors(&app(
+    // With a `Dim` of the name as an Object after it, it builds, and the
+    // `Dim` gives a new Object (recorded:
+    // `for_each_untyped_object_declared_after`).
+    ok(&app(
         "",
         "    For Each n In Array As Int(5)\n    Next\n    Dim n As Object\n",
     ));
+    // Again by a `For Each … As Object` it is not recorded.
+    let diags = errors(&app(
+        "",
+        "    For Each n In Array As Int(5)\n    Next\n    For Each n As Object In Array As Int(1)\n    Next\n",
+    ));
     assert_eq!(diags.len(), 1, "{diags:?}");
-    assert!(has(&diags, "docs/deviations.md, D8"), "{diags:?}");
+    assert!(has(&diags, "not known yet"), "{diags:?}");
     // A variable of an unknown type has its error where the type is.
     let diags = errors(&app(
         "",

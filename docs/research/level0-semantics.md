@@ -442,7 +442,8 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `for_each_untyped_undeclared`); after an assignment of the name, which
   declares a `String`, it is refused (**recorded**:
   `for_each_untyped_assigned_before`). After the loop, `Dim n As Object`
-  builds and gives `n` a new `Object`: it printed `java.lang.Object@<hash>`
+  builds and gives `n` a new `Object` (B4J generates `new Object()` for a
+  `Dim … As Object` with no value): it printed `java.lang.Object@<hash>`
   (recording run 16, `for_each_untyped_object_declared_after`; run 17
   prints its type, `java.lang.Object`). It builds over a parameter `Object`
   and over a module variable `Object` that a loop of `Process_Globals`

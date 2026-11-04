@@ -459,19 +459,30 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/for_each_untyped_assigned_before`), and after a read of it
       ("Undeclared variable 'u' is used before it was assigned any
       value.", recording: `level0/for_each_untyped_read_before`).
-- [ ] Inside `Process_Globals`, over a variable `Object` declared there:
-      FerroBASIC refuses it (`level0/process_globals_for_each_untyped_object`).
+- [ ] Inside `Process_Globals`, over a variable `Object` declared there,
+      and followed by a `For Each … As Object` over the same name:
+      FerroBASIC refuses them
+      (`level0/process_globals_for_each_untyped_object`,
+      `level0/for_each_untyped_then_typed_object`).
 - [x] With a `Dim` of the name as an `Object` after the loop, B4J builds it
       and the `Dim` gives the variable a new `Object`: `5`, `6`,
       `java.lang.Object` (recording run 17:
-      `level0/for_each_untyped_object_declared_after`). FerroBASIC refuses
-      it until it gives a new `Object` too (D8, below); its recording is
-      applied then.
+      `level0/for_each_untyped_object_declared_after`), as FerroBASIC does.
 - [x] `Dim o As Object` with no value gives the variable a new `Object`:
-      `o = Null` is `False` and `GetType(o)` is `java.lang.Object` (recording
-      run 17 of `level0/object_dim_default`). FerroBASIC gives `Null`:
-      deviation D8, until it gives a new `Object` too. A hash changes on
-      every run, so no test can print the object itself.
+      `o = Null` is `False` and `GetType(o)` is `java.lang.Object` (B4J's
+      output for `level0/object_dim_default` in recording run 17, then a
+      deviation test). FerroBASIC gives one too (it was deviation D8); the
+      next run records the test.
+- [ ] A new `Object` as a module variable with no value
+      (`level0/object_dim_global_default`), and how new Objects compare and
+      key a Map: by identity in FerroBASIC (`level0/object_plain_identity`).
+- [ ] A new `Object` converted to a number: B4J's `BA.ObjectToNumber` may
+      parse its text, a `NumberFormatException`; FerroBASIC raises
+      `ClassCastException`, as for every object that is not a number or a
+      String (`level0/object_plain_to_number`).
+- [ ] How a new `Object` prints: `java.lang.Object@<hash>`, the identity
+      hash, which changes on every run, as an array's does; FerroBASIC
+      prints a hash too, which no recording can compare.
 - [x] A local `Dim` cannot have a Sub's name (recording:
       `level0/local_dim_named_like_sub`).
 - [x] A loop variable of a Sub may have a Sub's name, and reading it calls

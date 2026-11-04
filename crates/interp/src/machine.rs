@@ -486,6 +486,7 @@ impl<'p, 'w> Machine<'p, 'w> {
                 .cloned()
                 .ok_or_else(|| Exc::internal("missing global"))?,
             Rvalue::Default(ty) => default_value(ty, program),
+            Rvalue::NewObject => Value::Plain(Rc::new(())),
             Rvalue::Convert { value, from, to } => {
                 let v = self.operand(locals, value);
                 convert(v, from, to, program)?

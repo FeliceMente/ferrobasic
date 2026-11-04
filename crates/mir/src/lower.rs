@@ -325,6 +325,7 @@ impl<'m> Builder<'m> {
             StmtKind::Dim { var, init } => {
                 let ty = self.var_ty(*var);
                 let value = match init {
+                    DimInit::Default if ty == Ty::Object => Rvalue::NewObject,
                     DimInit::Default => Rvalue::Default(ty),
                     DimInit::Value(e) => self.rvalue(e),
                     DimInit::Array(bounds) => {
