@@ -18,18 +18,15 @@ fn the_corpus_passes_as_standalone_binaries() {
     // Each kind of test went through the binary: built and run, or refused.
     // Pending ones only while the corpus has some: a recording run may
     // answer them all.
-    let pending = programs
+    let ran = |state| report.entries.iter().any(|e| e.verdict.state == state);
+    for state in [State::Pass, State::Deviation] {
+        assert!(ran(state), "{state:?}");
+    }
+    if programs
         .iter()
-        .any(|p| p.status == ferro_corpus::Status::PendingRecording);
-    let states = [State::Pass, State::Deviation, State::Pending];
-    for state in states
-        .into_iter()
-        .filter(|s| pending || *s != State::Pending)
+        .any(|p| p.status == ferro_corpus::Status::PendingRecording)
     {
-        assert!(
-            report.entries.iter().any(|e| e.verdict.state == state),
-            "{state:?}"
-        );
+        assert!(ran(State::Pending), "Pending");
     }
 }
 

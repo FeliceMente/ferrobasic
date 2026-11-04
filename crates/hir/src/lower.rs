@@ -1842,6 +1842,22 @@ impl Lowerer {
                         // `process_globals_for_each_untyped_object`,
                         // `process_globals_for_each_untyped_after_typed_object`,
                         // `process_globals_for_each_untyped_before_dim_object`).
+                        // In `Process_Globals`, before the typed loop that
+                        // declares it, not recorded
+                        // (`process_globals_for_each_untyped_before_typed_object`).
+                        VarRef::Global(id)
+                            if ty == Ty::Object
+                                && self.in_process_globals
+                                && self.declared_by_loop(&key(&text))
+                                && self.module.global(id).range.start() > at.start() =>
+                        {
+                            let refusal = Refusal::open(
+                                format!("`{text}` is declared later by a typed loop"),
+                                "a `For Each` without `As` may loop over it here",
+                                format!("write `For Each {text} As Object In ...`"),
+                            );
+                            Some((refusal.message(), at))
+                        }
                         _ if ty == Ty::Object => None,
                         _ => self
                             .type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach)

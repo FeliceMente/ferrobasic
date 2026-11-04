@@ -465,6 +465,10 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       run 19: `level0/process_globals_for_each_untyped_before_dim_object`,
       `level0/process_globals_for_each_untyped_after_typed_object`), and so
       does FerroBASIC.
+- [ ] Inside `Process_Globals`, before the typed loop that declares the
+      name, and over a name nothing declares: FerroBASIC refuses them
+      (`level0/process_globals_for_each_untyped_before_typed_object`,
+      `level0/process_globals_for_each_untyped_undeclared`).
 - [x] In `Process_Globals`, a module variable read or assigned before its
       `Dim … As Object` there builds, one variable, and the read gives
       `Null` (recording run 19:

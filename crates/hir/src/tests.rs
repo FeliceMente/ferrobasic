@@ -2006,6 +2006,14 @@ fn for_each_without_as_over_a_declared_variable() {
         "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
         "",
     ));
+    // Before the typed loop that declares it, it is not recorded.
+    let diags = errors(&app(
+        "    For Each n In Array As Int(5)\n    Next\n    For Each n As Object In Array As Int(1)\n    Next\n",
+        "",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "declared later by a typed loop"), "{diags:?}");
+    assert!(has(&diags, "not known yet"), "{diags:?}");
     // With a `Dim` of the name as an Object after it, it builds, and the
     // `Dim` gives a new Object (recorded:
     // `for_each_untyped_object_declared_after`).
