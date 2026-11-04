@@ -457,11 +457,17 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   (**recorded**: `object_dim_default`, `object_dim_global_default`,
   `local_dim_resets_module_object`, `record_object_field_default`), and new
   Objects compare by identity (**recorded**: `object_plain_identity`). Inside
-  `Process_Globals`, the loop builds over a variable `Object` a `Dim` declared
-  there before it (**recorded**: `process_globals_for_each_untyped_object`);
-  over one a typed loop declared there, or with the `Dim` after it, it is
-  *open* (`process_globals_for_each_untyped_after_typed_object`,
-  `process_globals_for_each_untyped_before_dim_object`). It builds over a parameter `Object`
+  `Process_Globals`, the loop builds over a variable `Object` declared there,
+  by a `Dim` before or after it or by a typed loop before it (**recorded**:
+  `process_globals_for_each_untyped_object`,
+  `process_globals_for_each_untyped_before_dim_object`,
+  `process_globals_for_each_untyped_after_typed_object`); before the typed
+  loop that declares it, or over an undeclared name, it is *open*
+  (`process_globals_for_each_untyped_before_typed_object`,
+  `process_globals_for_each_untyped_undeclared`). A read or an
+  assignment there before a `Dim … As Object` builds too, the read giving
+  `Null` (**recorded**: `process_globals_read_before_dim_object`,
+  `process_globals_assign_before_dim_object`). It builds over a parameter `Object`
   and over a module variable `Object` that a loop of `Process_Globals`
   declared too (**recorded**: `for_each_untyped_param_object`,
   `for_each_untyped_pg_loop_object`), and is refused after a read of the

@@ -336,18 +336,6 @@ fn recorded_loop(origin: Origin) -> bool {
     origin != Origin::UntypedForEach
 }
 
-/// A `For Each` without `As` over a declared variable, which it would
-/// declare an `Object`, where that is not recorded: `subject` says what
-/// the name is.
-fn untyped_for_each(name: &str, subject: &str) -> String {
-    Refusal::open(
-        format!("`{name}` is {subject}"),
-        "a `For Each` without `As` may loop over it here",
-        format!("write `For Each {name} As <type> In ...`"),
-    )
-    .message()
-}
-
 /// Which declarations of one name disagree on its type, for
 /// `Lowerer::type_clash`. B4J refuses each ("Current declaration does not
 /// match previous one", recorded).
@@ -1846,34 +1834,31 @@ impl Lowerer {
                                 .map(|(refusal, read)| (refusal.message(), read.unwrap_or(at)))
                         }
                         // Over a parameter `Object`, and over a module variable
-                        // `Object` from a Sub, however it was declared
-                        // (recorded: `for_each_untyped_param_object`,
+                        // `Object` however and wherever it was declared, from a
+                        // Sub or in `Process_Globals` (recorded:
+                        // `for_each_untyped_param_object`,
                         // `for_each_untyped_module_object`,
-                        // `for_each_untyped_pg_loop_object`).
-                        VarRef::Local(_) if ty == Ty::Object => None,
-                        VarRef::Global(_) if ty == Ty::Object && !self.in_process_globals => None,
-                        // In `Process_Globals`, over a module variable
-                        // `Object` a `Dim` declared there before it
-                        // (recorded: `process_globals_for_each_untyped_object`);
-                        // over one a loop declared, or a `Dim` after it, not
-                        // recorded.
+                        // `for_each_untyped_pg_loop_object`,
+                        // `process_globals_for_each_untyped_object`,
+                        // `process_globals_for_each_untyped_after_typed_object`,
+                        // `process_globals_for_each_untyped_before_dim_object`).
+                        // In `Process_Globals`, before the typed loop that
+                        // declares it, not recorded
+                        // (`process_globals_for_each_untyped_before_typed_object`).
                         VarRef::Global(id)
                             if ty == Ty::Object
-                                && self.global_origins.get(&key(&text)) == Some(&Origin::Dim)
-                                && self.module.global(id).range.start() < at.start() =>
+                                && self.in_process_globals
+                                && self.declared_by_loop(&key(&text))
+                                && self.module.global(id).range.start() > at.start() =>
                         {
-                            None
+                            let refusal = Refusal::open(
+                                format!("`{text}` is declared later by a typed loop"),
+                                "a `For Each` without `As` may loop over it here",
+                                format!("write `For Each {text} As Object In ...`"),
+                            );
+                            Some((refusal.message(), at))
                         }
-                        _ if ty == Ty::Object => {
-                            let later = matches!(var, VarRef::Global(id)
-                                if self.module.global(id).range.start() > at.start());
-                            let subject = if later {
-                                "declared later in `Process_Globals`"
-                            } else {
-                                "already declared"
-                            };
-                            Some((untyped_for_each(&text, subject), at))
-                        }
+                        _ if ty == Ty::Object => None,
                         _ => self
                             .type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach)
                             .map(|message| (message, at)),

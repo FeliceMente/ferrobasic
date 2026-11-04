@@ -1,8 +1,7 @@
 Sub Process_Globals
     ' A For Each without `As` in Process_Globals over a module variable
     ' Object that a typed loop there declared: accepted, as over one a Dim
-    ' declared (process_globals_for_each_untyped_object)? FerroBASIC refuses
-    ' it (docs/open-questions.md).
+    ' declared (process_globals_for_each_untyped_object), recording run 19.
     For Each n As Object In Array As Int(1)
     Next
     For Each n In Array As Int(5, 6)
