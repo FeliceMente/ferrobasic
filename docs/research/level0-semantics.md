@@ -446,16 +446,22 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `Dim … As Object` with no value): it printed `java.lang.Object@<hash>`
   (recording run 16, `for_each_untyped_object_declared_after`; run 17
   prints its type, `java.lang.Object`). A later `Dim n As Object = value`
-  or `For Each n As Object` is not recorded and is refused meanwhile
-  (*open*). Converted to a number, such a new `Object` raises
+  or `For Each n As Object` builds too, one variable (**recorded**:
+  `for_each_untyped_then_object_valued`, `for_each_untyped_then_typed_object`). Converted to a number, such a new `Object` raises
   `NumberFormatException: For input string: "java.lang.Object@<hash>"`:
   [`BA.ObjectToNumber` and
   `ObjectToLongNumber`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L435-L450) parse `String.valueOf(o)`
-  for anything but a `Number` (**source**: `object_plain_to_number`). Whether
-  a module variable or a `Type` field `Object` with no value is a new
-  `Object` too, also after a `Dim` in a Sub resets the module variable, is
-  *open*: FerroBASIC gives `Null` there (`object_dim_global_default`,
-  `local_dim_resets_module_object`, `record_object_field_default`). It builds over a parameter `Object`
+  for anything but a `Number` (**source**, then **recorded**: `object_plain_to_number`). A module
+  variable `Object` with no value, a `Dim` in a Sub that resets one, and a
+  `Type` field `Object` when `Initialize` runs are new Objects too
+  (**recorded**: `object_dim_default`, `object_dim_global_default`,
+  `local_dim_resets_module_object`, `record_object_field_default`), and new
+  Objects compare by identity (**recorded**: `object_plain_identity`). Inside
+  `Process_Globals`, the loop builds over a variable `Object` a `Dim` declared
+  there before it (**recorded**: `process_globals_for_each_untyped_object`);
+  over one a typed loop declared there, or with the `Dim` after it, it is
+  *open* (`process_globals_for_each_untyped_after_typed_object`,
+  `process_globals_for_each_untyped_before_dim_object`). It builds over a parameter `Object`
   and over a module variable `Object` that a loop of `Process_Globals`
   declared too (**recorded**: `for_each_untyped_param_object`,
   `for_each_untyped_pg_loop_object`), and is refused after a read of the

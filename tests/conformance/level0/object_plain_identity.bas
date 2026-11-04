@@ -3,7 +3,7 @@ End Sub
 
 Sub AppStart (Args() As String)
     ' Two new Objects (object_dim_default) compare by identity, as keys of
-    ' a Map and in a List too (docs/open-questions.md)?
+    ' a Map and in a List too (recording run 18).
     Dim o As Object
     Dim p As Object
     Log(o = o)
