@@ -2003,6 +2003,10 @@ fn for_each_without_as_over_a_declared_variable() {
     ));
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert!(has(&diags, "not known yet"), "{diags:?}");
+    assert!(
+        has(&diags, "declared later in `Process_Globals`"),
+        "{diags:?}"
+    );
     let diags = errors(&app(
         "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
         "",

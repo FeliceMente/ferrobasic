@@ -467,6 +467,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       declared there, or with the `Dim` after the loop: FerroBASIC refuses
       them (`level0/process_globals_for_each_untyped_after_typed_object`,
       `level0/process_globals_for_each_untyped_before_dim_object`).
+- [ ] In `Process_Globals`, a module variable read or assigned before its
+      `Dim … As Object` there: refused, as a read before the declaration is
+      in a Sub, or a String, as an assignment declares there? FerroBASIC
+      accepts both, one variable, and the read gives `Null`
+      (`level0/process_globals_read_before_dim_object`,
+      `level0/process_globals_assign_before_dim_object`).
 - [x] Followed by a `For Each … As Object`, or by a `Dim … As Object` with
       a value, over the same name, B4J builds it, one variable: `5`, `6`,
       `7` (recording run 18: `level0/for_each_untyped_then_typed_object`,

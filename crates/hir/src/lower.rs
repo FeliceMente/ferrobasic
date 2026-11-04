@@ -1865,7 +1865,14 @@ impl Lowerer {
                             None
                         }
                         _ if ty == Ty::Object => {
-                            Some((untyped_for_each(&text, "already declared"), at))
+                            let later = matches!(var, VarRef::Global(id)
+                                if self.module.global(id).range.start() > at.start());
+                            let subject = if later {
+                                "declared later in `Process_Globals`"
+                            } else {
+                                "already declared"
+                            };
+                            Some((untyped_for_each(&text, subject), at))
                         }
                         _ => self
                             .type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach)
