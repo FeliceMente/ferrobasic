@@ -1444,14 +1444,11 @@ impl<'p, 'o> Printer<'p, 'o> {
                 // Java prints the identity hash code, which no test can compare.
                 let mut name = "[".repeat(a.rank.max(1));
                 name.push_str(&array_descriptor(&a.elem));
-                self.put(&format!("{name}@{:x}", (ptr(a) >> 4) & 0x7fff_ffff))?;
+                self.put(&format!("{name}@{:x}", identity_hash(ptr(a))))?;
             }
             // So does `Object.toString`, for a plain `Object`.
             Value::Plain(p) => {
-                self.put(&format!(
-                    "java.lang.Object@{:x}",
-                    (ptr(p) >> 4) & 0x7fff_ffff
-                ))?;
+                self.put(&format!("java.lang.Object@{:x}", identity_hash(ptr(p))))?;
             }
             Value::Record(r) => self.record(r)?,
             Value::View(m, keys) => {
@@ -1517,6 +1514,13 @@ impl<'p, 'o> Printer<'p, 'o> {
         self.jobs.push(Print::Raw(v));
         Ok(())
     }
+}
+
+/// The hash `Object.toString` prints after `@`, derived from the address
+/// as a stand-in for Java's identity hash: it changes from run to run, so no
+/// recording compares it.
+fn identity_hash(address: usize) -> usize {
+    (address >> 4) & 0x7fff_ffff
 }
 
 fn identity(v: &Value) -> Option<usize> {

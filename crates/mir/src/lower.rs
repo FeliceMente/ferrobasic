@@ -325,7 +325,11 @@ impl<'m> Builder<'m> {
             StmtKind::Dim { var, init } => {
                 let ty = self.var_ty(*var);
                 let value = match init {
-                    DimInit::Default if ty == Ty::Object => Rvalue::NewObject,
+                    // A module variable keeps `Null` until a recording
+                    // settles it (`object_dim_global_default`).
+                    DimInit::Default if ty == Ty::Object && matches!(var, VarRef::Local(_)) => {
+                        Rvalue::NewObject
+                    }
                     DimInit::Default => Rvalue::Default(ty),
                     DimInit::Value(e) => self.rvalue(e),
                     DimInit::Array(bounds) => {

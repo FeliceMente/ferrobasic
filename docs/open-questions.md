@@ -473,13 +473,19 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       output for `level0/object_dim_default` in recording run 17, then a
       deviation test). FerroBASIC gives one too (it was deviation D8); the
       next run records the test.
-- [ ] A new `Object` as a module variable with no value
-      (`level0/object_dim_global_default`), and how new Objects compare and
-      key a Map: by identity in FerroBASIC (`level0/object_plain_identity`).
-- [ ] A new `Object` converted to a number: B4J's `BA.ObjectToNumber` may
-      parse its text, a `NumberFormatException`; FerroBASIC raises
-      `ClassCastException`, as for every object that is not a number or a
-      String (`level0/object_plain_to_number`).
+- [ ] A module variable `Object` with no value, and a `Type` field
+      `Object` after `Initialize`: a new `Object` too? FerroBASIC keeps
+      `Null` for both meanwhile (`level0/object_dim_global_default`,
+      `level0/record_object_field_default`). And how new Objects compare
+      and key a Map: by identity in FerroBASIC
+      (`level0/object_plain_identity`).
+- [ ] After a `For Each` without `As`, a `Dim` of the name as an `Object`
+      with a value (`Dim n As Object = 7`): FerroBASIC refuses it, as no
+      recording has one (`level0/for_each_untyped_then_object_valued`).
+- [x] A new `Object` converted to a number: `BA.ObjectToNumber` parses its
+      text, a `NumberFormatException` (source; provisional output for
+      `level0/object_plain_to_number`, which the next run records), as
+      FerroBASIC does.
 - [ ] How a new `Object` prints: `java.lang.Object@<hash>`, the identity
       hash, which changes on every run, as an array's does; FerroBASIC
       prints a hash too, which no recording can compare.

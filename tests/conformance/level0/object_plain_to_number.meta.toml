@@ -3,6 +3,12 @@ status = "pending-recording"   # pending-recording | recorded | deviation | nega
 level = 0
 features = ["dim", "conversion"]
 
+[provisional]
+basis = "source"   # source | generated | docs | forum
+refs = [
+    "https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L435-L450",
+]
+
 # Filled in by tools/recorder when the expected output is recorded:
 # [recording]
 # product = "B4J"

@@ -133,7 +133,7 @@ End Sub
 | Double | IEEE 754, 64-bit | 0 | `double` | `double` |
 | Char | UTF-16 code unit | `Chr(0)` | `char` | `i16` |
 | String | immutable UTF-16 text | `""` | `java.lang.String` | pointer to a refcounted runtime string |
-| Object | any value or `Null` | `Null`; `Dim o As Object` with no value gives a new `java.lang.Object`, which prints as `java.lang.Object@<hash>` and compares by identity (B4J's output, recording run 17: `object_dim_default`) | `Object` | pointer with a type header |
+| Object | any value or `Null` | `Null`; a local `Dim o As Object` with no value gives a new `java.lang.Object`, which prints as `java.lang.Object@<hash>`, compares by identity and converts to a number with a `NumberFormatException` (recorded: `for_each_untyped_object_declared_after`; pending: `object_dim_default`, `object_plain_to_number`); a module variable or `Type` field `Object` stays `Null` meanwhile (open) | `Object` | pointer with a type header |
 | List, Map | reference to a collection, uninitialised by default | uninitialised | wrapper | runtime object |
 | arrays `T()` | fixed size, zero-based, any rank | per element | `T[]` | runtime object |
 | `Type` records | reference to an object with fields | an object whose fields hold Java defaults (0, `False`, `Null` for String and objects); `Initialize` then sets B4X's defaults (`""`, fresh uninitialised List/Map) and makes `IsInitialized` True. Fields can be read and written before `Initialize`. | class | runtime object |
@@ -354,8 +354,10 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
   `process_globals_for_each_untyped`, `for_each_untyped_assigned_before`,
   `for_each_untyped_read_before`). With a later `Dim` of the name as an
-  `Object` it builds, and that `Dim` gives a new `Object` (recorded:
-  `for_each_untyped_object_declared_after`). Inside `Process_Globals` over a
+  `Object` with no value it builds, and that `Dim` gives a new `Object`
+  (recorded: `for_each_untyped_object_declared_after`); with a value, or
+  with a later `For Each … As Object`, it is *(open)*, so an error.
+  Inside `Process_Globals` over a
   variable `Object`, or over an undeclared name there, it is *(open)*, so
   an error. In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.

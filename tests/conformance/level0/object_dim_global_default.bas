@@ -1,6 +1,7 @@
 Sub Process_Globals
     ' A module variable Object declared with no value: a new Object, as a
-    ' local Dim gives (object_dim_default)? (docs/open-questions.md)
+    ' local Dim gives (object_dim_default)? FerroBASIC gives Null meanwhile
+    ' (docs/open-questions.md).
     Private g As Object
 End Sub
 

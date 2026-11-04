@@ -2011,6 +2011,13 @@ fn for_each_without_as_over_a_declared_variable() {
     ));
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert!(has(&diags, "not known yet"), "{diags:?}");
+    // Nor by a `Dim` with a value.
+    let diags = errors(&app(
+        "",
+        "    For Each n In Array As Int(5)\n    Next\n    Dim n As Object = 7\n",
+    ));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(has(&diags, "declared again with a value"), "{diags:?}");
     // A variable of an unknown type has its error where the type is.
     let diags = errors(&app(
         "",
