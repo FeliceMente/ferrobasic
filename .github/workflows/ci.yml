@@ -1,9 +1,8 @@
 # Continuous integration (docs/compatibility-testing.md, "CI").
 #
 # Runs on pull requests into `main` (releases) and on demand ("Run
-# workflow"), not on every pull request into `dev`: the repository is
-# private, so every minute comes out of the owner's Actions allowance, and
-# macOS minutes count ten times. Pull requests into `dev` are checked
+# workflow"), not on every pull request into `dev`, which would wait on
+# four platforms at every push. Pull requests into `dev` are checked
 # locally (AGENTS.md, "Before closing a task").
 
 name: CI
