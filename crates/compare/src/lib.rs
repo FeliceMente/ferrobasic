@@ -287,6 +287,29 @@ fn kill(pid: u32) {
     let _ = command.stdout(Stdio::null()).stderr(Stdio::null()).status();
 }
 
+/// Starts `ferro check file`, writing its errors to `sink`. On Linux, an
+/// executable just written can be "busy" for a moment while another thread
+/// of this process forks and its child still holds the file open for
+/// writing, until that child execs (`ETXTBSY`): that is retried briefly.
+fn spawn_check(ferro: &Path, file: &Path, sink: &File) -> std::io::Result<std::process::Child> {
+    let mut attempt = 0;
+    loop {
+        let result = Command::new(ferro)
+            .arg("check")
+            .arg(file)
+            .stdout(Stdio::null())
+            .stderr(sink.try_clone()?)
+            .spawn();
+        match result {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 20 => {
+                attempt += 1;
+                std::thread::sleep(Duration::from_millis(10 * attempt));
+            }
+            result => return result,
+        }
+    }
+}
+
 fn check_watched(
     ferro: &Path,
     file: &Path,
@@ -298,12 +321,7 @@ fn check_watched(
         Ok(sink) => sink,
         Err(e) => return Outcome::Crashed(format!("cannot create {}: {e}", stderr.display())),
     };
-    let child = Command::new(ferro)
-        .arg("check")
-        .arg(file)
-        .stdout(Stdio::null())
-        .stderr(sink)
-        .spawn();
+    let child = spawn_check(ferro, file, &sink);
     let mut child = match child {
         Ok(child) => child,
         Err(e) => return Outcome::Crashed(format!("could not start {}: {e}", ferro.display())),
