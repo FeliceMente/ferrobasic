@@ -14,10 +14,10 @@ them are applied.
 
 - `Select Case x` is a synonym of `Select x`, and `Each` may be a name, as
   `In` already could.
-- An assignment to a name nothing declares declares it, as a `String`;
-  a read of it before anything declares or assigns it is an error, with
-  B4J's message ("Undeclared variable … is used before it was assigned
-  any value.").
+- An assignment to a name nothing declares declares it, as a `String`.
+  A read of it before anything declares or assigns it is an error; when a
+  later `For Each` without `As` declares the name, with B4J's message
+  ("Undeclared variable … is used before it was assigned any value.").
 - A Sub without `As` returns a `String`: `Return <value>` builds, and its
   call has a value. `Process_Globals` and `AppStart` still return nothing.
 - `Dim o As Object` with no value gives a new `java.lang.Object`, local or
@@ -36,11 +36,13 @@ them are applied.
     declaration does not match previous one"), and so is one after an
     assignment or a read of the name. Before, it was accepted.
 - In `Process_Globals`, a name declared twice is one variable, each
-  declaration setting its value in turn: two `Dim`s, a `Const` and a
-  `Dim` in either order (a `Dim` of the constant's type, with a value or
-  not, also inside an `If`), or two `Int` `Const`s. A Sub may then assign
-  it, except after an `Int` `Dim` then a `Const`, which is an error. A
-  read or an assignment there before a `Dim … As Object` builds too.
+  declaration setting its value in turn: two `Dim`s; a `Const` of an
+  `Int` or a `String`, then a `Dim` of its type, with a value or not, also
+  inside an `If`; an `Int` `Dim`, then a `Const`, each with a literal
+  value; or two `Int` `Const`s. After two `Dim`s, or a `Const` then a
+  `Dim`, a Sub may assign it; after a `Dim` then a `Const` that is an
+  error, as in B4J. A read or an assignment there before a
+  `Dim … As Object` builds too.
 - A counter of a `For` over an undeclared name declares an `Int` where the
   loop is, in source order: a later `Dim`, typed `For` or `For Each` of
   another type is an error, as in B4J.
@@ -79,9 +81,8 @@ them are applied.
   conformance tests now pass against recordings, in the interpreter and
   as standalone binaries (outputs, and refusals with B4J's error), 6 are
   documented deviations (D1, D3–D7), and 2 probes wait for the next run.
-- Every shape FerroBASIC accepts is one a recording settles: shapes no
-  recording covers are refused with a "not known yet" message and a
-  pending test, as before. Some programs accepted in 0.0.5 that B4J
+- Shapes whose behaviour neither a recording nor the research settles are
+  refused with a "not known yet" message and a pending test, as before. Some programs accepted in 0.0.5 that B4J
   refuses are now errors, listed above.
 
 ### Testing and tools
