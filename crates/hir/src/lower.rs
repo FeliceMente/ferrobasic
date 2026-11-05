@@ -1118,14 +1118,21 @@ impl Lowerer {
             if !self.globals.contains_key(&k)
                 && !skip.contains(&k)
                 && !self.refused_loop_names.contains(&k)
-                && !self.subs.contains_key(&k)
-                && !self.records.contains_key(&k)
-                && builtins::lookup(Owner::Global, &text).is_none()
+                && self.plain_name(&text)
                 && !text.eq_ignore_ascii_case("Bit")
             {
                 self.declare_global(text, Ty::Object, range(&name), Origin::UntypedForEach);
             }
         }
+    }
+
+    /// Whether `text` names nothing but a variable: not a Sub, a `Type` or a
+    /// built-in. A loop or an assignment declares only such a name.
+    fn plain_name(&self, text: &str) -> bool {
+        let k = key(text);
+        !self.subs.contains_key(&k)
+            && !self.records.contains_key(&k)
+            && builtins::lookup(Owner::Global, text).is_none()
     }
 
     /// A `Dim` of `Process_Globals`. After a loop that declared the name, the
@@ -1582,12 +1589,7 @@ impl Lowerer {
                         // assignment of the name, it is refused
                         // (`untyped_loop_refusal`).
                         Origin::UntypedForEach => {
-                            let k = key(&text);
-                            if self.lookup_var(&text).is_none()
-                                && !self.subs.contains_key(&k)
-                                && !self.records.contains_key(&k)
-                                && builtins::lookup(Owner::Global, &text).is_none()
-                            {
+                            if self.lookup_var(&text).is_none() && self.plain_name(&text) {
                                 self.declare_noted(&text, origin, &so_far, |this| {
                                     this.declare_local(&text, Ty::Object, range(&name))
                                 });
@@ -1616,9 +1618,7 @@ impl Lowerer {
                     let text = name_of(&target);
                     if self.lookup_var(&text).is_none()
                         && !declared.contains(&key(&text))
-                        && !self.records.contains_key(&key(&text))
-                        && !self.subs.contains_key(&key(&text))
-                        && builtins::lookup(Owner::Global, &text).is_none()
+                        && self.plain_name(&text)
                     {
                         self.declare_noted(&text, Origin::Assignment, &so_far, |this| {
                             this.declare_local(&text, Ty::String, range(&target))

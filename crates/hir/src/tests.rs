@@ -2019,8 +2019,12 @@ fn for_each_without_as_over_a_declared_variable() {
         "    Log(u)\n",
     ));
     // Not recorded after a use or an assignment of the name there, when
-    // nothing else declares it.
-    for before in ["    Log(u)\n", "    u = 5\n"] {
+    // nothing else declares it, nor with a `For … As` over it there.
+    for before in [
+        "    Log(u)\n",
+        "    u = 5\n",
+        "    For u As Int = 1 To 2\n    Next\n",
+    ] {
         let diags = errors(&app(
             &format!("{before}    For Each u In Array As Int(5)\n    Next\n"),
             "",

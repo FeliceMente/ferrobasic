@@ -471,6 +471,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_for_each_untyped_before_typed_object`,
       `level0/process_globals_for_each_untyped_undeclared`), as FerroBASIC
       does.
+- [ ] A `For Each` over an `Object` that holds a number, not a
+      collection: which exception B4J raises. FerroBASIC stops with an
+      internal error (`level0/for_each_over_non_collection_object`).
 - [ ] Inside `Process_Globals`, over a `Type`'s name nothing else declares
       (`level0/process_globals_for_each_untyped_named_like_type`), and over
       a name nothing else declares that is read or assigned before the loop
