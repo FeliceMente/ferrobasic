@@ -5,6 +5,17 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+### Runtime, as in B4J
+
+- A value held in an `Object` that is not a number converts to a number as
+  its text does, as `BA.ObjectToNumber` parses `String.valueOf(o)`: `Null`
+  (`"null"`), a `List`, a `Map` or a `Boolean` raise
+  `NumberFormatException`, and a `Char` `"7"` is 7. Before, they raised
+  `ClassCastException` or `NullPointerException`. A `String` with a
+  fraction converted to a `Long` is still open (a pending test).
+
 ## 0.0.6 (pre-alpha)
 
 Recording runs 14 to 20 (B4J 10.70) answered 131 pending tests; all of
