@@ -4,7 +4,7 @@ level = 0
 features = ["dim", "conversion", "char"]
 
 [provisional]
-basis = "source"   # source | generated | docs | forum
+basis = "forum"   # source | generated | docs | forum
 refs = [
     "https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L435-L450",
     "https://www.b4x.com/android/forum/threads/catch-a-java-lang-nullpointer-exception.29949/",
