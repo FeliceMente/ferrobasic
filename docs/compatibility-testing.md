@@ -242,9 +242,9 @@ to compare what it checks.
   program and running it.
 
 It runs on pull requests into `main` (releases) and on demand ("Run
-workflow"), not on pull requests into `dev`: the repository is private, so
-every minute comes out of the owner's Actions allowance, and macOS minutes
-count ten times. Pull requests into `dev` are checked locally (AGENTS.md)
+workflow"), not on pull requests into `dev`, which would then wait on four
+platforms at every push. Pull requests into `dev` are checked locally
+(AGENTS.md)
 with `scripts/check-all.sh`: `fmt`, `clippy` for every platform CI tests,
 the tests, `ferro-difftest` on both targets, the recorder's dry run, the
 real-world corpus, and on Linux x86_64 the static Linux binary, with

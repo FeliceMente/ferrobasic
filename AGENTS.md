@@ -123,6 +123,8 @@ cargo test -p ferro-project --test projects -- --ignored
 
 - Small, focused commits; message in the imperative ("Add lexer for smart strings").
 - One topic per PR; describe what changed, why, and how it was tested.
+- How to drive a PR through review, CI, recording runs and releases:
+  `.claude/skills/steward/SKILL.md` (it adds practice, never new rules).
 
 ## Branches and releases
 
