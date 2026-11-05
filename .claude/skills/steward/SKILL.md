@@ -96,10 +96,12 @@ The sequence is in `AGENTS.md`, "Branches and releases". In practice:
    last tag (`git log vX.Y.Z..origin/dev --merges`) and grouped like the
    earlier sections, and `docs/tutorial.md` re-run: every example's output
    compared with what `ferro` prints now, and the version line updated.
-2. **The release**, a pull request from `dev` into `main`. CI runs on it, on
+2. **The release**, a pull request whose head is `dev` itself, into `main`
+   (not the working branch, even when it equals `dev`). CI runs on it, on
    Linux, Windows, macOS arm64 and macOS Intel. Every red job is this pull
-   request's to fix (on `dev`, then merged again), never skipped or
-   re-run until green: a Windows- or macOS-only failure is usually a path,
+   request's to fix, through a pull request into `dev` that the release
+   pull request then picks up, so `main` receives only what is on `dev`;
+   never skipped or re-run until green: a Windows- or macOS-only failure is usually a path,
    a line ending or a platform `cfg`, which `check-all.sh`'s cross-target
    clippy does not exercise at run time. Merge only when every job is
    green.
