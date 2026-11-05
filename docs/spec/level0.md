@@ -231,7 +231,7 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 | String → number | parsed as a Java `double` literal, then narrowed. An unparsable string raises `NumberFormatException`. |
 | String → Boolean | only `"true"` / `"false"` (case-sensitive), else a runtime error |
 | String → Char | first character, or `Chr(0)` for an empty string |
-| Object → T | unbox. A number box converts to any numeric type; a String converts as above; otherwise a runtime `ClassCastException`. |
+| Object → T | unbox. A number box converts to any numeric type. To a number, anything else converts as its text (`String.valueOf`) does: a String as above, `Null` (`"null"`), a List, a Boolean or a new `Object` raise `NumberFormatException`, and a Char `"7"` is 7 (`BA.ObjectToNumber`, source; pending: `object_list_to_int`, `object_null_to_int`, `object_char_to_int`, `object_boolean_to_double`). To another type, a runtime `ClassCastException`. |
 | Null → String | the text `"null"`, also when assigned, passed or returned as a String: B4J compiles `s = Null` to `_s = BA.ObjectToString(Common.Null)` (generated code, recorded). A String that is null (an unset record field) stays null. |
 | any other value → String | `BA.ObjectToString` (Java `String.valueOf`): B4X compiles `Log(LastException)` and `"e: " & LastException` this way (generated code) |
 

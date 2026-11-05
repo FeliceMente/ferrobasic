@@ -314,6 +314,40 @@ Checked on OpenJDK 21 (the `math_builtins`, `bit_functions`,
   `char`s, neither a digit. FerroBASIC's table is checked against JDK 21
   (Unicode 15).
 
+### Object to a number (source, forum)
+
+- B4J converts a value whose static type is `Object` to a number with
+  [`BA.ObjectToNumber`, or `ObjectToLongNumber` for a
+  `Long`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L435-L450)
+  (**source** for what they do). That the compiler calls it, and not a
+  `(Number)` cast, for a `Dim i As Int = o`, is **forum** level: generated
+  Java posted on the forum (B4A, 2013) reads
+  `_id = (int)(BA.ObjectToNumber(_r.GetStaticField(...)));`
+  ([forum](https://www.b4x.com/android/forum/threads/catch-a-java-lang-nullpointer-exception.29949/)),
+  the `Objects/` folders of Booklets.zip hold no such line, and the
+  recorded `n = Null` comparisons raise the `NumberFormatException` of
+  `ObjectToNumber` (**recorded**: `null_number_compare`,
+  `number_types_eq_null`).
+- For a `Number` both return its `doubleValue()` (`longValue()`); for
+  anything else they parse `String.valueOf(o)`, so the static type
+  `Object` never raises a `ClassCastException` here: `Null` raises
+  `NumberFormatException: For input string: "null"`, an initialised List
+  `For input string: "[1, 2]"`, a Boolean `"true"`, a new `Object`
+  `"java.lang.Object@<hash>"`, and a Char `"7"` is 7 (pending:
+  `object_list_to_int`, `object_null_to_int`, `object_char_to_int`,
+  `object_boolean_to_double`, `object_plain_to_number`, with provisional
+  output of basis `source`). A null String (static type `String`) is
+  different: `Double.parseDouble(null)` raises `NullPointerException`.
+- `ObjectToLongNumber` parses with `Long.parseLong`, so `"1.5"` in an
+  `Object` would raise where `ObjectToNumber` gives 1. FerroBASIC parses a
+  `Double` for every number type, `Long` included, until
+  `object_string_to_long` is recorded (*open*).
+- `Select` does not go through them: [`BA.switchObjectToInt`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L514-L533)
+  casts each `Case` value with `(Number)` when the tested value is a
+  number, a `ClassCastException` for a String and a
+  `NullPointerException` for `Null` (**source**; `java_exact_numbers`
+  records that both raise).
+
 ### Uninitialised objects (source)
 
 Any member call on an uninitialised `List`/`Map` throws a `RuntimeException`

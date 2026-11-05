@@ -328,14 +328,17 @@ fn to_number(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value, E
         // Java widening of a char (not reachable from Level 0 type checking).
         Value::Char(_) if !matches!(from, Ty::Object) => cast(&v),
         Value::Str(_) => cast(&Value::Double(parse_number(&v)?)),
-        Value::Null => Err(Exc::bare(NULL_POINTER)),
         // `BA.ObjectToNumber` and `ObjectToLongNumber` parse
-        // `String.valueOf(o)`, so this always raises `For input string:
-        // "java.lang.Object@…"`.
-        Value::Plain(_) => {
+        // `String.valueOf(o)` for anything but a `Number`: `Null` is
+        // `For input string: "null"`, a new `Object` `"java.lang.Object@…"`,
+        // a List `"[1, 2]"`, and a Char `"7"` is 7
+        // (docs/research/level0-semantics.md, "Object to a number").
+        _ if matches!(from, Ty::Object) => {
             let text = to_string_from(&v, &Ty::Object, program)?;
             cast(&Value::Double(parse_number(&text)?))
         }
+        // A null String: `Double.parseDouble(null)`.
+        Value::Null => Err(Exc::bare(NULL_POINTER)),
         _ => Err(class_cast(&v, "java.lang.Number", program)),
     }
 }
@@ -514,7 +517,21 @@ mod tests {
             o(Value::str("5"), Ty::Int).unwrap(),
             Value::Int(5)
         ));
-        assert_eq!(o(Value::Bool(true), Ty::Int).unwrap_err().kind, CLASS_CAST);
+        // `BA.ObjectToNumber` parses `String.valueOf(o)` of a non-number.
+        assert_eq!(
+            o(Value::Bool(true), Ty::Int).unwrap_err().kind,
+            NUMBER_FORMAT
+        );
+        assert_eq!(o(Value::Null, Ty::Long).unwrap_err().kind, NUMBER_FORMAT);
+        assert!(matches!(
+            o(Value::Char(u16::from(b'7')), Ty::Int).unwrap(),
+            Value::Int(7)
+        ));
+        // A null String: `Double.parseDouble(null)`.
+        assert_eq!(
+            conv(Value::Null, Ty::String, Ty::Int).unwrap_err().kind,
+            NULL_POINTER
+        );
         assert_eq!(o(Value::Int(1), Ty::Boolean).unwrap_err().kind, CLASS_CAST);
         assert_eq!(o(Value::Int(1), Ty::List).unwrap_err().kind, CLASS_CAST);
         assert_eq!(o(Value::str("x"), Ty::Map).unwrap_err().kind, CLASS_CAST);
