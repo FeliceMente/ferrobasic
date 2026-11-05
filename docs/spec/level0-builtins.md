@@ -21,7 +21,7 @@ A member not listed here gets a precise diagnostic. For example:
 | --- | --- |
 | `Log(Message As String)` | stdout, plus `\n`; `Null` prints `null` |
 | `LogError(Message As String)` | stderr, plus `\n` |
-| `LogDebug(Message As String)` | like `Log` *(open: B4J only logs it in debug mode; release mode is the reference, so it prints nothing)* |
+| `LogDebug(Message As String)` | prints nothing: B4J logs it only in debug mode, and release mode is the reference (recorded: `log_debug`) |
 | `True`, `False`, `Null` | literals |
 | `CRLF`, `TAB`, `QUOTE` | `Chr(10)`, `Chr(9)`, `Chr(34)` |
 | `cPI`, `cE` | Java `Math.PI`, `Math.E` |
@@ -39,7 +39,7 @@ A member not listed here gets a precise diagnostic. For example:
 | `LastException As Exception` | the error caught by the current `Catch`. Members: `Message As String`, `IsInitialized As Boolean`. |
 | `Array [As T](values…)` | a new one-dimensional array; `Object` if `T` is omitted |
 | `CreateMap(k1: v1, k2: v2, …) As Map` | an initialised `Map` with the pairs in order |
-| `GetType(object As Object) As String` | *(open)*: B4J returns the Java class name (`java.lang.Integer`). Level 0 returns the same names for primitives, boxes, `String`, `List` and `Map`; other values are a deviation. |
+| `GetType(object As Object) As String` | *(open)*: B4J returns the Java class name (`java.lang.Integer`). Level 0 returns the same names for primitives, boxes, `String`, `List`, `Map` and records (`b4j.example.main$_point`, the package taken from a project's first build); other values are a deviation. |
 | `x.As(T)` | inline cast, same rules as assigning to a variable of type `T` |
 | `Bit.And`, `Bit.Or`, `Bit.Xor`, `Bit.Not`, `Bit.ShiftLeft`, `Bit.ShiftRight`, `Bit.UnsignedShiftRight`, `Bit.ToHexString`, `Bit.ToBinaryString`, `Bit.ToOctalString`, `Bit.ParseInt(Value, Radix)` | Java `int` semantics; `ParseInt` accepts any Unicode decimal digit, as `Integer.parseInt` does |
 

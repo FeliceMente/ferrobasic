@@ -87,6 +87,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 ## Commands
 
 ```sh
+scripts/check-all.sh                              # every check below a PR into dev needs
+cargo run -p ferro-compare                        # what a checker change changes, vs origin/dev
 cargo build --workspace
 cargo test --workspace
 cargo fmt --all
@@ -103,12 +105,17 @@ cargo test -p ferro-project --test projects -- --ignored
 
 ## Before closing a task
 
-1. `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
-   `cargo test --workspace` all pass. CI (`.github/workflows/ci.yml`) runs
-   them on Linux, Windows and macOS only for pull requests into `main` and
-   on demand (see `docs/compatibility-testing.md`, "CI"), so run clippy for
-   the other targets locally too when touching platform-specific code.
+1. `scripts/check-all.sh` passes: format, clippy for Linux, Windows and
+   macOS, the tests, the conformance tests in the interpreter and as
+   standalone binaries, the recorder's dry run, the real-world corpus and,
+   on Linux x86_64, the static Linux binary.
+   CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for
+   pull requests into `main` and on demand (see
+   `docs/compatibility-testing.md`, "CI").
 2. New behaviour has conformance tests; open questions and deviations are recorded.
+   A change to what `ferro check` accepts or refuses is compared with
+   `ferro-compare` against `origin/dev`, and the PR says what it changes;
+   a program newly accepted that no recording settles is a bug.
 3. Docs in `docs/` reflect any design change; `docs/tutorial.md` shows real
    `ferro` output, so re-run its examples when CLI behaviour changes.
 
@@ -116,3 +123,17 @@ cargo test -p ferro-project --test projects -- --ignored
 
 - Small, focused commits; message in the imperative ("Add lexer for smart strings").
 - One topic per PR; describe what changed, why, and how it was tested.
+- How to drive a PR through review, CI, recording runs and releases:
+  `.claude/skills/steward/SKILL.md` (it adds practice, never new rules).
+
+## Branches and releases
+
+- Features: branch from `dev`, open the PR into `dev`. Never open a feature
+  PR into `main`.
+- Release preparation (version, CHANGELOG section, the tutorial re-run) is a
+  PR into `dev` too, so `dev` holds exactly what ships.
+- Release: a PR from `dev` into `main`. CI runs on it (see
+  `docs/compatibility-testing.md`, "CI"), and it is merged only with CI
+  green. Tag the merge commit on `main` (`vX.Y.Z`) and publish the release.
+- After a release: a PR from `main` back into `dev`, so the two do not
+  diverge; it also bumps the version to the next `-dev`.

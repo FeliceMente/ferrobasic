@@ -7,13 +7,14 @@ members = [
     "crates/mir",
     "crates/interp",
     "crates/difftest",
+    "crates/compare",
     "crates/corpus",
     "crates/cli",
     "tools/recorder",
 ]
 
 [workspace.package]
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 rust-version = "1.85"
 repository = "https://github.com/FeliceMente/ferrobasic"

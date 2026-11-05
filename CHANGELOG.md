@@ -5,6 +5,115 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## 0.0.6 (pre-alpha)
+
+Recording runs 14 to 20 (B4J 10.70) answered 131 pending tests; all of
+them are applied.
+
+### Language, as in B4J
+
+- `Select Case x` is a synonym of `Select x`, and `Each` may be a name, as
+  `In` already could.
+- An assignment to a name nothing declares declares it, as a `String`.
+  A read of it before anything declares or assigns it is an error; when a
+  later `For Each` without `As` declares the name, with B4J's message
+  ("Undeclared variable … is used before it was assigned any value.").
+- A Sub without `As` returns a `String`: `Return <value>` builds, and its
+  call has a value. `Process_Globals` and `AppStart` still return nothing.
+- `Dim o As Object` with no value gives a new `java.lang.Object`, local or
+  module variable, and so does an `Object` field of a `Type` when
+  `Initialize` runs. New Objects compare by identity, also as `Map` keys
+  and in `IndexOf`, print as `java.lang.Object@<hash>`, and converted to
+  a number raise `NumberFormatException`. Before, they were `Null`
+  (deviation D8, now gone).
+- A `For Each` without `As` declares its variable an `Object`:
+  - over a name nothing declares, in a Sub or in `Process_Globals`, where
+    it is a module variable every Sub sees;
+  - over an `Object`: a local, a parameter, or a module variable however
+    and wherever it is declared, also when a `Dim` or a typed loop
+    declares it after the loop;
+  - over a variable of another type it is an error, as in B4J ("Current
+    declaration does not match previous one"), and so is one after an
+    assignment or a read of the name. Before, it was accepted.
+- In `Process_Globals`, a name declared twice is one variable, each
+  declaration setting its value in turn: two `Dim`s; a `Const` of an
+  `Int` or a `String`, then a `Dim` of its type, with a value or not, also
+  inside an `If`; an `Int` `Dim`, then a `Const`, each with a literal
+  value; or two `Int` `Const`s. After two `Dim`s, or a `Const` then a
+  `Dim`, a Sub may assign it; after a `Dim` then a `Const` that is an
+  error, as in B4J. A read or an assignment there before a
+  `Dim … As Object` builds too.
+- A counter of a `For` over an undeclared name declares an `Int` where the
+  loop is, in source order: a later `Dim`, typed `For` or `For Each` of
+  another type is an error, as in B4J.
+- Every `For` and `For Each v As T` over a loop variable named like a Sub
+  builds where the variable's own rules allow it, also nested, three in a
+  row, or from another Sub; only a `For Each` without `As` over it is an
+  error.
+- A loop variable of `Process_Globals` may have a `Type`'s name, and the
+  `Type` stays usable; one named `Bit` is an error, as in B4J.
+
+### Runtime, as in B4J
+
+- `For` evaluates its step, then its limit, then its start, which it
+  assigns last, so a limit or step reading the counter reads its value
+  before the loop. `Select` evaluates every `Case` value, in order, before
+  comparing any.
+- `<`, `>`, `<=` and `>=` compare numbers, parsing a `String` operand:
+  `"a" < "b"` raises `NumberFormatException`, and `"10" < 9` is `False`.
+  Ordering a `Boolean` or a `Char` is an error; comparisons do not chain
+  (`a = b = c` is an error).
+- A number of any type `=` or `<>` `Null` raises `NumberFormatException`,
+  as `BA.ObjectToNumber` parses `"null"`.
+- A `Char` compared with a number takes the first character of the
+  number's text, as `BA.ObjectToChar` does: `"A" = 65` is `False`, and
+  `"1" = 0.00001` is `True` (from `1.0E-5`). With the number on the left
+  it is an error.
+- A `List` used as a `Map` key keys by its contents, as Java's `ArrayList`
+  does, also when it changes after being put; a `Map` used as a key keys
+  by identity.
+- `GetType` of a record names its class `<package>.main$_<name>`, from the
+  project's package (`b4j.example` for a lone module).
+
+### Recorded from B4J
+
+- 131 tests recorded in runs 14 to 20, which settle the cases above. 272
+  conformance tests now pass against recordings, in the interpreter and
+  as standalone binaries (outputs, and refusals with B4J's error), 6 are
+  documented deviations (D1, D3–D7), and 2 probes wait for the next run.
+- Shapes whose behaviour neither a recording nor the research settles are
+  refused with a "not known yet" message and a pending test, as before. Some programs accepted in 0.0.5 that B4J
+  refuses are now errors, listed above.
+
+### Testing and tools
+
+- `scripts/check-all.sh` runs every check a pull request into `dev` needs:
+  format, clippy for Linux, Windows and both macOS targets, the tests,
+  `ferro-difftest` in the interpreter and as standalone binaries, the
+  recorder's dry run, the real-world corpus, and the static Linux binary
+  (`scripts/check-static-linux.sh`, shared with CI). `--offline` and
+  `--quick` skip the download and the static build.
+- `ferro-compare` builds `ferro` from a git ref (`origin/dev` by default)
+  and checks about 94,000 generated programs with both builds, in four
+  families (constants, loops named like a Sub, comparisons,
+  declarations), reporting what is newly accepted or refused, what gets
+  more or fewer errors or other messages, and crashes.
+- `.claude/skills/steward/SKILL.md` says how an agent drives a pull
+  request, a recording run and a release under `AGENTS.md`'s rules.
+
+### Known limitations
+
+- Two pending tests wait for recording run 21: a `For Each` without `As`
+  in `Process_Globals` over a `Type`'s name, refused until then, and a
+  `For Each` over an `Object` that holds a number, where FerroBASIC stops
+  with an internal error instead of a Java exception.
+- Converting an `Object` that holds a `List` or `Null` to a number raises
+  `ClassCastException` or `NullPointerException`, where B4J's
+  `ObjectToNumber` raises `NumberFormatException`.
+- Classes, other modules, libraries other than jCore, `DateTime`, `Sleep`
+  and `Wait For` arrive at later levels. The REPL and the Language Server
+  are next (M1).
+
 ## 0.0.5 (pre-alpha)
 
 ### Language, as in B4J

@@ -383,6 +383,9 @@ pub enum Value {
     Record(Rc<RecordObj>),
     /// `Map.Keys` (`true`) or `Map.Values`.
     View(MapRef, bool),
+    /// A plain `java.lang.Object`, which `Dim o As Object` creates: it has
+    /// only an identity.
+    Plain(Rc<()>),
 }
 
 impl Value {
@@ -453,14 +456,46 @@ impl Value {
 
 /// A Java `LinkedHashMap`: insertion order, replacing a value keeps the
 /// key's position, keys compare with Java `equals` (see [`HKey`]).
+///
+/// A List key is found as Java finds it: by its key when it was put (Java's
+/// stored hash), then by `equals` with its contents now. A List changed
+/// after it was put is not found by its old contents, nor by its new ones;
+/// an entry put with the old contents then joins it under the same key, as
+/// in a Java bucket, and the older entry moves to `stale`.
 #[derive(Debug, Default)]
 pub struct OrderedMap {
     /// Removed entries leave a hole until the next positional access, or
     /// until there are more holes than entries.
     entries: Vec<Option<(Value, Value)>>,
     index: HashMap<HKey, usize>,
+    /// Entries whose key a later entry took in `index`, oldest first: each
+    /// has a List key that has changed since it was put. Empty unless a
+    /// program changes a List it used as a key.
+    stale: Vec<(HKey, usize)>,
+    /// The key each entry whose key is a List, Map or StringBuilder had
+    /// when it was put, by slot, in increasing order: the key of such an
+    /// object can change afterwards (its contents, or a new `Initialize`).
+    /// A removed entry's stays until the next compaction, so that removing
+    /// stays O(1).
+    kept: Vec<(usize, HKey)>,
     live: usize,
     cursor: Cursor,
+}
+
+/// Where [`OrderedMap::find`] found an entry: its slot in `entries`, and
+/// for a stale entry its position in `stale`.
+#[derive(Debug, Clone, Copy)]
+enum Found {
+    Stale(usize, usize),
+    Index(usize),
+}
+
+impl Found {
+    fn slot(self) -> usize {
+        match self {
+            Found::Stale(_, slot) | Found::Index(slot) => slot,
+        }
+    }
 }
 
 /// The state behind `GetKeyAt` and `GetValueAt`. B4J's map (`MyMap`) keeps
@@ -492,48 +527,101 @@ impl OrderedMap {
         self.live
     }
 
-    pub fn get(&self, key: &Value) -> Option<&Value> {
-        let i = *self.index.get(&HKey::of(key))?;
-        self.entries[i].as_ref().map(|(_, v)| v)
+    /// Where the entry for `key`, whose key is `h`, is: in `stale` (at this
+    /// position) or in `index`, in Java's bucket order (oldest first).
+    fn find(&self, key: &Value, h: &HKey) -> Result<Option<Found>, Exc> {
+        // Only a List's key can have changed since it was put.
+        let same = |slot: usize| -> Result<bool, Exc> {
+            match (h, &self.entries[slot]) {
+                (HKey::List(_), Some((k, _))) => java_equals(key, k),
+                (_, entry) => Ok(entry.is_some()),
+            }
+        };
+        for (at, (old, slot)) in self.stale.iter().enumerate() {
+            if old == h && same(*slot)? {
+                return Ok(Some(Found::Stale(at, *slot)));
+            }
+        }
+        match self.index.get(h) {
+            Some(&slot) if same(slot)? => Ok(Some(Found::Index(slot))),
+            _ => Ok(None),
+        }
     }
 
-    pub fn contains(&self, key: &Value) -> bool {
-        self.index.contains_key(&HKey::of(key))
+    pub fn get(&self, key: &Value) -> Result<Option<&Value>, Exc> {
+        let Some(found) = self.find(key, &HKey::of(key)?)? else {
+            return Ok(None);
+        };
+        Ok(self.entries[found.slot()].as_ref().map(|(_, v)| v))
+    }
+
+    pub fn contains(&self, key: &Value) -> Result<bool, Exc> {
+        Ok(self.find(key, &HKey::of(key)?)?.is_some())
     }
 
     /// Returns the previous value.
     pub fn put(&mut self, key: Value, value: Value) -> Result<Option<Value>, Exc> {
         self.cursor.next = None;
-        let h = HKey::of(&key);
-        if let Some(&i) = self.index.get(&h)
-            && let Some((_, v)) = self.entries[i].as_mut()
+        let h = HKey::of(&key)?;
+        if let Some(found) = self.find(&key, &h)?
+            && let Some((_, v)) = self.entries[found.slot()].as_mut()
         {
             return Ok(Some(std::mem::replace(v, value)));
         }
+        // Every reservation comes first: a failure changes nothing.
         try_grow(&mut self.entries, 1)?;
         self.index.try_reserve(1).map_err(|_| out_of_memory())?;
+        let keep = matches!(key, Value::List(_) | Value::Map(_) | Value::Sb(_));
+        if keep {
+            try_grow(&mut self.kept, 1)?;
+        }
+        let older = self.index.get(&h).copied();
+        if older.is_some() {
+            try_grow(&mut self.stale, 1)?;
+        }
+        if keep {
+            self.kept.push((self.entries.len(), h.clone()));
+        }
+        if let Some(older) = older {
+            // A List key that has changed holds `h`: it moves aside.
+            self.stale.push((h.clone(), older));
+        }
         self.index.insert(h, self.entries.len());
         self.entries.push(Some((key, value)));
         self.live += 1;
         Ok(None)
     }
 
-    pub fn remove(&mut self, key: &Value) -> Option<Value> {
+    pub fn remove(&mut self, key: &Value) -> Result<Option<Value>, Exc> {
         self.cursor.next = None;
-        let i = self.index.remove(&HKey::of(key))?;
-        let (k, v) = self.entries[i].take()?;
+        let h = HKey::of(key)?;
+        let i = match self.find(key, &h)? {
+            None => return Ok(None),
+            Some(Found::Stale(at, slot)) => {
+                self.stale.remove(at);
+                slot
+            }
+            Some(Found::Index(slot)) => {
+                self.index.remove(&h);
+                slot
+            }
+        };
+        let Some((k, v)) = self.entries[i].take() else {
+            return Ok(None);
+        };
         if matches!(self.cursor.current, Some(Current::Slot(c)) if c == i) {
             self.cursor.current = Some(Current::Removed(k, v.clone()));
         }
         self.live -= 1;
         if self.live == 0 {
             self.entries.clear();
+            self.kept.clear();
         } else if self.entries.len() - self.live > self.live.max(8) {
             // Each compaction follows at least as many removals as it
             // moves entries, so removing stays O(1) amortised.
             self.compact();
         }
-        Some(v)
+        Ok(Some(v))
     }
 
     pub fn clear(&mut self) {
@@ -545,6 +633,8 @@ impl OrderedMap {
         }
         self.entries.clear();
         self.index.clear();
+        self.stale.clear();
+        self.kept.clear();
         self.live = 0;
     }
 
@@ -555,13 +645,50 @@ impl OrderedMap {
             if let Some(Current::Slot(i)) = &mut self.cursor.current {
                 *i = self.entries[..*i].iter().flatten().count();
             }
-            self.entries.retain(Option::is_some);
-            // Only the live keys move: their positions are updated in place.
-            for (i, (k, _)) in self.entries.iter().flatten().enumerate() {
-                if let Some(at) = self.index.get_mut(&HKey::of(k)) {
-                    *at = i;
+            // Only the live keys move: their positions are updated in place,
+            // in order. A key that can change is the one kept when it was
+            // put; an entry not at its key in `index` is a stale one. The
+            // keys kept for removed entries go.
+            const REMOVED: usize = usize::MAX;
+            let mut next_kept = 0;
+            let mut i = 0;
+            for (j, entry) in self.entries.iter().enumerate() {
+                let kept = match self.kept.get_mut(next_kept) {
+                    Some((slot, h)) if *slot == j => {
+                        next_kept += 1;
+                        Some((slot, &*h))
+                    }
+                    _ => None,
+                };
+                let Some((k, _)) = entry else {
+                    if let Some((slot, _)) = kept {
+                        *slot = REMOVED;
+                    }
+                    continue;
+                };
+                let computed;
+                let h = match kept {
+                    Some((slot, h)) => {
+                        *slot = i;
+                        h
+                    }
+                    None => {
+                        computed = HKey::shallow(k);
+                        &computed
+                    }
+                };
+                match self.index.get_mut(h) {
+                    Some(at) if *at == j => *at = i,
+                    _ => {
+                        if let Some((_, at)) = self.stale.iter_mut().find(|(_, at)| *at == j) {
+                            *at = i;
+                        }
+                    }
                 }
+                i += 1;
             }
+            self.kept.retain(|(slot, _)| *slot != REMOVED);
+            self.entries.retain(Option::is_some);
         }
     }
 
@@ -793,8 +920,12 @@ fn absorb(work: &mut Vec<Value>, mut values: Vec<Value>) {
 
 /// A hashable key with Java `equals` semantics for boxes and Strings:
 /// different box types are different keys, Doubles compare by
-/// `doubleToLongBits` (NaN equals NaN, 0.0 differs from -0.0).
-/// Other objects compare by identity.
+/// `doubleToLongBits` (NaN equals NaN, 0.0 differs from -0.0). A List is
+/// keyed by its elements, as Java's `ArrayList.hashCode` and `equals` key
+/// it (`level0/list_as_map_key`): the key is taken when the entry is put,
+/// so a List changed afterwards is no longer found by itself, as in Java.
+/// Other objects, Maps included, compare by identity, as B4J keys a Map
+/// (`level0/map_as_map_key`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HKey {
     Null,
@@ -807,6 +938,14 @@ pub enum HKey {
     Double(u64),
     Char(u16),
     Str(Str),
+    /// A List's elements, flattened: a List inside it is its elements
+    /// between [`HKey::ListStart`] and [`HKey::ListEnd`], so a key never
+    /// nests, and hashing, comparing and dropping it never recurse.
+    List(Vec<HKey>),
+    /// Only inside [`HKey::List`]: where a nested List starts.
+    ListStart,
+    /// Only inside [`HKey::List`]: where a nested List ends.
+    ListEnd,
     Ref(usize),
 }
 
@@ -815,7 +954,56 @@ fn ptr<T: ?Sized>(rc: &Rc<T>) -> usize {
 }
 
 impl HKey {
-    pub fn of(v: &Value) -> HKey {
+    /// The key of `v`. A List nested deeper than [`MAX_EQUALS_DEPTH`] (less
+    /// the depth of a [`java_equals`] it is keyed inside), or one that
+    /// contains itself, raises `StackOverflowError`, as Java's recursive
+    /// `ArrayList.hashCode` does.
+    pub fn of(v: &Value) -> Result<HKey, Exc> {
+        let Value::List(w) = v else {
+            return Ok(HKey::shallow(v));
+        };
+        let Some(list) = w.borrow().clone() else {
+            return Ok(HKey::Null);
+        };
+        let base = EQUALS_DEPTH.get();
+        if base >= MAX_EQUALS_DEPTH {
+            return Err(Exc::bare(STACK_OVERFLOW));
+        }
+        // The Lists being walked, outermost first, each with the position
+        // of its next item. No Rust recursion, and no copy of the items.
+        let mut open: Vec<(ListRef, usize)> = vec![(list, 0)];
+        let mut keys = Vec::new();
+        while let Some((list, next)) = open.last_mut() {
+            let Some(item) = list.get(*next)? else {
+                open.pop();
+                if !open.is_empty() {
+                    try_grow(&mut keys, 1)?;
+                    keys.push(HKey::ListEnd);
+                }
+                continue;
+            };
+            *next += 1;
+            try_grow(&mut keys, 1)?;
+            let inner = match &item {
+                Value::List(w) => w.borrow().clone(),
+                _ => None,
+            };
+            match inner {
+                Some(inner) => {
+                    if base + open.len() >= MAX_EQUALS_DEPTH {
+                        return Err(Exc::bare(STACK_OVERFLOW));
+                    }
+                    keys.push(HKey::ListStart);
+                    open.push((inner, 0));
+                }
+                None => keys.push(HKey::shallow(&item)),
+            }
+        }
+        Ok(HKey::List(keys))
+    }
+
+    /// The key of anything but an initialised List.
+    fn shallow(v: &Value) -> HKey {
         match v {
             Value::Null => HKey::Null,
             Value::Bool(b) => HKey::Bool(*b),
@@ -845,6 +1033,7 @@ impl HKey {
                 .map_or(HKey::Null, |s| HKey::Ref(ptr(s))),
             Value::Exc(e) => e.as_ref().map_or(HKey::Null, |e| HKey::Ref(ptr(e))),
             Value::Array(a) => HKey::Ref(ptr(a)),
+            Value::Plain(p) => HKey::Ref(ptr(p)),
             Value::Record(r) => HKey::Ref(ptr(r)),
             Value::View(m, keys) => HKey::Ref(ptr(m) + *keys as usize),
         }
@@ -858,6 +1047,11 @@ impl HKey {
 /// levels and overflows by 5000 (`level0/deep_equals`, deviation D2).
 const MAX_EQUALS_DEPTH: usize = 3000;
 
+thread_local! {
+    /// The depth a [`java_equals`] started inside another one starts at.
+    static EQUALS_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Java `equals` on boxed values. Lists and maps compare by content, as
 /// `ArrayList.equals` and `AbstractMap.equals` do; other objects by identity.
 ///
@@ -870,7 +1064,10 @@ pub fn java_equals(a: &Value, b: &Value) -> Result<bool, Exc> {
         /// A map key missing from the other map.
         Unequal,
     }
-    let mut work = vec![Work::Pair(a.clone(), b.clone(), 0)];
+    // A map lookup inside the comparison may compare List keys in turn
+    // (`OrderedMap::find`): that comparison goes on from this depth, as it
+    // would on Java's one stack.
+    let mut work = vec![Work::Pair(a.clone(), b.clone(), EQUALS_DEPTH.get())];
     while let Some(item) = work.pop() {
         let (a, b, depth) = match item {
             Work::Pair(a, b, depth) => (a, b, depth),
@@ -913,8 +1110,11 @@ pub fn java_equals(a: &Value, b: &Value) -> Result<bool, Exc> {
                         }
                         let mut pending = Vec::with_capacity(xs.len());
                         for (k, v) in xs {
-                            pending.push(match y.borrow().get(&k) {
-                                Some(w) => Work::Pair(v, w.clone(), depth + 1),
+                            let outer = EQUALS_DEPTH.replace(depth + 1);
+                            let found = y.borrow().get(&k).map(|w| w.cloned());
+                            EQUALS_DEPTH.set(outer);
+                            pending.push(match found? {
+                                Some(w) => Work::Pair(v, w, depth + 1),
                                 None => Work::Unequal,
                             });
                         }
@@ -925,7 +1125,7 @@ pub fn java_equals(a: &Value, b: &Value) -> Result<bool, Exc> {
                 }
             }
             _ => {
-                if HKey::of(&a) != HKey::of(&b) {
+                if HKey::of(&a)? != HKey::of(&b)? {
                     return Ok(false);
                 }
             }
@@ -934,10 +1134,15 @@ pub fn java_equals(a: &Value, b: &Value) -> Result<bool, Exc> {
     Ok(true)
 }
 
+/// The package of a lone module: the one a new B4J project gets
+/// (`Build1=Default,b4j.example`), as in the recorder's projects.
+pub const DEFAULT_PACKAGE: &str = "b4j.example";
+
 /// Java `getClass().getName()` of a value held in an `Object`.
 pub fn java_class_name(v: &Value, program: &Program) -> Option<String> {
     Some(match v {
         Value::Null => return None,
+        Value::Plain(_) => "java.lang.Object".into(),
         Value::Bool(_) => "java.lang.Boolean".into(),
         Value::Byte(_) => "java.lang.Byte".into(),
         Value::Short(_) => "java.lang.Short".into(),
@@ -962,9 +1167,12 @@ pub fn java_class_name(v: &Value, program: &Program) -> Option<String> {
             s.push_str(&array_descriptor(&a.elem));
             s
         }
-        // Deviation: B4J names the generated class after the package.
+        // A Type is a static class nested in its module's class, named in
+        // lower case after an underscore: `b4j.example.main$_point`
+        // (`level0/record_get_type`). Level 0 declares Types in Main only.
         Value::Record(r) => format!(
-            "_{}",
+            "{}.main$_{}",
+            program.package.as_deref().unwrap_or(DEFAULT_PACKAGE),
             program
                 .records
                 .get(r.id.0 as usize)
@@ -1236,7 +1444,11 @@ impl<'p, 'o> Printer<'p, 'o> {
                 // Java prints the identity hash code, which no test can compare.
                 let mut name = "[".repeat(a.rank.max(1));
                 name.push_str(&array_descriptor(&a.elem));
-                self.put(&format!("{name}@{:x}", (ptr(a) >> 4) & 0x7fff_ffff))?;
+                self.put(&format!("{name}@{:x}", identity_hash(ptr(a))))?;
+            }
+            // So does `Object.toString`, for a plain `Object`.
+            Value::Plain(p) => {
+                self.put(&format!("java.lang.Object@{:x}", identity_hash(ptr(p))))?;
             }
             Value::Record(r) => self.record(r)?,
             Value::View(m, keys) => {
@@ -1304,6 +1516,13 @@ impl<'p, 'o> Printer<'p, 'o> {
     }
 }
 
+/// The hash `Object.toString` prints after `@`, derived from the address
+/// as a stand-in for Java's identity hash: it changes from run to run, so no
+/// recording compares it.
+fn identity_hash(address: usize) -> usize {
+    (address >> 4) & 0x7fff_ffff
+}
+
 fn identity(v: &Value) -> Option<usize> {
     match v {
         Value::List(w) => w.borrow().as_ref().map(ptr),
@@ -1338,18 +1557,198 @@ pub fn text_of(v: &Value) -> String {
 mod tests {
     use super::*;
 
+    fn list(items: &[i32]) -> Value {
+        Value::new_list(
+            items.iter().map(|&i| Value::Int(i)).collect(),
+            ListKind::Growable,
+        )
+    }
+
+    fn push(list: &Value, item: Value) {
+        let Value::List(w) = list else {
+            panic!("not a list")
+        };
+        let l = w.borrow().clone().unwrap();
+        l.storage().unwrap().borrow_mut().push(item);
+        l.modified();
+    }
+
+    fn found(m: &OrderedMap, key: &Value) -> Option<i32> {
+        match m.get(key).unwrap() {
+            Some(Value::Int(i)) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Lists are keyed by their contents; one changed after it was put is
+    /// found as Java's `HashMap` finds it: by its old key, then by its
+    /// contents now. Compaction keeps every entry where it is.
+    #[test]
+    fn list_keys_follow_java_buckets() {
+        let mut m = OrderedMap::default();
+        let a = list(&[1]);
+        m.put(a.clone(), Value::Int(1)).unwrap();
+        assert_eq!(found(&m, &list(&[1])), Some(1));
+        push(&a, Value::Int(2));
+        assert_eq!(found(&m, &a), None);
+        assert_eq!(found(&m, &list(&[1])), None);
+        // Put with the old contents: a new entry, under the same key.
+        m.put(list(&[1]), Value::Int(2)).unwrap();
+        assert_eq!(m.len(), 2);
+        assert_eq!(found(&m, &list(&[1])), Some(2));
+        for i in 10..40 {
+            m.put(Value::Int(i), Value::Int(i)).unwrap();
+            m.remove(&Value::Int(i)).unwrap();
+        }
+        assert_eq!(found(&m, &list(&[1])), Some(2));
+        let values: Vec<_> = m.iter().map(|(_, v)| HKey::of(v).unwrap()).collect();
+        assert_eq!(values, [HKey::Int(1), HKey::Int(2)]);
+        // Back to its old contents, `a` is first in the bucket again.
+        let Value::List(w) = &a else { unreachable!() };
+        w.borrow()
+            .clone()
+            .unwrap()
+            .storage()
+            .unwrap()
+            .borrow_mut()
+            .pop();
+        assert_eq!(found(&m, &list(&[1])), Some(1));
+        assert_eq!(
+            m.remove(&a).unwrap().map(|v| HKey::of(&v).unwrap()),
+            Some(HKey::Int(1))
+        );
+        assert_eq!(found(&m, &list(&[1])), Some(2));
+        assert_eq!(m.len(), 1);
+    }
+
+    /// Keys that can change keep the key they were put with: compaction
+    /// finds every entry, whether its List changed, its Map variable was
+    /// initialised again, or entries around it were removed.
+    #[test]
+    fn compaction_keeps_keys_that_change() {
+        let mut m = OrderedMap::default();
+        let map_key = Value::new_map(OrderedMap::default());
+        let lists: Vec<Value> = (0..20).map(|i| list(&[i])).collect();
+        m.put(map_key.clone(), Value::Int(-1)).unwrap();
+        for (i, l) in lists.iter().enumerate() {
+            m.put(l.clone(), Value::Int(i as i32)).unwrap();
+            m.put(Value::Int(100 + i as i32), Value::Int(100 + i as i32))
+                .unwrap();
+        }
+        // The Map variable gets a new Map; one List changes.
+        let Value::Map(w) = &map_key else {
+            unreachable!()
+        };
+        *w.borrow_mut() = Some(Rc::new(RefCell::new(OrderedMap::default())));
+        push(&lists[19], Value::Int(0));
+        // Removing every other List and every Int key compacts.
+        for (i, l) in lists.iter().enumerate().filter(|(i, _)| i % 2 == 0) {
+            assert!(m.remove(l).unwrap().is_some(), "{i}");
+        }
+        for i in 0..20 {
+            m.remove(&Value::Int(100 + i)).unwrap();
+        }
+        assert!(m.slots() < 41, "no compaction: {} slots", m.slots());
+        assert_eq!(m.len(), 11);
+        // The Map key and the changed List are found by no key now, but
+        // are still in the map, in order; the others are found.
+        assert_eq!(found(&m, &map_key), None);
+        assert_eq!(found(&m, &lists[19]), None);
+        assert!(matches!(m.entry_at(0), Some((_, Value::Int(-1)))));
+        for (n, i) in (1..20).step_by(2).enumerate() {
+            assert!(matches!(m.entry_at(n + 1), Some((_, Value::Int(v))) if v == i as i32));
+            if i != 19 {
+                assert_eq!(found(&m, &lists[i]), Some(i as i32));
+            }
+        }
+        // Removing the rest one by one empties it cleanly.
+        let keys: Vec<Value> = m.iter().map(|(k, _)| k.clone()).collect();
+        for k in &keys {
+            let _ = m.remove(k).unwrap();
+        }
+        assert_eq!(m.len(), 2);
+        m.clear();
+        assert_eq!((m.len(), m.kept.len(), m.stale.len()), (0, 0, 0));
+    }
+
+    /// Nested Lists are keys of their own: `[[1]]`, `[1]`, `[[], []]` and
+    /// `[[[]]]` differ, and Lists equal by contents are one key.
+    #[test]
+    fn nested_list_keys() {
+        let nest = |inner: Vec<Value>| Value::new_list(inner, ListKind::Growable);
+        let keys = [
+            nest(vec![list(&[1])]),
+            list(&[1]),
+            nest(vec![list(&[]), list(&[])]),
+            nest(vec![nest(vec![list(&[])])]),
+            nest(vec![list(&[]), Value::Int(1)]),
+            nest(vec![list(&[1])]),
+        ];
+        let hashed: Vec<HKey> = keys.iter().map(|k| HKey::of(k).unwrap()).collect();
+        for (i, a) in hashed.iter().enumerate() {
+            for (j, b) in hashed.iter().enumerate() {
+                assert_eq!(
+                    a == b,
+                    i == j || (i, j) == (0, 5) || (i, j) == (5, 0),
+                    "{i} {j}"
+                );
+            }
+        }
+    }
+
+    /// A key nested as deep as Java allows is built, hashed, compared and
+    /// dropped without recursion: this runs on a test thread's small stack.
+    #[test]
+    fn deep_list_keys_need_no_stack() {
+        let mut deep = list(&[]);
+        for _ in 1..MAX_EQUALS_DEPTH {
+            deep = Value::new_list(vec![deep], ListKind::Growable);
+        }
+        let mut m = OrderedMap::default();
+        m.put(deep.clone(), Value::Int(1)).unwrap();
+        assert_eq!(found(&m, &deep), Some(1));
+        let deeper = Value::new_list(vec![deep], ListKind::Growable);
+        let e = m.put(deeper, Value::Int(2)).unwrap_err();
+        assert_eq!(e.kind, STACK_OVERFLOW);
+    }
+
+    /// A List that holds itself has no key: Java's `hashCode` overflows.
+    #[test]
+    fn a_list_holding_itself_cannot_be_a_key() {
+        let a = list(&[]);
+        push(&a, a.clone());
+        let mut m = OrderedMap::default();
+        let e = m.put(a.clone(), Value::Int(1)).unwrap_err();
+        assert_eq!(e.kind, STACK_OVERFLOW);
+        // Break the cycle, so the test does not leak it.
+        let Value::List(w) = &a else { unreachable!() };
+        w.borrow()
+            .clone()
+            .unwrap()
+            .storage()
+            .unwrap()
+            .borrow_mut()
+            .clear();
+    }
+
     #[test]
     fn removed_map_entries_are_compacted() {
         let mut m = OrderedMap::default();
         m.put(Value::str("first"), Value::Int(0)).unwrap();
         for i in 1..10_000 {
             m.put(Value::Int(i), Value::Int(i)).unwrap();
-            m.remove(&Value::Int(i - 1));
+            m.remove(&Value::Int(i - 1)).unwrap();
             assert!(m.slots() <= 2 * m.len() + 9, "{} slots", m.slots());
         }
-        let keys: Vec<HKey> = m.iter().map(|(k, _)| HKey::of(k)).collect();
-        assert_eq!(keys, [HKey::of(&Value::str("first")), HKey::Int(9_999)]);
-        assert!(matches!(m.get(&Value::Int(9_999)), Some(Value::Int(9_999))));
+        let keys: Vec<HKey> = m.iter().map(|(k, _)| HKey::of(k).unwrap()).collect();
+        assert_eq!(
+            keys,
+            [HKey::of(&Value::str("first")).unwrap(), HKey::Int(9_999)]
+        );
+        assert!(matches!(
+            m.get(&Value::Int(9_999)),
+            Ok(Some(Value::Int(9_999)))
+        ));
         assert!(matches!(m.entry_at(1), Some((Value::Int(9_999), _))));
     }
 

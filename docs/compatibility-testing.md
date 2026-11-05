@@ -115,7 +115,7 @@ file: its expected stdout, derived by hand from the sources in
    `target/corpus` ([tests/corpus/README.md](../tests/corpus/README.md)).
    The tests that need them are `#[ignore]`d, so `cargo test --workspace`
    needs no network; run them with `--ignored` after fetching.
-3. Generated programs (`crates/progen`): a generator driven by the EBNF and the
+3. Generated programs (`crates/progen`, planned): a generator driven by the EBNF and the
    type rules produces well-typed, terminating Level 0 programs with bounded
    loops. Each mismatch is shrunk by delta debugging and kept as a regression test.
 
@@ -174,6 +174,61 @@ cargo run -p ferro-difftest -- --verbose --by-feature --filter sort
 The two targets also run as tests: `crates/difftest` on the interpreter, and
 `crates/cli/tests/difftest.rs` as standalone binaries.
 
+## Comparing two builds
+
+A change to how programs are checked can accept or refuse more than it
+means to. `ferro-compare` shows what it changes: it runs `ferro check` from
+two builds on generated programs, and lists the programs whose result
+changed. It compares FerroBASIC with itself, not with B4J: whether a change
+is right is for the recordings to say, and a program newly accepted that no
+recording settles is a bug.
+
+```sh
+cargo run -p ferro-compare                       # against origin/dev
+cargo run -p ferro-compare -- --old 4e7f547 --family const --examples 5
+cargo run -p ferro-compare -- --list             # the families
+```
+
+- The new `ferro` is built from the checkout `ferro-compare` belongs to, as
+  it is, into the target folder `ferro-compare` runs from, so a stale build
+  is never compared; `--new-ferro <path>` takes a build instead, and is
+  needed when `ferro-compare` runs from elsewhere (`cargo install`). Git
+  and cargo run in that checkout, wherever `ferro-compare` is run from.
+- The old `ferro` is built from a git ref (`--old`, by default `origin/dev`,
+  fetched first) in a worktree of its own, removed after; its target folder
+  is kept under `target/compare`, so later builds are quick. When the
+  checkout does not contain that ref, a warning says so: what changed there
+  since would show as the checkout's own changes. `--old-ferro <path>` takes
+  a build instead.
+- One run at a time uses a work folder (`--work`, by default
+  `target/compare`): a second one is refused while the first holds its
+  `lock` file, which names the run's process; a lock left by a run that was
+  stopped (Ctrl-C) is taken over.
+- Each family covers one area with every combination of a few building
+  blocks: `const` (declarations of one name in `Process_Globals`, then each
+  use of it, in several layouts), `sub-named-loops` (one to three loops
+  over a variable named like a Sub), `comparisons` (each operator
+  between operands of each type, and two comparisons in a row) and
+  `declarations` (one to three statements that declare, assign, read or
+  loop over one name, in source order, as a plain local, next to a
+  parameter or a module variable, or in `Process_Globals`). The
+  programs are written under
+  `target/compare/programs`, to read or re-run one by hand.
+- The programs run several at a time (`--jobs`, by default one per
+  processor), each for at most 30 seconds (`--timeout`): about 94,000
+  programs take about three minutes with both builds on four processors.
+- The report counts the programs that crash (or time out) in the new build
+  only, in both, or in the old one only, are newly accepted, newly refused,
+  have more or fewer errors, or the same number of other ones, then shows
+  the smallest of each (`--examples`) with both builds' errors. The exit
+  code is 1 when the new build alone crashes on a program, 0 otherwise, 2 on
+  a usage error or a failed build.
+
+Unlike the planned generator of "Where test programs come from"
+(`crates/progen`), which makes well-typed programs to compare their output
+across targets, these families are mostly programs a build should refuse,
+to compare what it checks.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on GitHub Actions:
@@ -187,13 +242,17 @@ The two targets also run as tests: `crates/difftest` on the interpreter, and
   program and running it.
 
 It runs on pull requests into `main` (releases) and on demand ("Run
-workflow"), not on pull requests into `dev`: the repository is private, so
-every minute comes out of the owner's Actions allowance, and macOS minutes
-count ten times. Pull requests into `dev` are checked locally (AGENTS.md):
-`fmt`, `clippy` (also for `x86_64-pc-windows-gnu`, `aarch64-apple-darwin` and
-`x86_64-apple-darwin`) and the tests. Run the workflow by hand before a
-release, and after a change to platform-specific code (`ferro bundle`, files,
-the command line). A release is merged only with the workflow green.
+workflow"), not on pull requests into `dev`, which would then wait on four
+platforms at every push. Pull requests into `dev` are checked locally
+(AGENTS.md)
+with `scripts/check-all.sh`: `fmt`, `clippy` for every platform CI tests,
+the tests, `ferro-difftest` on both targets, the recorder's dry run, the
+real-world corpus, and on Linux x86_64 the static Linux binary, with
+`scripts/check-static-linux.sh` as CI's static-linux job (`--offline` skips
+the corpus download, `--quick` the static binary; a skipped step is named
+at the end). Run the workflow by hand before a release, and after a change to
+platform-specific code (`ferro bundle`, files, the command line). A release
+is merged only with the workflow green.
 
 ## Open points
 

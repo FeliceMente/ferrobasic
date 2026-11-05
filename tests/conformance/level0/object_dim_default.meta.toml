@@ -1,0 +1,18 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "recorded"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["dim", "type-checking"]
+
+# Deviation D8 until FerroBASIC gave `Dim o As Object` a new Object: as a
+# deviation test, recording run 17 saved B4J's output, false and
+# java.lang.Object, which FerroBASIC now prints. The next run records it.
+
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+machine_locale_output = "same"
+date = "2026-11-04"

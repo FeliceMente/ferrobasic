@@ -276,7 +276,7 @@ fn interpret(source: &str, stop: &Arc<AtomicBool>) -> Run {
     };
     let mut stdout = Capture::new(stop);
     let mut stderr = Capture::new(stop);
-    let outcome = ferro_cli::run(&module, &[], &mut stdout, &mut stderr);
+    let outcome = ferro_cli::run(source, &module, &[], &mut stdout, &mut stderr);
     if stdout.overflowed || stderr.overflowed {
         return Run::Broken(too_much());
     }

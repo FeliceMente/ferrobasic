@@ -1,0 +1,18 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "recorded"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["type-checking", "comparison"]
+
+# The generated Java (B4J 10.70, kept with --keep on 2026-11-02) is
+# `_c==BA.ObjectToChar(65)`: jCore's ObjectToChar takes the first character
+# of the number's text, '6', so 'A' = 65 is false.
+
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+machine_locale_output = "same"
+date = "2026-11-02"

@@ -333,7 +333,7 @@ fn run(path: &Path, args: &[String]) -> ExitCode {
 fn execute(text: &str, module: &ferro_hir::Module, args: &[String]) -> ExitCode {
     let stdout = std::io::stdout();
     let stderr = std::io::stderr();
-    let outcome = ferro_cli::run(module, args, &mut stdout.lock(), &mut stderr.lock());
+    let outcome = ferro_cli::run(text, module, args, &mut stdout.lock(), &mut stderr.lock());
     if let Some(error) = &outcome.error {
         let (line, _) = LineIndex::new(text).locate(text, usize::from(error.range.start()));
         let detail = if error.message.is_empty() {

@@ -70,34 +70,32 @@ End Sub
   followed by '=' expected", recorded). Every use of such a name in an
   expression, bare, with arguments or as a statement, calls the Sub,
   whatever the loop variable's type, and assigning it is an error,
-  wherever it is (recorded). A loop over such a name is settled only
-  where B4J's answer is recorded, as listed below and in `recorded_loop`
-  (`crates/hir/src/lower.rs`); any other loop over it is *(open)*, so a
-  compile error. Accepted, and the name still calls the Sub (recorded):
-  - the first loop over it in a Sub or in `Process_Globals`: a `For`, or a
-    `For Each v As T` of any type, which declares it; in another Sub, over
-    a loop variable of `Process_Globals`, a `For`, or a `For Each v As
-    Int`, which declares its own variable (only `Int` is recorded there);
-  - in a Sub or in `Process_Globals`, one after the other: a `For` after a
-    `For` or a `For Each v As Int`, and a `For Each v As Int` after
-    either; in another Sub, a `For Each v As Int` after a `For`;
-  - inside a `For Each v As Int` of a Sub, a `For Each v As Int`.
-
-  A `For` counts with a number as any `For` does (B4J: "Loop iterator
-  should be a numeric variable", recorded). A `For Each` without `As`
-  over it is an error (B4J: "Current declaration does not match previous
-  one", recorded): in a Sub or in `Process_Globals` after a `For` or a
-  `For Each v As Int` over it, inside a `For` of a Sub over it, and as the
-  first loop of another Sub over a loop variable of `Process_Globals`.
-  Every recording has at most two loops over the name, so a third, one
-  after the other or nested, is *(open)* too. After a refused or open loop
+  wherever it is (recorded). Otherwise the name is a loop variable like
+  any other, which the first loop over it in a Sub or in `Process_Globals`
+  declares: every `For`, and every `For Each v As T`, may loop over it, one
+  after the other, nested, three deep, from another Sub over a loop
+  variable of `Process_Globals`, and of any type its variable has; nested,
+  they share it (recorded: the `*_named_like_sub*` tests). A `For` counts
+  with a number as any `For` does (B4J: "Loop iterator should be a
+  numeric variable", recorded), and as the variable's type: after a
+  `For Each v As Double`, in `Double` steps (recorded). A `For` first
+  declares it an `Int`, so a later `For Each v As T` of another type is
+  an error (B4J: "Current declaration does not match previous one",
+  recorded); FerroBASIC applies this to any name a `For` declares, and to
+  a later `Dim` or typed `For` of another type too, as declarations are
+  taken in source order, as B4J does for an ordinary name (recorded:
+  `for_each_other_type_after_counter`, `dim_other_type_after_counter`,
+  `typed_counter_other_type_after_counter`). A `For Each` without `As` over it is an error wherever it is,
+  first or not (B4J: the same message, recorded). After a refused loop
   over it, the program has an error already, and the loops after it are
   not judged. A
   `For Each v As T` of a Sub may have the name of a Sub and of a module
   variable of type `T`, and with another type it is an error as for any
   other name (recorded). In `Class_Globals`, a `Dim` with a Sub's
-  name is *(open)*. A loop variable of `Process_Globals` named like a `Type`, `Bit`
-  or a keyword is *(open)* too, and so is `For i As T` there: declare `i`
+  name is *(open)*. A loop variable of `Process_Globals` cannot be named
+  `Bit` (B4J's compiler fails, recorded); named like a `Type` it builds
+  (recorded), and like a keyword or
+  built-in it is *(open)*, and so is `For i As T` there: declare `i`
   with `Dim` and loop without `As`. All of this is only for the main module:
   in `Class_Globals` a loop must use a variable declared with `Dim`,
   without `As`.
@@ -135,7 +133,7 @@ End Sub
 | Double | IEEE 754, 64-bit | 0 | `double` | `double` |
 | Char | UTF-16 code unit | `Chr(0)` | `char` | `i16` |
 | String | immutable UTF-16 text | `""` | `java.lang.String` | pointer to a refcounted runtime string |
-| Object | any value or `Null` | `Null` | `Object` | pointer with a type header |
+| Object | any value or `Null` | `Null`; `Dim o As Object` with no value, local or module variable, and an `Object` field of a `Type` when `Initialize` runs give a new `java.lang.Object`, which prints as `java.lang.Object@<hash>`, compares by identity and converts to a number with a `NumberFormatException` (recorded: `object_dim_default`, `object_dim_global_default`, `local_dim_resets_module_object`, `record_object_field_default`, `object_plain_identity`, `object_plain_to_number`) | `Object` | pointer with a type header |
 | List, Map | reference to a collection, uninitialised by default | uninitialised | wrapper | runtime object |
 | arrays `T()` | fixed size, zero-based, any rank | per element | `T[]` | runtime object |
 | `Type` records | reference to an object with fields | an object whose fields hold Java defaults (0, `False`, `Null` for String and objects); `Initialize` then sets B4X's defaults (`""`, fresh uninitialised List/Map) and makes `IsInitialized` True. Fields can be read and written before `Initialize`. | class | runtime object |
@@ -144,8 +142,10 @@ End Sub
   when passed. Everything else, `String` included, copies the reference.
 - `Object` holds a boxed value. The box remembers its type: `Int` 1 and
   `Double` 1 stored in a `Map` are different keys. Which boxed type a numeric
-  literal gets is *(open)*. Provisionally, an integer literal that fits is
-  `Int`, a real literal is `Double`.
+  literal gets is recorded: an integer literal that fits is an `Int`, a
+  larger one a `Long`, a hex one up to `0xFFFFFFFF` an `Int`, and a real
+  literal a `Double` (`literal_boxed_type`, `decimal_literal_over_int`,
+  `hex_literal`).
 
 ## Declarations and scope
 
@@ -154,8 +154,8 @@ End Sub
   of any type, `List`, `Map` and arrays included, with any expression as
   its value (recorded). Each must be given its value there (B4J: "Const
   variable must be set in the declaration line.", recorded). Without `As`
-  it is a `String` (recorded), as a `Dim` without `As` provisionally is
-  (below). Its value is
+  it is a `String` (recorded), as a `Dim` without `As` is (recorded:
+  `dim_without_as`). Its value is
   computed where it is declared, in order, as a `Dim`'s: a module variable
   initialised from a constant declared after it reads `0` (recorded).
   A `Const` array with bounds must be given its value too (recorded).
@@ -166,12 +166,17 @@ End Sub
   constant's contents are not (`Set`, `Put`, recorded). A `Dim` in a Sub
   with a module `Int` constant's name, with a value, is an error (B4J:
   "Cannot redeclare a const variable.", recorded). In `Process_Globals`,
-  an `Int` declared by a `Const` and by a `Dim`, each with a literal
-  value, in either order, both statements of `Process_Globals` itself (not inside an `If`
-  or a loop), with no other declaration of or loop over its name there, is
-  one variable: each declaration sets its value in turn (recorded); whether
-  it may change is *(open)*, so assigning it anywhere, a loop over it or
-  assigning an item of it is a compile error, reported once. A
+  two declarations of a name, with no other declaration of or loop over
+  it there, are one variable, each setting its value in turn (recorded):
+  a `Const` of an `Int` or a `String` with a literal value, then a `Dim`
+  of its type, with a value or not, a statement of `Process_Globals` or of
+  an `If` there, which a Sub may then assign (`const_dim_after*`); an
+  `Int` `Dim`, then a `Const`, which cannot be assigned
+  (`const_after_dim_assign`); and two `Const`s of an `Int` (`const_twice`),
+  the last two with literal values and statements of `Process_Globals`
+  itself. Assigning one of two `Const`s, assigning any of them in
+  `Process_Globals`, a loop over them or an item of them is *(open)*, so a
+  compile error, reported once. A
   constant may be a `Select Case` label (recorded). Any other loop over a
   constant or declaration again of its name is *(open)*, so a compile
   error. After a declaration again in `Process_Globals` refused so, the
@@ -194,7 +199,7 @@ End Sub
 - Forms: `Dim x As Int = 5`; `Dim a = 1, b = 2 As Int`; `Private i, j, k As Int`.
   A name without `As` takes the type of the next `As` to its right in the same
   statement.
-- With no `As` at all, the type is *(open)*. Provisionally it is `String`.
+- With no `As` at all, the type is `String` (recorded: `dim_without_as`).
 - Arrays: `Dim a(10) As Int`, `Dim m(3, 4) As Double`. The bounds are
   expressions, evaluated when the `Dim` runs. `Dim a() As Int` is an empty array.
 - **Scope is the whole Sub.** Every local is hoisted to the top of its Sub and
@@ -204,8 +209,12 @@ End Sub
   `Type` records this means a fresh object.
 - Locals start at their default value on every call.
 - The counter of `For i = …` is implicitly declared as `Int` if it was not
-  declared before. Other undeclared names are *(open)*. Provisionally they are
-  a compile error.
+  declared before. A name that nothing in the Sub or the module declares,
+  and that is not a Sub, a built-in or a `Type`, is declared by an
+  assignment to it, as a `String` (recorded: `undeclared_variable`,
+  `undeclared_variable_type`); with a `Dim` or a loop of
+  it anywhere in the Sub, the hoisted declaration is that variable. Reading a name nothing
+  declares or assigns is *(open)*, so a compile error.
 - Two declarations of the same name in one Sub: *(open)*. Provisionally they
   are allowed if the types match, and rejected otherwise.
 
@@ -216,7 +225,7 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 | From → to | Rule |
 | --- | --- |
 | number → wider number | Java widening. Exact for Byte/Short/Int → Int/Long/Double, Float → Double and every integer → Float/Double whose value fits the mantissa; otherwise rounded to nearest (Int 16777217 → Float 16777216, Long 9007199254740993 → Double 9007199254740992). |
-| number → narrower integer | Java narrowing. Double → Int truncates toward zero *(open: forum level)*; out-of-range values follow Java rules (NaN → 0, saturating). Long → Int keeps the low 32 bits. |
+| number → narrower integer | Java narrowing. Double → Int truncates toward zero (recorded: `double_to_int_assign`); out-of-range values follow Java rules (NaN → 0, saturating). Long → Int keeps the low 32 bits. |
 | number → String | `NumberToString`, see below |
 | Boolean → String | `true` / `false` (lower case) |
 | String → number | parsed as a Java `double` literal, then narrowed. An unparsable string raises `NumberFormatException`. |
@@ -268,11 +277,30 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `1 + 2 & "x"`, `"x" & 6 / 2` and `"x" & -1` are errors: write
   `"x" & (1 + 2)`.
 - Comparisons:
-  - two numbers compare numerically, as Double;
-  - two Strings compare by value, case-sensitive; `<` and `>` on Strings are
-    *(open)*;
-  - `x = Null` / `x <> Null` test for null;
-  - mixing a String and a number in a comparison is *(open)*.
+  - `=` and `<>`: the left operand decides. A number on the left compares
+    numerically, as Double, converting a String on the right; a String on
+    the left compares as Strings, by value and case-sensitive (recorded:
+    `mixed_compare_number_left`, `mixed_compare_string_left`);
+  - `<`, `>`, `<=` and `>=` always compare numbers, as Double: a String
+    operand is parsed, so `"a" < "b"` raises `NumberFormatException`
+    (recorded: `string_compare_less`); a Boolean or a Char operand is an
+    error (recorded: `boolean_less`, `char_string_compare`,
+    `char_less_char`, `string_less_boolean`); an `Object` next to a String
+    is parsed too (recorded: `string_less_object`);
+  - `x = Null` / `x <> Null` test for null; with an `Int` on the left, the
+    `Null` is converted as its text, `"null"`, which raises
+    `NumberFormatException` (recorded: `null_number_compare`), and with
+    every other number type too (recorded: `double_eq_null`,
+    `long_eq_null`, `number_types_eq_null`);
+  - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
+    errors (recorded: `chained_comparison_less`,
+    `chained_comparison_equal`), while `x = a = b` assigns one comparison;
+  - a Char `=` an `Int` converts the `Int` to a Char, the first character
+    of its text, so `"A" = 65` is `False` (recorded: `char_number_compare`),
+    and so does a `Long`, `Short`, `Byte` or `Double` (recorded:
+    `char_eq_long`, `char_eq_double`), and a `Float` through its object's
+    text, `Float.toString` (recorded: `char_eq_float`); the number on the
+    left is an error (recorded: `number_eq_char`).
 
 ## Statements
 
@@ -280,7 +308,10 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `If c Then a : b`, only `a` is conditional.
 - **`If`**: single line `If c Then s [Else s]`, or the block form with `Else If`
   (two words) and `Else`.
-- **`Select expr`**: each `Case` holds a list of expressions, compared in order.
+- **`Select expr`**, also written `Select Case expr` (recorded:
+  `select_case_synonym`): each `Case` holds a list of expressions. The scrutinee
+  is evaluated, then every `Case` value, in order, then they are compared
+  in order (recorded: `case_values_evaluated`).
   - Numbers match by numeric value (as Double), also when an `Object` holds
     the number; other values match with `equals` on the boxed values, so
     String "1" does not match `Case 1`. If an `Object` scrutinee holds a
@@ -293,21 +324,64 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
     fall-through. `Case Else` runs if nothing matched.
   - There are no ranges. `Select True` with `Case cond` is the idiom for conditions.
 - **`For i = a To b [Step s]`**:
-  - `a`, `b` and `s` are evaluated once, before the first iteration *(open)*;
+  - `a`, `b` and `s` are evaluated once, before the first iteration
+    (recorded: `for_limit_evaluated_once`): `s` first, then `b`, then `a`,
+    which is assigned to `i` last (recorded: `for_evaluation_order`), so `s`
+    or `b` reading `i` reads its value before the loop;
     `s` defaults to 1;
   - the loop runs while `i <= b` (positive step) or `i >= b` (negative step);
   - after `Next`, `i` is incremented by `s`;
-  - the value of `i` after the loop is *(open)*.
+  - after the loop, `i` holds the first value past `b`, or `a` when the
+    loop never ran (recorded: `for_counter_after_loop`).
 - **`For Each x [As T] In c`**: iterates arrays, `List`, `Map.Keys` and
-  `Map.Values` in order (insertion order for a `Map`). Changing a collection
-  while iterating it is *(open)*.
+  `Map.Values` in order (insertion order for a `Map`). A `List` that grows
+  while it is iterated is iterated over the items it had when the loop
+  began (recorded: `list_modified_in_for_each`); changing a `Map` while
+  iterating it is *(open)*. Without `As`, the loop declares `x` an
+  `Object`: over a name nothing declared before it, in source order, it
+  declares it (recorded: `for_each_untyped_undeclared`), and a later `Dim`
+  of another type is an error (B4J: "Current declaration does not match
+  previous one", recorded: `for_each_untyped_declared_after`); over a
+  local `Object` declared before it, by a `Dim` or a typed loop, over a
+  parameter `Object`, and over a module variable `Object`, from a Sub, it
+  loops with it (recorded: `for_each_untyped_object`,
+  `for_each_untyped_after_typed_object`, `for_each_untyped_param_object`,
+  `for_each_untyped_module_object`, `for_each_untyped_pg_loop_object`);
+  over a local, a parameter or a module variable of another type it is an
+  error, in `Process_Globals` too, and so it is after an assignment of the
+  name, which declares a `String`, or a read of it (recorded:
+  `for_each_untyped_local`, `for_each_untyped_other_type`,
+  `for_each_untyped_parameter`, `for_each_untyped_module_variable`,
+  `process_globals_for_each_untyped`, `for_each_untyped_assigned_before`,
+  `for_each_untyped_read_before`). With a later `Dim` of the name as an
+  `Object` it builds, one variable, and a `Dim` with no value gives a new
+  `Object`; so it does with a later `For Each … As Object` (recorded:
+  `for_each_untyped_object_declared_after`,
+  `for_each_untyped_then_object_valued`,
+  `for_each_untyped_then_typed_object`). Inside `Process_Globals` it builds
+  over a variable `Object` declared there, by a `Dim` before or after it or
+  by a typed loop, before or after it (recorded:
+  `process_globals_for_each_untyped_object`,
+  `process_globals_for_each_untyped_before_dim_object`,
+  `process_globals_for_each_untyped_after_typed_object`,
+  `process_globals_for_each_untyped_before_typed_object`); over a name
+  nothing declares there, it declares a module variable `Object` that every
+  Sub sees (recorded: `process_globals_for_each_untyped_undeclared`); over a
+  `Type`'s or a built-in's name it is *(open)*, so an error (a Sub's name
+  follows the rules for loops named like a Sub). In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.
 - **`Exit`** leaves the innermost enclosing loop, **or the innermost enclosing
   `Select`** if that is closer.
 - **`Continue`** jumps to the next iteration of the innermost loop.
-- **`Return [expr]`** leaves the Sub. A Sub with an `As` type that falls off its
-  end returns that type's default value *(open)*.
+- **`Return [expr]`** leaves the Sub. A Sub without `As` returns a
+  `String`, as B4J declares it: `Return 5` builds (recorded:
+  `return_value_untyped_sub`), and the call's value prints `5` (recorded:
+  `untyped_sub_return_value_used`); one that returns nothing returns `""`
+  (recorded: `untyped_sub_return_type`).
+  `Process_Globals` and `AppStart` return nothing. A Sub with an `As` type that falls off its
+  end returns that type's default value: 0, or an empty `String` (recorded:
+  `typed_sub_without_return`, `typed_string_sub_without_return`).
 - **`Try … Catch … End Try`** catches every runtime error raised in the `Try`
   block, including from called Subs. `LastException` then holds the innermost
   cause. `LastException.Message` is `<kind>`, then `": "` and the message when

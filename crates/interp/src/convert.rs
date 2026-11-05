@@ -329,6 +329,13 @@ fn to_number(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value, E
         Value::Char(_) if !matches!(from, Ty::Object) => cast(&v),
         Value::Str(_) => cast(&Value::Double(parse_number(&v)?)),
         Value::Null => Err(Exc::bare(NULL_POINTER)),
+        // `BA.ObjectToNumber` and `ObjectToLongNumber` parse
+        // `String.valueOf(o)`, so this always raises `For input string:
+        // "java.lang.Object@…"`.
+        Value::Plain(_) => {
+            let text = to_string_from(&v, &Ty::Object, program)?;
+            cast(&Value::Double(parse_number(&text)?))
+        }
         _ => Err(class_cast(&v, "java.lang.Number", program)),
     }
 }
@@ -401,6 +408,7 @@ mod tests {
             functions: vec![],
             init: ferro_mir::FuncId(0),
             entry: ferro_mir::FuncId(0),
+            package: None,
         }
     }
 

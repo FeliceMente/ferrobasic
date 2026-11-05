@@ -170,7 +170,7 @@ impl Checker<'_> {
             | Rvalue::IterSize(o)
             | Rvalue::Field { record: o, .. } => self.operand(o),
             Rvalue::Global(g) => self.global(*g),
-            Rvalue::Default(_) => Ok(()),
+            Rvalue::Default(_) | Rvalue::NewObject => Ok(()),
             Rvalue::Arith { left, right, .. } | Rvalue::Compare { left, right, .. } => {
                 self.operand(left)?;
                 self.operand(right)
@@ -280,6 +280,7 @@ mod tests {
             ],
             init: FuncId(0),
             entry: FuncId(1),
+            package: None,
         }
     }
 

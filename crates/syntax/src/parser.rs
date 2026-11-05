@@ -88,9 +88,11 @@ const PREFIX_BINDING_POWER: u8 = 13;
 const MAX_NESTING: u32 = 1000;
 
 /// Keywords that B4X also accepts as names. `In` is evidenced by a B4X
-/// library that compiles with a parameter named `In`; which other keywords
-/// are contextual is open (see `docs/open-questions.md`).
-const CONTEXTUAL_KEYWORDS: &[SyntaxKind] = &[IN_KW];
+/// library that compiles with a parameter named `In`, and `Each` is
+/// recorded (`keyword_name_each`); `Step`, `To`, `Type` and `Until` are
+/// recorded as refused, and the other keywords are open (see
+/// `docs/open-questions.md`).
+const CONTEXTUAL_KEYWORDS: &[SyntaxKind] = &[IN_KW, EACH_KW];
 
 fn is_name_token(kind: SyntaxKind) -> bool {
     kind == IDENT || CONTEXTUAL_KEYWORDS.contains(&kind)
@@ -682,8 +684,9 @@ impl Parser<'_> {
     fn select_stmt(&mut self) {
         self.start(SELECT_STMT);
         self.bump();
+        // `Select Case x` is a synonym of `Select x` (recorded:
+        // `select_case_synonym`).
         if self.at(CASE_KW) {
-            self.error("`Select Case` is not supported: write `Select <expression>`");
             self.bump();
         }
         self.expr();

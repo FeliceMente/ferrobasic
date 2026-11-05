@@ -129,7 +129,19 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   its position ([`Map.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java#L57-L59), [L225-L227](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/Map.java#L225-L227)).
 - Keys compare with Java `equals`: string keys are case-sensitive, and boxed
   numbers of different types are different keys (`Int` 1 ≠ `Double` 1.0).
-  Which boxed type a numeric literal key gets is compiler behaviour (**open**).
+  A numeric literal key is an `Integer`, or a `Double` with a point, so
+  `1` and `1.0` are two keys (**recorded**: `literal_boxed_type`).
+- A `List` key is the `ArrayList` itself, so it compares by its contents:
+  two Lists holding `1` are one key (**recorded**: `list_as_map_key`).
+  `HashMap` keeps the hash a key had when it was put and compares the
+  bucket's keys with `equals`, oldest first, so a List changed afterwards
+  is found neither by its old contents nor by its new ones, and a List
+  that holds itself raises `StackOverflowError` from `hashCode` (Java's
+  [`HashMap`](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/util/HashMap.html)
+  and [`List.hashCode`](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/util/List.html#hashCode());
+  **recorded**: `list_key_changed`, `list_key_self`). A `Map` key
+  compares by identity, alone or inside a List key: two Maps with the
+  same contents are two keys (**recorded**: `map_as_map_key`).
 - `Put` returns the previous value or `Null`; `Get` of a missing key returns
   `Null`; `GetDefault` returns the default when the stored value is `Null`.
 - `GetKeyAt` / `GetValueAt` go through `MyMap.getEntry`
@@ -342,8 +354,36 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   which does not determine the order. Needs a recorded test.
 - In a statement `x = a = b`, the first `=` is the assignment and the rest is
   one comparison (**generated**): `BluetoothState = NewState = Admin.STATE_ON`
-  compiles to `_bluetoothstate = _newstate==_admin.STATE_ON;`. No source shows
-  a real chain such as `a < b < c` or `If a = b = c`: **open**.
+  compiles to `_bluetoothstate = _newstate==_admin.STATE_ON;`. A real chain
+  does not compile: `Log(3 < 2 < 1)` gives "')' expected" and
+  `If a = b = c Then` "'Then' expected" (**recorded**:
+  `chained_comparison_less`, `chained_comparison_equal`).
+- `<`, `>`, `<=` and `>=` compare numbers: `"a" < "b"` stops on
+  `NumberFormatException: For input string: "a"` from `Double.parseDouble`
+  in the generated `_appstart`, and `"10" < 9` is `False` (**recorded**:
+  `string_compare_less`, `mixed_compare_string_left`). A Boolean or a Char
+  operand does not compile: "Cannot cast type: {Type=Char,…} to: number"
+  (**recorded**: `boolean_less`, `char_string_compare`). `=` and `<>` let
+  the left operand decide: `10 = "10.0"` is `True`, `"10.0" = 10` is
+  `False` (**recorded**: `mixed_compare_number_left`,
+  `mixed_compare_string_left`). `n = Null` with an `Int` compiles, and
+  `BA.ObjectToNumber` raises `NumberFormatException: For input string:
+  "null"` (**recorded**: `null_number_compare`). A Char `=` an `Int`
+  compiles to `_c==BA.ObjectToChar(65)`, and
+  [`ObjectToChar`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L457-L462)
+  takes the first character of the number's `toString()`, `'6'`, so
+  `"A" = 65` is `False` (**recorded** and **generated**:
+  `char_number_compare`); a `Long`, `Short`, `Byte` or `Double` the same
+  way: `"1" = 0.00001` is `True`, from `1.0E-5` (**recorded**:
+  `char_eq_long`, `char_eq_double`), and a `Float` from its boxed text,
+  `Float.toString`, not B4J's text of it widened to a Double (**recorded**:
+  `char_eq_float`). The number on the left does not compile
+  (**recorded**: `number_eq_char`). A `Double` or a `Long` `=` `Null`
+  raises `NumberFormatException` as an `Int` does (**recorded**:
+  `double_eq_null`, `long_eq_null`), and so do a `Float`, a `Short` and a
+  `Byte` (**recorded**: `number_types_eq_null`), and `<` between a String and an `Object` parses both
+  (`"10" < o` with `o = "5"` is `False`, **recorded**:
+  `string_less_object`).
 - The relative precedence of `And` versus `Or`, and of both versus comparisons,
   is not stated in official docs (**open**). The user table above
   contradicts common practice and is not reliable.
@@ -357,21 +397,25 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
 The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
 `Floor(a / b)`. Division by zero in Double is not an error (`Infinity`/`NaN`;
 [forum](https://www.b4x.com/android/forum/threads/divide-by-zero-not-an-error.142795/)).
-**open**: the exact rule for converting a Double back to `Int`
-(truncation toward zero is Java's `(int)` cast, as reported on the forum).
+Converting a Double back to `Int` truncates toward zero, as Java's `(int)`
+cast does and the forum reported (**recorded**: `double_to_int_assign`).
 
 ### Statements
 
 - **`:`** separates statements on one line, exactly like a line break. So
   `If b = 0 Then a = 0 : c = 1` puts only `a = 0` under the `If`; `c = 1`
   always runs (**docs**, booklet §4.3.1). `Sub` and `End Sub` cannot share a line.
-- **`Select`**: written `Select expr`, not `Select Case expr`
-  ([forum](https://www.b4x.com/android/forum/threads/select-case-help.42378/));
-  whether `Select Case` is a compile error is **open**. `Case` takes a
+- **`Select`**: written `Select expr`
+  ([forum](https://www.b4x.com/android/forum/threads/select-case-help.42378/)),
+  and `Select Case expr` builds too, as a synonym (**recorded**:
+  `select_case_synonym`). `Case` takes a
   comma-separated list of expressions; ranges (`Case 1 To 4`) are not
   supported (**docs**, booklet §4.3.3; Erel on the
   [forum](https://www.b4x.com/android/forum/threads/using-to-in-select-cases.137312/)).
-  `Select True` with `Case x < 16` is the idiom for conditions. Matching:
+  `Select True` with `Case x < 16` is the idiom for conditions. Every
+  `Case` value is evaluated, in order, before any is compared, as they are
+  the arguments of `BA.switchObjectToInt` (**recorded**:
+  `case_values_evaluated`). Matching:
   numbers compare as `double`, other values with `equals`
   ([`BA.switchObjectToInt`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L514-L533),
   **source**; that the compiler uses it is **forum** level).
@@ -382,6 +426,56 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `Loop Until` and a bare `Do … Loop` are not supported (**docs**, booklet
   §4.4.3; Erel on the [forum](https://www.b4x.com/android/forum/threads/while-or-until-at-end-of-do-loop-bug-wish.49474/)).
   Infinite loops are written `Do While True`.
+- **`For Each` without `As`** over a local declared before it is refused,
+  whatever its type: "Current declaration does not match previous one"
+  (**recorded**: `for_each_untyped_local`, over an `Int` and `Int` items;
+  `for_each_untyped_other_type`, over a `String`). It declares its
+  variable an `Object`: over an `Int` module variable, from a Sub or in
+  `Process_Globals`, over a `String` parameter, and before a later `Dim n
+  As Int` ("Previous: Object"), it is refused too (**recorded**:
+  `for_each_untyped_module_variable`, `process_globals_for_each_untyped`,
+  `for_each_untyped_parameter`, `for_each_untyped_declared_after`). Over
+  a local `Object` (declared by a `Dim` or a typed loop), over a module
+  variable `Object` from a Sub, and over a name never declared it builds
+  (**recorded**: `for_each_untyped_object`,
+  `for_each_untyped_after_typed_object`, `for_each_untyped_module_object`,
+  `for_each_untyped_undeclared`); after an assignment of the name, which
+  declares a `String`, it is refused (**recorded**:
+  `for_each_untyped_assigned_before`). After the loop, `Dim n As Object`
+  builds and gives `n` a new `Object` (B4J generates `new Object()` for a
+  `Dim … As Object` with no value): it printed `java.lang.Object@<hash>`
+  (recording run 16, `for_each_untyped_object_declared_after`; run 17
+  prints its type, `java.lang.Object`). A later `Dim n As Object = value`
+  or `For Each n As Object` builds too, one variable (**recorded**:
+  `for_each_untyped_then_object_valued`, `for_each_untyped_then_typed_object`). Converted to a number, such a new `Object` raises
+  `NumberFormatException: For input string: "java.lang.Object@<hash>"`:
+  [`BA.ObjectToNumber` and
+  `ObjectToLongNumber`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L435-L450) parse `String.valueOf(o)`
+  for anything but a `Number` (**source**, then **recorded**: `object_plain_to_number`). A module
+  variable `Object` with no value, a `Dim` in a Sub that resets one, and a
+  `Type` field `Object` when `Initialize` runs are new Objects too
+  (**recorded**: `object_dim_default`, `object_dim_global_default`,
+  `local_dim_resets_module_object`, `record_object_field_default`), and new
+  Objects compare by identity (**recorded**: `object_plain_identity`). Inside
+  `Process_Globals`, the loop builds over a variable `Object` declared there,
+  by a `Dim` or a typed loop, before or after it (**recorded**:
+  `process_globals_for_each_untyped_object`,
+  `process_globals_for_each_untyped_before_dim_object`,
+  `process_globals_for_each_untyped_after_typed_object`,
+  `process_globals_for_each_untyped_before_typed_object`), and over a name
+  nothing declares it declares a module variable `Object` (**recorded**:
+  `process_globals_for_each_untyped_undeclared`); over a `Type`'s name it is
+  *open* (`process_globals_for_each_untyped_named_like_type`). A read or an
+  assignment there before a `Dim … As Object` builds too, the read giving
+  `Null` (**recorded**: `process_globals_read_before_dim_object`,
+  `process_globals_assign_before_dim_object`). It builds over a parameter `Object`
+  and over a module variable `Object` that a loop of `Process_Globals`
+  declared too (**recorded**: `for_each_untyped_param_object`,
+  `for_each_untyped_pg_loop_object`), and is refused after a read of the
+  name: "Undeclared variable 'u' is used before it was assigned any
+  value." (**recorded**: `for_each_untyped_read_before`). The real-world corpus's
+  `JSONWebToken.bas`, a class, loops `For Each Key In Claims.Keys` in
+  `setClaims` with `Key` declared nowhere.
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
   is implicitly declared as `Int` (**docs**, coreref), in `Process_Globals`
   too, where it is a module variable: AppStart reads it (4 after
@@ -449,31 +543,52 @@ The booklet's `$0.3{10 / 7}` → `1.429` agrees. Integer division is
   `process_globals_counter_named_like_sub_typed_for_each_again`,
   `process_globals_for_each_named_like_sub_typed_for_each_again`); a
   `Dim` with a Sub's name is refused: "Variable name cannot be the same as
-  a sub name" (**recorded**: `module_variable_named_like_sub`). Not
-  recorded (*open*): a `For Each` without `As` as the first loop over the
-  name, which only a later typed `For Each` can declare
-  (`local_for_each_named_like_sub_before_typed`,
-  `process_globals_for_each_named_like_sub_before_typed`), or nested in a
-  loop of `Process_Globals` (`process_globals_for_each_named_like_sub_nested`);
-  a `For Each v As T` of another type after a counter of the Sub
-  (`local_typed_for_each_other_type_after_counter_named_like_sub`) or
-  inside a `For` over it (`local_typed_for_each_in_counter_named_like_sub`),
-  or nested in `Process_Globals`
-  (`process_globals_typed_for_each_named_like_sub_nested`); a `For` over
-  a loop variable that a `For Each v As T` of another number type than
-  `Int` declared (`local_counter_after_double_for_each_named_like_sub`);
-  any other combination of loops over the name, as FerroBASIC settles only
-  the recorded ones (`recorded_loop` in `crates/hir/src/lower.rs`, and
-  the pending tests listed in [open-questions.md](../open-questions.md));
-  and a `Dim` of
-  `Class_Globals` with a Sub's name.
+  a sub name" (**recorded**: `module_variable_named_like_sub`). Refused
+  too, "Current declaration does not match previous one": a `For Each`
+  without `As` as the first loop over the name, which only a later typed
+  `For Each` declares, or nested in a loop of `Process_Globals` over it,
+  and a `For Each v As T` of another type after a counter of the Sub
+  (**recorded**: `local_for_each_named_like_sub_before_typed`,
+  `process_globals_for_each_named_like_sub_before_typed`,
+  `process_globals_for_each_named_like_sub_nested`,
+  `local_typed_for_each_other_type_after_counter_named_like_sub`).
+  Recording run 14 builds every other `For` and `For Each v As T` over
+  such a name, as the variable's own rules allow, and the name still
+  calls the Sub: a `For` inside a loop over it, three loops one after the
+  other or nested, a typed `For Each` of `Double` again, in a Sub or in
+  `Process_Globals` or from another Sub, and a `For` after a `For Each v
+  As Double`, which counts in `Double` steps; nested loops share the
+  variable, so a `For Each` inside a `For` over it ends the `For` after
+  one pass (**recorded**: `local_counter_in_loop_named_like_sub`,
+  `local_counter_named_like_sub_loop_three_times`,
+  `local_counter_after_double_for_each_named_like_sub`,
+  `local_typed_for_each_in_counter_named_like_sub`,
+  `local_typed_for_each_counter_typed_named_like_sub`,
+  `local_typed_for_each_double_loop_again_named_like_sub`,
+  `local_typed_for_each_double_over_module_variable_named_like_sub`,
+  `local_typed_for_each_named_like_sub_nested_three_deep`,
+  `local_typed_for_each_over_module_variable_loop_again_named_like_sub`,
+  `process_globals_counter_in_loop_named_like_sub`,
+  `process_globals_loop_named_like_sub_loop_elsewhere_again`,
+  `process_globals_loop_named_like_sub_loop_three_times`,
+  `process_globals_typed_for_each_double_loop_again_named_like_sub`,
+  `process_globals_typed_for_each_named_like_sub_nested`). So the name is
+  a loop variable like any other once declared, and only a `For Each`
+  without `As` is refused over it; FerroBASIC follows that rule
+  (`recorded_loop` in `crates/hir/src/lower.rs`), also for a `For Each v
+  As String` again (**recorded**:
+  `local_typed_for_each_string_loop_again_named_like_sub`). Not recorded
+  (*open*): a `Dim` of `Class_Globals` with a Sub's name.
   With the same type, a counter and a
   `For Each`, in either order, or two `For Each` loops, are one variable
   (**recorded**: `process_globals_counter_and_for_each_int`,
   `process_globals_for_each_then_counter`, `process_globals_for_each_twice`).
   Test is `i <= b` for a
-  positive step and `i >= b` for a negative step. **open**: whether `b` and
-  `s` are evaluated once (expected, as in VB), and the value of `i` after the loop.
+  positive step and `i >= b` for a negative step. `s`, then `b`, then `a`
+  are evaluated once, before the first test (**recorded**:
+  `for_evaluation_order`, `for_limit_evaluated_once`); after the loop `i`
+  holds the first value past `b`, or `a` when the loop never ran
+  (**recorded**: `for_counter_after_loop`).
 - **`If`**: single line `If c Then stmt [Else stmt]`; block form with
   `Else If` (two words) (**docs**).
 - **`IIf(cond, a, b)`** exists in current versions and evaluates only the chosen
@@ -575,11 +690,24 @@ Implemented as recorded with B4J 10.70 (run 12,
   value:
   each declaration sets its value in turn, so the program prints the
   last one, `3` and `10` (`const_dim_after`, `const_after_dim`).
+- Recording run 14 (B4J 10.70, 2026-11-02) built more of them, each
+  declaration setting its value in turn: after a `Const`, a `Dim` with no
+  value (`0`), of a `String` (`b`), inside an `If` (`3`), or with a value
+  reading the constant (`11`); and two `Const`s of an `Int` (`3`)
+  (`const_dim_after_no_value`, `const_dim_after_string`,
+  `const_dim_after_in_if`, `const_dim_after_from_const`, `const_twice`).
+  With the `Dim` last, a Sub may assign the name (`5`,
+  `const_dim_after_assign`); with the `Const` last, it may not ("Cannot
+  modify Const variable.", `const_after_dim_assign`). A `Dim` with no
+  value in a Sub over a module constant is refused ("Cannot redeclare a
+  const variable.", `const_local_dim_no_value`), and so is a `For Each`
+  without `As` over one ("Current declaration does not match previous
+  one", `const_for_each_untyped`).
 - **open**: any other loop over a constant or declaration again of its
-  name (without a value, of another type than `Int`, a third one), and
-  whether a variable declared both by a `Const` and by a `Dim` may then
-  change, each with a pending test
-  ([open-questions.md](../open-questions.md)).
+  name (of another type than `Int` or `String`, a third one, inside
+  another block than an `If`), assigning one declared by two `Const`s,
+  and assigning it in `Process_Globals`, each with a pending test where
+  one is recorded next ([open-questions.md](../open-questions.md)).
 
 ### Keywords used as names (generated)
 
@@ -593,6 +721,13 @@ in the same way is **open**.
 Ranges in booklet §2.1 match the table in [spec/level0.md](../spec/level0.md#types)
 (Java primitives). B4R differs (Int is 16-bit, Double is 32-bit) and is
 out of scope for Level 0.
+
+A `Type` is a static class nested in its module's class, named in lower
+case after an underscore: `GetType` of a `Point` declared in Main is
+`b4j.example.main$_point` (**recorded**: `record_get_type`), `b4j.example`
+being the package of the recorder's projects (`Build1=Default,b4j.example`).
+FerroBASIC takes the package from a project's first build, and uses
+`b4j.example` for a lone module.
 
 ## Impact on the Level 0 spec
 

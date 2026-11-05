@@ -705,3 +705,23 @@ fn inexact_constant_steps_use_the_run_time_sign_test() {
     assert_eq!(compares(app(&p), CmpOp::Gt), 0);
     assert_eq!(compares(app(&p), CmpOp::Ge), 1);
 }
+
+#[test]
+fn dim_object_without_value_is_a_new_object() {
+    let p = lower_text(
+        "Sub Process_Globals\n    Private g As Object\n    Type P (o As Object, n As Int)\nEnd Sub\n\n\
+         Sub AppStart (Args() As String)\n    Dim o As Object\n    Dim a(2) As Object\n    \
+         Dim r As P\n    r.Initialize\n    Log(o)\n    Log(a(0))\n    Log(g)\nEnd Sub\n",
+    );
+    let news = |name: &str| {
+        all_rvalues(func(&p, name))
+            .filter(|r| matches!(r, Rvalue::NewObject))
+            .count()
+    };
+    // The local; the module variable; the record's `Object` field. An
+    // `Object` array's elements stay `Null`.
+    assert_eq!(news("AppStart"), 1, "{}", dump(&p));
+    assert_eq!(news("Process_Globals"), 1, "{}", dump(&p));
+    assert_eq!(news("P.Initialize"), 1, "{}", dump(&p));
+    assert!(all_rvalues(app(&p)).any(|r| matches!(r, Rvalue::NewArray { .. })));
+}

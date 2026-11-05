@@ -52,6 +52,10 @@ pub struct Program {
     pub init: FuncId,
     /// `AppStart`: one parameter, the arguments as `String()`.
     pub entry: FuncId,
+    /// The package a project's first build names (`Build1=Default,b4j.example`),
+    /// set by whoever reads the project file; `None` for a lone module, whose
+    /// default the target profile supplies.
+    pub package: Option<String>,
 }
 
 impl Program {
@@ -196,8 +200,17 @@ pub enum Rvalue {
     /// The default value of a type: 0, `False`, `""`, `Chr(0)`, `Null` for
     /// Object, an empty array of rank 1 for array types, and a fresh
     /// **uninitialised** object for `List`, `Map`, `StringBuilder` and records.
-    /// `Dim x As T` without initialiser assigns this each time it runs.
+    /// `Dim x As T` without initialiser assigns this each time it runs, but
+    /// for an `Object`.
     Default(Ty),
+    /// `Dim o As Object` without initialiser, each time it runs, local or
+    /// module variable, and an `Object` field of a `Type` when `Initialize`
+    /// runs: a new `java.lang.Object`, as B4J generates `new Object()`
+    /// (recorded: `object_dim_default`, `object_dim_global_default`,
+    /// `local_dim_resets_module_object`, `record_object_field_default`).
+    /// An array's elements are `Null`, as in any Java `Object[]`, and so
+    /// are the fields of a `Type` never initialised.
+    NewObject,
     /// The implicit or explicit conversions of `docs/spec/level0.md`.
     /// Raises e.g. `java.lang.NumberFormatException`.
     Convert {

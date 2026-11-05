@@ -148,6 +148,7 @@ impl fmt::Display for Rv<'_> {
             Rvalue::Use(o) => write!(f, "{}", Op(o)),
             Rvalue::Global(g) => write!(f, "g{}", g.0),
             Rvalue::Default(ty) => write!(f, "default {ty}"),
+            Rvalue::NewObject => write!(f, "new Object"),
             Rvalue::Convert { value, from, to } => {
                 write!(f, "convert {from}->{to} {}", Op(value))
             }
