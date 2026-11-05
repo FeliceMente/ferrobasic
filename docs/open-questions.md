@@ -520,8 +520,9 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       non-`Char` to a `Char`: `BA.ObjectToBoolean` and `ObjectToChar`
       parse `String.valueOf(o)` (source), so a number `1` would raise
       `RuntimeException` ("Cannot parse: 1 as boolean"), but whether the
-      compiler calls them is not recorded. FerroBASIC raises
-      `ClassCastException` (`level0/object_number_to_boolean`).
+      compiler calls them is not recorded; `ObjectToChar` would give `"6"`
+      for `65`. FerroBASIC raises `ClassCastException`
+      (`level0/object_number_to_boolean`, `level0/object_number_to_char`).
 - [ ] A String in an `Object` converted to a `Long`: `"1.5"` gives 1 in
       FerroBASIC (`Double.parseDouble`, as for an `Int`); if B4J uses
       `BA.ObjectToLongNumber`, `Long.parseLong` raises
