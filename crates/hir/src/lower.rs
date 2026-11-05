@@ -1074,6 +1074,65 @@ impl Lowerer {
                 self.const_states.insert(id, ConstState::Single);
             }
         }
+        self.declare_untyped_loop_globals(sub);
+    }
+
+    /// A `For Each` without `As` in `Process_Globals` over a name nothing
+    /// else there declares makes it a module variable `Object`, which every
+    /// Sub sees (recorded: `process_globals_for_each_untyped_undeclared`).
+    /// Not recorded, so left undeclared and refused when lowered: over the
+    /// name of a Sub, a `Type`, a built-in or `Bit`, after a use or an
+    /// assignment of the name there, and with a `For … As` over it there.
+    fn declare_untyped_loop_globals(&mut self, sub: &SyntaxNode) {
+        let mut seen = HashSet::new();
+        let mut skip = HashSet::new();
+        let mut loops = Vec::new();
+        for found in in_source_order(sub, true) {
+            match found {
+                Found::Use(node) | Found::Assign(node) => {
+                    seen.insert(key(&name_of(&node)));
+                }
+                Found::Loop {
+                    name,
+                    origin: Origin::UntypedForEach,
+                    ..
+                } => {
+                    if seen.contains(&key(&name_of(&name))) {
+                        skip.insert(key(&name_of(&name)));
+                    }
+                    loops.push(name);
+                }
+                Found::Loop {
+                    name,
+                    origin: Origin::TypedCounter,
+                    ..
+                } => {
+                    skip.insert(key(&name_of(&name)));
+                }
+                _ => {}
+            }
+        }
+        for name in loops {
+            let text = name_of(&name);
+            let k = key(&text);
+            if !self.globals.contains_key(&k)
+                && !skip.contains(&k)
+                && !self.refused_loop_names.contains(&k)
+                && self.plain_name(&text)
+                && !text.eq_ignore_ascii_case("Bit")
+            {
+                self.declare_global(text, Ty::Object, range(&name), Origin::UntypedForEach);
+            }
+        }
+    }
+
+    /// Whether `text` names nothing but a variable: not a Sub, a `Type` or a
+    /// built-in. A loop or an assignment declares only such a name.
+    fn plain_name(&self, text: &str) -> bool {
+        let k = key(text);
+        !self.subs.contains_key(&k)
+            && !self.records.contains_key(&k)
+            && builtins::lookup(Owner::Global, text).is_none()
     }
 
     /// A `Dim` of `Process_Globals`. After a loop that declared the name, the
@@ -1530,12 +1589,7 @@ impl Lowerer {
                         // assignment of the name, it is refused
                         // (`untyped_loop_refusal`).
                         Origin::UntypedForEach => {
-                            let k = key(&text);
-                            if self.lookup_var(&text).is_none()
-                                && !self.subs.contains_key(&k)
-                                && !self.records.contains_key(&k)
-                                && builtins::lookup(Owner::Global, &text).is_none()
-                            {
+                            if self.lookup_var(&text).is_none() && self.plain_name(&text) {
                                 self.declare_noted(&text, origin, &so_far, |this| {
                                     this.declare_local(&text, Ty::Object, range(&name))
                                 });
@@ -1564,9 +1618,7 @@ impl Lowerer {
                     let text = name_of(&target);
                     if self.lookup_var(&text).is_none()
                         && !declared.contains(&key(&text))
-                        && !self.records.contains_key(&key(&text))
-                        && !self.subs.contains_key(&key(&text))
-                        && builtins::lookup(Owner::Global, &text).is_none()
+                        && self.plain_name(&text)
                     {
                         self.declare_noted(&text, Origin::Assignment, &so_far, |this| {
                             this.declare_local(&text, Ty::String, range(&target))
@@ -1841,23 +1893,8 @@ impl Lowerer {
                         // `for_each_untyped_pg_loop_object`,
                         // `process_globals_for_each_untyped_object`,
                         // `process_globals_for_each_untyped_after_typed_object`,
-                        // `process_globals_for_each_untyped_before_dim_object`).
-                        // In `Process_Globals`, before the typed loop that
-                        // declares it, not recorded
-                        // (`process_globals_for_each_untyped_before_typed_object`).
-                        VarRef::Global(id)
-                            if ty == Ty::Object
-                                && self.in_process_globals
-                                && self.declared_by_loop(&key(&text))
-                                && self.module.global(id).range.start() > at.start() =>
-                        {
-                            let refusal = Refusal::open(
-                                format!("`{text}` is declared later by a typed loop"),
-                                "a `For Each` without `As` may loop over it here",
-                                format!("write `For Each {text} As Object In ...`"),
-                            );
-                            Some((refusal.message(), at))
-                        }
+                        // `process_globals_for_each_untyped_before_dim_object`,
+                        // `process_globals_for_each_untyped_before_typed_object`).
                         _ if ty == Ty::Object => None,
                         _ => self
                             .type_clash(&text, &ty, &Ty::Object, Clash::UntypedForEach)
