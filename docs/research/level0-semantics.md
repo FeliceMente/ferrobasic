@@ -458,13 +458,14 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `local_dim_resets_module_object`, `record_object_field_default`), and new
   Objects compare by identity (**recorded**: `object_plain_identity`). Inside
   `Process_Globals`, the loop builds over a variable `Object` declared there,
-  by a `Dim` before or after it or by a typed loop before it (**recorded**:
+  by a `Dim` or a typed loop, before or after it (**recorded**:
   `process_globals_for_each_untyped_object`,
   `process_globals_for_each_untyped_before_dim_object`,
-  `process_globals_for_each_untyped_after_typed_object`); before the typed
-  loop that declares it, or over an undeclared name, it is *open*
-  (`process_globals_for_each_untyped_before_typed_object`,
-  `process_globals_for_each_untyped_undeclared`). A read or an
+  `process_globals_for_each_untyped_after_typed_object`,
+  `process_globals_for_each_untyped_before_typed_object`), and over a name
+  nothing declares it declares a module variable `Object` (**recorded**:
+  `process_globals_for_each_untyped_undeclared`); over a `Type`'s name it is
+  *open* (`process_globals_for_each_untyped_named_like_type`). A read or an
   assignment there before a `Dim … As Object` builds too, the read giving
   `Null` (**recorded**: `process_globals_read_before_dim_object`,
   `process_globals_assign_before_dim_object`). It builds over a parameter `Object`

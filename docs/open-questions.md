@@ -465,10 +465,16 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       run 19: `level0/process_globals_for_each_untyped_before_dim_object`,
       `level0/process_globals_for_each_untyped_after_typed_object`), and so
       does FerroBASIC.
-- [ ] Inside `Process_Globals`, before the typed loop that declares the
-      name, and over a name nothing declares: FerroBASIC refuses them
-      (`level0/process_globals_for_each_untyped_before_typed_object`,
-      `level0/process_globals_for_each_untyped_undeclared`).
+- [x] Inside `Process_Globals`, before the typed loop that declares the
+      name, B4J builds it, and over a name nothing declares it declares a
+      module variable `Object`, which every Sub sees (recording run 20:
+      `level0/process_globals_for_each_untyped_before_typed_object`,
+      `level0/process_globals_for_each_untyped_undeclared`), as FerroBASIC
+      does.
+- [ ] Inside `Process_Globals`, over a `Type`'s name nothing else declares
+      (`level0/process_globals_for_each_untyped_named_like_type`), and over
+      a name nothing else declares that is read or assigned before the loop
+      there: FerroBASIC refuses them.
 - [x] In `Process_Globals`, a module variable read or assigned before its
       `Dim … As Object` there builds, one variable, and the read gives
       `Null` (recording run 19:

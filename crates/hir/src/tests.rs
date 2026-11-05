@@ -2006,14 +2006,33 @@ fn for_each_without_as_over_a_declared_variable() {
         "    For Each n As Object In Array As Int(1)\n    Next\n    For Each n In Array As Int(5)\n    Next\n",
         "",
     ));
-    // Before the typed loop that declares it, it is not recorded.
-    let diags = errors(&app(
+    // So it does before the typed loop that declares it (recorded:
+    // `process_globals_for_each_untyped_before_typed_object`), and over a
+    // name nothing declares, which becomes a module variable `Object`
+    // (recorded: `process_globals_for_each_untyped_undeclared`).
+    ok(&app(
         "    For Each n In Array As Int(5)\n    Next\n    For Each n As Object In Array As Int(1)\n    Next\n",
         "",
     ));
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    assert!(has(&diags, "declared later by a typed loop"), "{diags:?}");
-    assert!(has(&diags, "not known yet"), "{diags:?}");
+    ok(&app(
+        "    For Each u In Array As Int(5)\n    Next\n",
+        "    Log(u)\n",
+    ));
+    // Not recorded after a use or an assignment of the name there, when
+    // nothing else declares it.
+    for before in ["    Log(u)\n", "    u = 5\n"] {
+        let diags = errors(&app(
+            &format!("{before}    For Each u In Array As Int(5)\n    Next\n"),
+            "",
+        ));
+        assert!(has(&diags, "must be declared first"), "{diags:?}");
+    }
+    // Over a Sub's name nothing declares, it is not recorded.
+    let diags = errors(&format!(
+        "{}\nSub Helper\nEnd Sub\n",
+        app("    For Each Helper In Array As Int(5)\n    Next\n", "")
+    ));
+    assert!(has(&diags, "must be declared first"), "{diags:?}");
     // With a `Dim` of the name as an Object after it, it builds, and the
     // `Dim` gives a new Object (recorded:
     // `for_each_untyped_object_declared_after`).
