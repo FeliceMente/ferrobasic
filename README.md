@@ -4,9 +4,9 @@
 
 FerroBASIC aims to build existing B4X projects without changes, and to compile
 the same source to the JVM and Android, native desktop (Windows, macOS, Linux),
-iOS, WebAssembly and microcontrollers such as the Raspberry Pi Pico. It comes
-with a reference interpreter, a REPL and a Language Server, so you can use
-VS Code or any LSP-capable editor instead of a dedicated IDE.
+iOS, WebAssembly and microcontrollers such as the Raspberry Pi Pico. It
+currently provides a reference interpreter and a stateful REPL. A Language Server for VS Code
+and other LSP-capable editors is planned; diagnostics are the next M1 feature.
 
 > **Status: pre-alpha (milestone M1).** Level 0 programs (one module,
 > language core, `List`/`Map`) can be checked, run with the reference
@@ -32,7 +32,7 @@ used only to describe compatibility.
 ```text
 crates/
   syntax/         lexer, parser, lossless CST
-  project/        reader for .b4j/.b4a/.b4i/.b4r and .b4xlib
+  project/        reader for B4J project and module headers
   hir/            name resolution, types, target profiles
   mir/            typed IR and lowering
   interp/         reference interpreter and persistent runtime storage
@@ -57,7 +57,8 @@ their milestone starts: see `docs/architecture.md` and `docs/roadmap.md`.
 
 ## Building
 
-Requires a recent stable Rust toolchain (pinned in `rust-toolchain.toml`).
+Requires a recent stable Rust toolchain (`rust-toolchain.toml` selects the
+`stable` channel with rustfmt and Clippy; it does not pin a version).
 
 ```sh
 cargo build --workspace
@@ -65,7 +66,16 @@ cargo test --workspace
 cargo run -p ferro-cli -- --help
 ```
 
-Running and building a Level 0 program:
+`cargo test --workspace` runs the non-ignored workspace tests, including
+interpreter and standalone conformance and the REPL tutorial transcripts.
+Before a PR into `dev`, run `scripts/check-all.sh`: it also runs format,
+cross-platform Clippy, explicit conformance reports, the recorder dry run,
+fetched real-world corpus tests and the static Linux check. Docs-only changes
+may use `scripts/check-all.sh --quick`, skipping the static Linux binary.
+See [the testing guide](docs/compatibility-testing.md#local-checks).
+
+After building, use `target/debug/ferro` (or add `target/debug` to `PATH`)
+for these commands. Running and bundling a Level 0 program:
 
 ```sh
 ferro repl                        # start an interactive session
@@ -75,7 +85,8 @@ ferro bundle prog.bas -o prog     # bundle into a standalone executable
 ./prog a b
 ```
 
-A standalone binary is `ferro` with the program appended: it needs neither
+A standalone binary is `ferro` with the program embedded (appended on Linux
+and Windows, placed inside the executable on macOS): it needs neither
 FerroBASIC nor a JVM, only the system C library (or nothing at all when
 `ferro` is built for `x86_64-unknown-linux-musl`).
 

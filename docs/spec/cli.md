@@ -14,7 +14,9 @@ runtime plus the embedded program, the same approach as `deno compile`.
 
 ## Inputs
 
-Every command takes one `<input>`:
+`check`, `run` and `bundle` each take one `<input>` from the table below.
+`repl` reads submissions from stdin and takes no file argument; `licenses`,
+`version` and `help` need no source input.
 
 | Input | Meaning |
 | --- | --- |
@@ -50,6 +52,7 @@ Source text:
 ferro check  <input>                  parse and type-check, print diagnostics
 ferro run    <input> [-- <args>...]   check, then interpret; args go to AppStart
 ferro bundle <input> [-o <output>]    check, then write a standalone executable
+ferro repl                            start a persistent Level 0 session
 ferro licenses                        print the licence notices
 ferro version | help
 ```
@@ -189,7 +192,8 @@ Decisions behind them:
 - **`build` works on projects.** With no argument it uses the project file in
   the current directory. The default target follows the project type:
   `.b4j` → JVM, `.b4a` → Android, `.b4i` → iOS, `.b4r` → microcontroller;
-  `--target` overrides it. `ferro run` will accept a project too.
+  `--target` will override it. `ferro run` already accepts the Level 0 B4J
+  console projects described under "Inputs".
 - **Packaging** (an `.apk` or `.aab`, an `.ipa`, a macOS `.app`, installers)
   is part of `build`. The word is kept free for it, which is why the
   interpreter bundle is `bundle` and not `package`.
@@ -200,15 +204,18 @@ Decisions behind them:
 
 ## Exit codes
 
-| Code | `ferro check` / `run` / `bundle` | Standalone binary |
+| Code | `ferro check` / `run` / `bundle` / `repl` | Standalone binary |
 | --- | --- | --- |
 | 0 | success / program ended normally | program ended normally |
-| *n* | `run`: the program called `ExitApplication2(n)` | the program called `ExitApplication2(n)` |
-| 1 | `run`: uncaught runtime error | uncaught runtime error |
-| 2 | usage error, a planned command that is not implemented yet, unreadable input, cannot write output | corrupt embedded payload |
-| 3 | the program has compile errors | — |
+| *n* | `run` / `repl`: the program called `ExitApplication2(n)` | the program called `ExitApplication2(n)` |
+| 1 | `run` / piped `repl`: uncaught runtime error | uncaught runtime error |
+| 2 | usage error, a planned command that is not implemented yet, unreadable input, REPL input-read failure, cannot write bundle output | corrupt embedded payload |
+| 3 | compile errors; `repl`: piped compilation error or incomplete EOF | — |
 
-The B4J exit code for an uncaught error is *(open)*; 1 is provisional.
+Interactive REPL errors normally recover within the session; see
+[Interactive REPL](#interactive-repl). Program exit statuses keep their low
+8 bits. Exit code 1 for an uncaught B4J error is recorded by
+[`uncaught_error`](../../tests/conformance/level0/uncaught_error.meta.toml).
 
 ## Diagnostics
 
@@ -337,8 +344,8 @@ is embedded with `libsui` instead (see below).
     Apple Silicon, by scanning the file for its marker on Intel.
   - The output must pass `codesign --verify --strict` (a test checks this
     on macOS). Verified on an Apple Silicon Mac: native arm64, with
-    `cargo test --workspace` passing, and x86_64 through Rosetta. Not yet on
-    an Intel Mac.
+    `cargo test --workspace` passing, and x86_64 through Rosetta. CI also
+    exercises x86_64 on Intel macOS.
 - **Writing the output**: the binary is staged in a new, uniquely named file
   next to the output (never an existing file or a symlink), signed there on
   Intel Macs, then renamed over the output. If any step fails, an existing output
@@ -357,16 +364,19 @@ The first implementation is done when, on Linux x86_64 and in CI:
 
 1. Every `tests/conformance/level0/*.bas`, negative tests included, parses
    into a CST that prints back byte-identical.
-2. `ferro check` passes, with no errors, on every test whose status is not
-   `negative`.
-3. The negative tests are rejected by `ferro check` with exit code 3.
+2. `ferro check` passes on every test that FerroBASIC accepts according to
+   its metadata (`negative` and `ferro_rejects` tests are refused).
+3. The negative and `ferro_rejects` tests are rejected by `ferro check` with exit code 3.
 4. `ferro run` on every test that has an `.expected` file or, while none is
    recorded, a `.provisional` file produces identical stdout, and the uncaught
    error named in `uncaught_error` when there is one
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
-   Tests with neither file, such as `precedence_and_or`, are only checked.
+   Pending tests with neither file have no stdout expectation; their acceptance
+   and ending are checked. Deviation tests follow their documented contract
+   instead of comparing reference stdout. Currently no tests are pending or
+   provisional; `precedence_and_or` has a recording.
 5. For every test in point 4, `ferro bundle` produces a binary whose stdout and
    exit code are identical to `ferro run`'s. The binary must also keep working
    after the build tree and `ferro` itself are removed.
-6. `cargo fmt`, `cargo clippy -D warnings` and `cargo test` pass. There is no
-   `unsafe` code.
+6. The required checks in `scripts/check-all.sh` pass. FerroBASIC workspace
+   crates deny unsafe code through the workspace lints.

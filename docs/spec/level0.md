@@ -268,7 +268,7 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 | --- | --- | --- |
 | 1 | `Or` | short-circuit (recorded: `And` binds tighter) |
 | 2 | `And` | short-circuit |
-| 3 | `=` `<>` `<` `>` `<=` `>=` | left-associative; whether B4X accepts a chain like `a < b < c` is *(open)*, so the parser accepts it |
+| 3 | `=` `<>` `<` `>` `<=` `>=` | non-chainable: `a < b < c` and `If a = b = c Then` are refused (recorded: `chained_comparison_less`, `chained_comparison_equal`) |
 | 4 | `&` | binds tighter than comparisons; an operand holding an arithmetic operator (`+ - * / Mod`) or a negation needs parentheses (a syntax error otherwise, as in B4J) |
 | 5 | `+` `-` | |
 | 6 | `*` `/` `Mod` | |
@@ -378,7 +378,9 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
   `process_globals_for_each_untyped_before_typed_object`); over a name
   nothing declares there, it declares a module variable `Object` that every
   Sub sees (recorded: `process_globals_for_each_untyped_undeclared`); over a
-  `Type`'s or a built-in's name it is *(open)*, so an error (a Sub's name
+  `Type`'s name it builds, declaring an Object variable while leaving the
+  Type usable (run 21: `process_globals_for_each_untyped_named_like_type`).
+  A built-in's name is still *(open)*, so an error (a Sub's name
   follows the rules for loops named like a Sub). In `Class_Globals` a loop uses a variable declared with `Dim`.
 - **`Do While c … Loop`** / **`Do Until c … Loop`**: tests before each iteration.
   `Loop While`, `Loop Until` and a bare `Do … Loop` are syntax errors.

@@ -1,6 +1,11 @@
 # FerroBASIC architecture
 
-Version 0 · October 2026
+Design and implementation status · November 2026
+
+Implemented today: the B4J Level 0 frontend, interpreter, host standalone
+bundles and stateful REPL. The diagram includes planned Java/LLVM backends,
+LSP and DAP; they are not implemented. See [language-support.md](language-support.md)
+for current limits and [roadmap.md](roadmap.md) for milestones.
 
 The parser and analysis are shared by the compiler, the REPL and the editor
 tooling; a new target is just one more backend fed by the MIR.
@@ -51,6 +56,8 @@ flowchart LR
 Every implicit B4X conversion becomes an explicit node in the MIR, so the
 interpreter and all backends implement it the same way. Details and the type
 table are in [spec/level0.md](spec/level0.md).
+
+The following describes planned execution beyond Level 0:
 
 - **Events (Level 1)**: a Sub named `Prefix_Event` binds to the object
   initialized with that prefix; binding is resolved at compile time when possible.
@@ -122,8 +129,8 @@ one of the backends, not the project's IR.
 | Arduino AVR | LLVM AVR or C backend | embedded profile | After the Pico |
 | REPL and tests | Interpreter | interpreter runtime | Semantic reference |
 
-The native runtime (`crates/runtime`: strings, `List`, `Map`, exceptions,
-refcounting) is written once and builds for desktop, WASM and `no_std` on
+The planned native runtime (`crates/runtime`, M4: strings, `List`, `Map`,
+exceptions, refcounting) will be written once and build for desktop, WASM and `no_std` on
 microcontrollers.
 
 Possible additions, not decided: Cranelift for a JIT-backed REPL and fast
@@ -132,10 +139,12 @@ debug builds on desktop; `zig cc` / `cargo-zigbuild` as the cross-linker.
 ## Tooling: REPL, LSP, DAP, VS Code
 
 The tooling reuses the compiler's parser and analysis: there is no second
-implementation of the language inside the extension.
+implementation of the language inside the planned extension. Items 1–2 below
+are implemented; items 3–6 are planned, with diagnostics next in M1.
 
-1. **One CLI** (`ferro`) with the commands `check`, `run`, `bundle`, `compile`, `targets`,
-   `build`, `repl`, `test` and `fmt` (see `docs/spec/cli.md`, "Commands").
+1. **One CLI** (`ferro`): `check`, `run`, `bundle`, `repl`, `licenses`,
+   `version` and `help` work today; `compile`, `targets`, `build`, `test`
+   and `fmt` are reserved and exit 2 (see [the CLI spec](spec/cli.md#commands)).
 2. **REPL** on the interpreter: accepts statements, expressions, Subs and Types,
    keeping state between inputs. `crates/repl` owns fragment accumulation,
    definition sources and diagnostic source maps. `ferro-hir::check_session`
@@ -160,7 +169,7 @@ implementation of the language inside the extension.
 
 | Decision | Choice | Notes |
 | --- | --- | --- |
-| Compiler language | Rust | inkwell for LLVM, rowan for the CST, salsa for incrementality, tower-lsp |
+| Compiler language | Rust | rowan for the implemented CST; inkwell, salsa and tower-lsp are planned choices, not current dependencies |
 | First real backend | Java source, as B4X does | Direct bytecode through a class-file library later |
 | License | MIT | Permissive, so programs built with FerroBASIC carry no conditions beyond the notice; see `LICENSE` |
 | Project name | FerroBASIC | CLI `ferro`, crates `ferro-*` |

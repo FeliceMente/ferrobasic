@@ -105,6 +105,28 @@ file: its expected stdout, derived by hand from the sources in
 - Values computed by running Java code from the open-source runtime (for
   example number formatting) are `source` basis; record the JDK version used.
 
+### Current recording status
+
+At `dev` commit `6275b26` (2026-11-08), both conformance targets report
+**287 tests: 281 pass, 6 documented deviations, 0 failures, 0 pending and
+0 passes against provisional output**. Passes include negative tests rejected
+as expected. No `.provisional`
+files remain. [Run 21](research/recording-run-21.md), imported in
+[PR #102](https://github.com/FeliceMente/ferrobasic/pull/102), settled the last
+pending probes. The conformance gate is satisfied; M1 still needs Language
+Server diagnostics ([roadmap](roadmap.md#m1-task-breakdown-second-part)).
+
+`status` is the test classification, not a recording timestamp. Negative and
+deviation tests keep their classification after recording. `[recording]`
+records provenance: `product`, `version`, `platform`, `java`, `locale`,
+`machine_locale`, optional `machine_locale_output` (`same` or `differs`) and
+`date`. For an already-negative test refused by B4J, it also has
+`rejected = true`. This is distinct from top-level `ferro_rejects`, which
+describes FerroBASIC acceptance. A pending probe that fails to build currently
+gets builder output in `report.md` but no metadata rewrite; a person must
+classify it using that evidence, as for
+[`for_each_over_non_collection_object`](../tests/conformance/level0/for_each_over_non_collection_object.meta.toml).
+
 ## Where test programs come from
 
 1. Hand-written conformance tests, at least one per language feature.
@@ -114,7 +136,8 @@ file: its expected stdout, derived by hand from the sources in
    SHA-256 of each file, and `ferro-corpus-fetch` downloads them into
    `target/corpus` ([tests/corpus/README.md](../tests/corpus/README.md)).
    The tests that need them are `#[ignore]`d, so `cargo test --workspace`
-   needs no network; run them with `--ignored` after fetching.
+   needs no corpus download; run them with `--ignored` after fetching. Cargo
+   may still need network access to obtain Rust dependencies on a fresh machine.
 3. Generated programs (`crates/progen`, planned): a generator driven by the EBNF and the
    type rules produces well-typed, terminating Level 0 programs with bounded
    loops. Each mismatch is shrunk by delta debugging and kept as a regression test.
@@ -125,7 +148,8 @@ file: its expected stdout, derived by hand from the sources in
   has only line endings to normalize).
 - Number-to-string formatting is visible behaviour, so it must match B4X, not
   be normalized away.
-- `Map` iteration order must match B4X too (insertion order, to verify).
+- `Map` iteration order must match B4X too: insertion order, confirmed by
+  [`map_order`](../tests/conformance/level0/map_order.expected).
 
 ## The report
 
@@ -228,6 +252,39 @@ Unlike the planned generator of "Where test programs come from"
 (`crates/progen`), which makes well-typed programs to compare their output
 across targets, these families are mostly programs a build should refuse,
 to compare what it checks.
+
+## Local checks
+
+`cargo test --workspace` runs non-ignored unit, integration and doc tests:
+syntax/project/HIR/MIR/interpreter checks, interpreter and standalone
+conformance, CLI behavior, REPL sessions/tutorial transcripts, corpus metadata
+and recorder tests. It does not run format or Clippy, the explicit
+`ferro-difftest` reports, `ferro-recorder --dry-run`, the ignored downloaded
+project tests, or the static Linux build. It exercises the host OS;
+cross-target Clippy checks compilation but does not execute foreign binaries.
+
+Before every push into a `dev` PR, run:
+
+```sh
+scripts/check-all.sh
+```
+
+For docs/comments-only changes, use this alternative to skip the static Linux
+release build:
+
+```sh
+scripts/check-all.sh --quick
+```
+
+The script needs rustup, rustfmt, Clippy and the Rust standard libraries for
+`x86_64-unknown-linux-gnu`, `x86_64-pc-windows-gnu`,
+`aarch64-apple-darwin` and `x86_64-apple-darwin` (install missing ones with
+`rustup target add <target>`). Corpus fetching also needs `curl`; the static
+check needs the musl target and `file`. It stops at the first failed step.
+`--offline` skips the corpus download and, if not already fetched, its tests;
+it does not force Cargo offline. Report every skip from the final summary.
+The [steward skill](../.claude/skills/steward/SKILL.md) permits `--quick` for
+docs/comments-only pushes. Checker changes also need `ferro-compare`.
 
 ## CI
 

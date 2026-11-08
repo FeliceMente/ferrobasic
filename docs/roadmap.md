@@ -56,8 +56,8 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
       Provisional rules are listed in [open-questions.md](open-questions.md).
 - [x] `ferro-mir`: typed IR with explicit `Convert`, lowered loops and smart strings.
 - [x] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
-- [x] `ferro check` / `ferro run`: every conformance test with a provisional
-      output matches it (now `ferro-difftest`, in `crates/difftest`).
+- [x] `ferro check` / `ferro run`: conformance matches the recordings, with
+      documented deviations (`ferro-difftest`, in `crates/difftest`).
 - [x] `ferro bundle`: standalone executable for the host (payload appended to
       `ferro`; embedded with `libsui` on macOS). Verified on Linux x86_64,
       glibc and musl (fully static), on Windows x64, and on macOS arm64 and
@@ -81,7 +81,13 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       Specified in `docs/spec/cli.md`; [tutorial](tutorial.md#9-the-interactive-repl).
 - [ ] Language Server with diagnostics: the same errors as `ferro check`,
       published as the user types, on the lossless CST.
-- [ ] Gate: the conformance tests pass in the interpreter and as standalone
+- [x] Conformance gate: the conformance tests pass in the interpreter and as standalone
       binaries. Recording run 21 (2026-11-08) settles the remaining probes:
       287 tests, 281 pass, 6 documented deviations, none pending or passing
       against provisional output, and none failing on either target.
+
+The conformance gate is satisfied; **M1 remains open** until its remaining
+scope, including Language Server diagnostics, is implemented. Run 21 imported
+eight expected-output files and one build-time refusal; its retained
+[report](research/recording-run-21.md) records 89 selected tests, one build
+failure and no disagreements. The refusal is now a negative conformance test.
