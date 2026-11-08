@@ -14,15 +14,49 @@ use crate::ty::{RecordId, Ty, builtin_type, can_convert};
 
 /// Lowers a parsed module.
 pub fn lower(root: &SyntaxNode) -> (Module, Vec<Diagnostic>) {
+    let (module, diags, _) = lower_session(root, &SessionBindings::default());
+    (module, diags)
+}
+
+/// Opaque checked session bindings. Cloning stages a submission atomically.
+#[derive(Debug, Clone, Default)]
+pub struct SessionBindings {
+    globals: Vec<(Var, bool)>,
+}
+
+pub fn lower_session(
+    root: &SyntaxNode,
+    bindings: &SessionBindings,
+) -> (Module, Vec<Diagnostic>, SessionBindings) {
     let mut lowerer = Lowerer::default();
+    for (var, loop_declared) in &bindings.globals {
+        let origin = if *loop_declared {
+            Origin::Counter
+        } else if var.is_const {
+            Origin::Const
+        } else {
+            Origin::Dim
+        };
+        lowerer.declare_global(var.name.clone(), var.ty.clone(), var.range, origin);
+        let id = *lowerer.globals.get(&key(&var.name)).unwrap();
+        lowerer.module.globals[id.0 as usize].is_const = var.is_const;
+        if var.is_const {
+            lowerer.const_states.insert(id, ConstState::Single);
+        }
+    }
     lowerer.module_items(root);
+    let globals = lowerer
+        .module
+        .globals
+        .iter()
+        .map(|var| (var.clone(), lowerer.declared_by_loop(&key(&var.name))))
+        .collect();
     let Lowerer {
         module, mut diags, ..
     } = lowerer;
-    // Some declarations are visited by more than one pass.
     diags.sort_by(|a, b| (a.range.start(), &a.message).cmp(&(b.range.start(), &b.message)));
     diags.dedup();
-    (module, diags)
+    (module, diags, SessionBindings { globals })
 }
 
 #[derive(Default)]
@@ -1081,7 +1115,7 @@ impl Lowerer {
     /// else there declares makes it a module variable `Object`, which every
     /// Sub sees (recorded: `process_globals_for_each_untyped_undeclared`).
     /// Not recorded, so left undeclared and refused when lowered: over the
-    /// name of a Sub, a `Type`, a built-in or `Bit`, after a use or an
+    /// name of a Sub, a built-in or `Bit`, after a use or an
     /// assignment of the name there, and with a `For … As` over it there.
     fn declare_untyped_loop_globals(&mut self, sub: &SyntaxNode) {
         let mut seen = HashSet::new();
@@ -1118,7 +1152,10 @@ impl Lowerer {
             if !self.globals.contains_key(&k)
                 && !skip.contains(&k)
                 && !self.refused_loop_names.contains(&k)
-                && self.plain_name(&text)
+                // A Type's name can also declare a variable (run 21:
+                // process_globals_for_each_untyped_named_like_type).
+                && !self.subs.contains_key(&k)
+                && builtins::lookup(Owner::Global, &text).is_none()
                 && !text.eq_ignore_ascii_case("Bit")
             {
                 self.declare_global(text, Ty::Object, range(&name), Origin::UntypedForEach);
@@ -1913,7 +1950,7 @@ impl Lowerer {
                 let collection = self.expr(&coll);
                 let element = match &collection.ty {
                     Ty::Array(elem, 1) => (**elem).clone(),
-                    Ty::List | Ty::Iterable | Ty::Object => Ty::Object,
+                    Ty::List | Ty::Iterable => Ty::Object,
                     Ty::Error => Ty::Error,
                     other => {
                         let other = self.ty_name(other);

@@ -494,7 +494,7 @@ fn caught_conversion_errors_have_their_kind() {
         stdout_of(&p),
         "java.lang.NumberFormatException: For input string: \"abc\"\n\
          java.lang.RuntimeException: Cannot parse: yes as boolean\n\
-         java.lang.ClassCastException: class java.lang.Boolean cannot be cast to class java.lang.Number\n\
+         java.lang.NumberFormatException: For input string: \"true\"\n\
          java.lang.ClassCastException: class java.lang.Integer cannot be cast to class java.util.Map\n"
     );
 }

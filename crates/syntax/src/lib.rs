@@ -10,7 +10,7 @@ mod parser;
 use std::fmt::Write;
 
 pub use kind::{FerroLanguage, SyntaxKind};
-pub use parser::{Parse, parse};
+pub use parser::{Completeness, FragmentKind, Parse, parse, parse_fragment};
 pub use rowan::{NodeOrToken, TextRange, TextSize};
 
 /// A node of the lossless syntax tree.

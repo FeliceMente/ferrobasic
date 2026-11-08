@@ -56,8 +56,8 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
       Provisional rules are listed in [open-questions.md](open-questions.md).
 - [x] `ferro-mir`: typed IR with explicit `Convert`, lowered loops and smart strings.
 - [x] `ferro-interp`: values, number formatting, `List`, `Map`, errors with kinds.
-- [x] `ferro check` / `ferro run`: every conformance test with a provisional
-      output matches it (now `ferro-difftest`, in `crates/difftest`).
+- [x] `ferro check` / `ferro run`: conformance matches the recordings, with
+      documented deviations (`ferro-difftest`, in `crates/difftest`).
 - [x] `ferro bundle`: standalone executable for the host (payload appended to
       `ferro`; embedded with `libsui` on macOS). Verified on Linux x86_64,
       glibc and musl (fully static), on Windows x64, and on macOS arm64 and
@@ -76,11 +76,20 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 
 The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs-code).
 
-- [ ] `ferro repl` on the interpreter: accepts statements and whole Subs, and
-      keeps state between inputs. Its behaviour goes into `docs/spec/cli.md`
-      first.
-- [ ] Language Server with diagnostics: the same errors as `ferro check`,
-      published as the user types, on the lossless CST.
-- [ ] Gate: the conformance tests pass in the interpreter and as standalone
-      binaries. On 2026-11-04 none fails on either target; 2 tests are
-      pending, both for the next run.
+- [x] `ferro repl` on the interpreter: statements, bare expressions, Subs
+      and Types, with persistent state and interactive error recovery.
+      Specified in `docs/spec/cli.md`; [tutorial](tutorial.md#9-the-interactive-repl).
+- [x] Language Server with diagnostics: `ferro lsp` shares `ferro check`,
+      checking open buffers as the user types. [Setup and limits](language-server.md).
+      Multi-module linking remains Level 1; it is not supplied by the server.
+- [x] Conformance gate: the conformance tests pass in the interpreter and as standalone
+      binaries. Recording run 21 (2026-11-08) settles the remaining probes:
+      287 tests, 281 pass, 6 documented deviations, none pending or passing
+      against provisional output, and none failing on either target.
+
+The conformance gate and the M1 tooling items above are implemented.
+[Deferred REPL improvements](spec/cli.md#deferred-repl-improvements) have no
+assigned milestone or schedule. Run 21 imported
+eight expected-output files and one build-time refusal; its retained
+[report](research/recording-run-21.md) records 89 selected tests, one build
+failure and no disagreements. The refusal is now a negative conformance test.

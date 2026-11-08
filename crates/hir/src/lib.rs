@@ -28,3 +28,15 @@ pub fn check(root: &SyntaxNode) -> (Module, Vec<Diagnostic>) {
 
 #[cfg(test)]
 mod tests;
+
+/// Persistent bindings for fragment compilation; ordinary checking starts empty.
+pub use lower::SessionBindings;
+
+/// Checks a synthetic REPL module against previously accepted bindings.
+/// Only adopt the returned bindings when diagnostics are empty.
+pub fn check_session(
+    root: &SyntaxNode,
+    bindings: &SessionBindings,
+) -> (Module, Vec<Diagnostic>, SessionBindings) {
+    lower::lower_session(root, bindings)
+}

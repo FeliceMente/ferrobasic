@@ -14,7 +14,10 @@ runtime plus the embedded program, the same approach as `deno compile`.
 
 ## Inputs
 
-Every command takes one `<input>`:
+`check`, `run` and `bundle` each take one `<input>` from the table below.
+`repl` reads submissions from stdin and takes no file argument; `licenses`,
+`version` and `help` need no source input. `lsp` exchanges protocol messages over
+stdin/stdout and takes no arguments (see [the language server](../language-server.md)).
 
 | Input | Meaning |
 | --- | --- |
@@ -50,6 +53,8 @@ Source text:
 ferro check  <input>                  parse and type-check, print diagnostics
 ferro run    <input> [-- <args>...]   check, then interpret; args go to AppStart
 ferro bundle <input> [-o <output>]    check, then write a standalone executable
+ferro repl                            start a persistent Level 0 session
+ferro lsp                             start the stdio language server
 ferro licenses                        print the licence notices
 ferro version | help
 ```
@@ -119,6 +124,56 @@ ferro version | help
 - `ferro-difftest` drives the conformance tests and prints the compatibility
   report ([../compatibility-testing.md](../compatibility-testing.md#the-report)).
 
+### Interactive REPL
+
+`ferro repl` starts a Level 0 session; it takes no file argument. See the
+[REPL tutorial](../tutorial.md#9-the-interactive-repl). Statements execute once; bare expressions
+print with Log's conversions. Assignment wins (`n = 3` assigns, `(n = 3)`
+compares). Calls returning values print once; void calls add no output.
+Statements, complete Subs, Type declarations, multiline blocks and strings
+are accepted. An incomplete construct gets a continuation prompt, not an
+error, until EOF or invalid syntax. Blank lines do not finish a block.
+
+Session variables are module globals. Values, aliases, collections, random
+state and LastException survive submissions. Types are fixed; a same-type
+Dim resets its value normally. Constants cannot be redefined. Types cannot
+be redeclared; reset to change their layout. A Sub can be replaced with the
+same parameter count/types and return type; dependent Subs are rechecked.
+New declarations that would change a previously checked Sub's local bindings
+are refused; choose another name. Definitions are submitted one at a time. Type declarations must be standalone
+submissions, not nested in blocks or Subs.
+Failed compilation leaves the session unchanged. Compilation commits the
+submission's declarations before execution; an uncaught runtime error keeps
+completed mutations and those declarations, unwinds execution and allows
+another interactive submission.
+
+Interactive prompts (`> ` and `... `) go to stderr; program output and
+expression results go to stdout. There is no input echo, history or line
+editing supplied by FerroBASIC. Ctrl+C terminates the process; recoverable
+execution cancellation is deferred. `:help`, `:quit`, `:reset` and `:cancel`
+are control lines outside string literals. Cancel discards pending input;
+reset clears pending input, definitions and runtime state. Normal EOF or
+quit exits 0; incomplete EOF exits 3. Piped input has no prompts and stops
+on the first error: 3 for compilation, 1 for runtime. Bad arguments and
+input-read failures exit 2. ExitApplication/ExitApplication2 terminate the
+session with the ordinary exit status. Explicit AppStart, Process_Globals,
+project headers and project-only directives are refused in a session.
+Compact diagnostics identify the entered submission (`<repl:N>:line:column`),
+including errors in previously defined Subs. The session does not execute previous input again.
+
+#### Deferred REPL improvements
+
+These are proposals with no assigned milestone or schedule:
+
+- Command history: recall previous submissions.
+- Line editing supplied by FerroBASIC: edit the current input inside the REPL.
+  Terminal-provided editing may already work; FerroBASIC currently reads lines.
+- A session command to load commands or source from a file. Piping input into
+  `ferro repl` already works, but does not load a file into an existing session.
+- Recoverable interruption of executing BASIC code, returning to a usable
+  prompt. Ctrl+C currently terminates the process. `:cancel` only discards
+  pending input; it cannot interrupt code that is executing.
+
 ### Planned commands
 
 These names are reserved. Until a command is implemented it exits with code 2
@@ -130,7 +185,7 @@ something else instead (`ferro build` on a module points to `ferro bundle`).
 | `ferro compile <input> [--target <t>] [--emit <kind>] [-o <output>]` | compile one module or project for this machine (no `--target`) or for another target | JVM backend (M3), native and WebAssembly (M4), microcontrollers (M5) |
 | `ferro targets` | list the targets and what each needs installed | `compile` |
 | `ferro build [<project>]` | build a project from its project file: compile for the project's default target, then package the result where the target needs it | JVM backend (M3) |
-| `ferro repl`, `ferro test`, `ferro fmt` | interactive REPL, conformance runner, formatter | M1 and later |
+| `ferro test`, `ferro fmt` | conformance runner, formatter | M1 and later |
 
 Decisions behind them:
 
@@ -152,7 +207,8 @@ Decisions behind them:
 - **`build` works on projects.** With no argument it uses the project file in
   the current directory. The default target follows the project type:
   `.b4j` → JVM, `.b4a` → Android, `.b4i` → iOS, `.b4r` → microcontroller;
-  `--target` overrides it. `ferro run` will accept a project too.
+  `--target` will override it. `ferro run` already accepts the Level 0 B4J
+  console projects described under "Inputs".
 - **Packaging** (an `.apk` or `.aab`, an `.ipa`, a macOS `.app`, installers)
   is part of `build`. The word is kept free for it, which is why the
   interpreter bundle is `bundle` and not `package`.
@@ -163,15 +219,18 @@ Decisions behind them:
 
 ## Exit codes
 
-| Code | `ferro check` / `run` / `bundle` | Standalone binary |
+| Code | `ferro check` / `run` / `bundle` / `repl` | Standalone binary |
 | --- | --- | --- |
 | 0 | success / program ended normally | program ended normally |
-| *n* | `run`: the program called `ExitApplication2(n)` | the program called `ExitApplication2(n)` |
-| 1 | `run`: uncaught runtime error | uncaught runtime error |
-| 2 | usage error, a planned command that is not implemented yet, unreadable input, cannot write output | corrupt embedded payload |
-| 3 | the program has compile errors | — |
+| *n* | `run` / `repl`: the program called `ExitApplication2(n)` | the program called `ExitApplication2(n)` |
+| 1 | `run` / piped `repl`: uncaught runtime error | uncaught runtime error |
+| 2 | usage error, a planned command that is not implemented yet, unreadable input, REPL input-read failure, cannot write bundle output | corrupt embedded payload |
+| 3 | compile errors; `repl`: piped compilation error or incomplete EOF | — |
 
-The B4J exit code for an uncaught error is *(open)*; 1 is provisional.
+Interactive REPL errors normally recover within the session; see
+[Interactive REPL](#interactive-repl). Program exit statuses keep their low
+8 bits. Exit code 1 for an uncaught B4J error is recorded by
+[`uncaught_error`](../../tests/conformance/level0/uncaught_error.meta.toml).
 
 ## Diagnostics
 
@@ -300,8 +359,8 @@ is embedded with `libsui` instead (see below).
     Apple Silicon, by scanning the file for its marker on Intel.
   - The output must pass `codesign --verify --strict` (a test checks this
     on macOS). Verified on an Apple Silicon Mac: native arm64, with
-    `cargo test --workspace` passing, and x86_64 through Rosetta. Not yet on
-    an Intel Mac.
+    `cargo test --workspace` passing, and x86_64 through Rosetta. CI also
+    exercises x86_64 on Intel macOS.
 - **Writing the output**: the binary is staged in a new, uniquely named file
   next to the output (never an existing file or a symlink), signed there on
   Intel Macs, then renamed over the output. If any step fails, an existing output
@@ -320,16 +379,19 @@ The first implementation is done when, on Linux x86_64 and in CI:
 
 1. Every `tests/conformance/level0/*.bas`, negative tests included, parses
    into a CST that prints back byte-identical.
-2. `ferro check` passes, with no errors, on every test whose status is not
-   `negative`.
-3. The negative tests are rejected by `ferro check` with exit code 3.
+2. `ferro check` passes on every test that FerroBASIC accepts according to
+   its metadata (`negative` and `ferro_rejects` tests are refused).
+3. The negative and `ferro_rejects` tests are rejected by `ferro check` with exit code 3.
 4. `ferro run` on every test that has an `.expected` file or, while none is
    recorded, a `.provisional` file produces identical stdout, and the uncaught
    error named in `uncaught_error` when there is one
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
-   Tests with neither file, such as `precedence_and_or`, are only checked.
+   Pending tests with neither file have no stdout expectation; their acceptance
+   and ending are checked. Deviation tests follow their documented contract
+   instead of comparing reference stdout. Currently no tests are pending or
+   provisional; `precedence_and_or` has a recording.
 5. For every test in point 4, `ferro bundle` produces a binary whose stdout and
    exit code are identical to `ferro run`'s. The binary must also keep working
    after the build tree and `ferro` itself are removed.
-6. `cargo fmt`, `cargo clippy -D warnings` and `cargo test` pass. There is no
-   `unsafe` code.
+6. The required checks in `scripts/check-all.sh` pass. FerroBASIC workspace
+   crates deny unsafe code through the workspace lints.

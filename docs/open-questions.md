@@ -129,8 +129,10 @@ related tests stay `pending-recording`.
       names; whether `js` is its own backend or goes through `wasm`; the
       format and timing of a `ferro.toml` project file.
 
-Provisional runtime behaviour in `crates/mir` and `crates/interp` (each
-needs a recorded test):
+Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
+items link their evidence; unchecked parts still need investigation or probes.
+There are currently no pending or provisional corpus results; this does not
+mean that every possible language question has been settled.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:
       `level0/for_evaluation_order`). That the start is assigned after the
@@ -212,7 +214,8 @@ needs a recorded test):
       identity: two Maps with the same contents are two keys (recording:
       `level0/map_as_map_key`).
 
-Provisional type-checking rules in `crates/hir` (each needs a recorded test):
+Type-checking questions investigated in `crates/hir`; checked items have
+evidence, while unchecked parts remain open:
 
 - [x] Calling a member on an `Object` (`o.Size`) is a compile error: B4J
       says "Unknown type: Object" (recording: `level0/member_on_object`).
@@ -471,13 +474,17 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_for_each_untyped_before_typed_object`,
       `level0/process_globals_for_each_untyped_undeclared`), as FerroBASIC
       does.
-- [ ] A `For Each` over an `Object` that holds a number, not a
-      collection: which exception B4J raises. FerroBASIC stops with an
-      internal error (`level0/for_each_over_non_collection_object`).
-- [ ] Inside `Process_Globals`, over a `Type`'s name nothing else declares
-      (`level0/process_globals_for_each_untyped_named_like_type`), and over
-      a name nothing else declares that is read or assigned before the loop
-      there: FerroBASIC refuses them.
+- [x] A `For Each` over a collection statically typed `Object` is refused
+      at build time: generated Java cannot convert Object to IterableList
+      (recording run 21: `level0/for_each_over_non_collection_object`).
+      FerroBASIC now refuses it during type checking instead of raising an
+      internal error at runtime.
+- [x] Inside `Process_Globals`, an untyped `For Each` over a `Type`'s name
+      declares a module variable Object and leaves the last item there
+      (recording run 21:
+      `level0/process_globals_for_each_untyped_named_like_type`, prints 6).
+- [ ] Inside `Process_Globals`, over a name nothing else declares that is
+      read or assigned before the untyped loop there: FerroBASIC refuses it.
 - [x] In `Process_Globals`, a module variable read or assigned before its
       `Dim … As Object` there builds, one variable, and the read gives
       `Null` (recording run 19:
@@ -507,6 +514,25 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 - [x] A new `Object` converted to a number: `BA.ObjectToNumber` parses its
       text, a `NumberFormatException` (source, then recording run 18:
       `level0/object_plain_to_number`), as FerroBASIC does.
+- [x] Any other non-number in an `Object` converted to a number (an
+      initialised List, `Null`, a Char, a Boolean): `BA.ObjectToNumber`
+      parses `String.valueOf(o)`, so a `NumberFormatException` (`"null"`
+      for `Null`), and a Char `"7"` is 7 (source; that the compiler calls
+      it for `Dim i As Int = o` is confirmed by recording run 21:
+      `level0/object_list_to_int`, `level0/object_null_to_int`,
+      `level0/object_char_to_int`, `level0/object_boolean_to_double`).
+      FerroBASIC raised `ClassCastException`
+      and `NullPointerException` before.
+- [x] A non-`Boolean` in an `Object` converted to a `Boolean` uses
+      `BA.ObjectToBoolean`: the number 1 raises RuntimeException
+      ("Cannot parse: 1 as boolean"). `ObjectToChar` uses `o.toString()`:
+      the number 65 gives "6" (recording run 21:
+      `level0/object_number_to_boolean`, `level0/object_number_to_char`).
+      FerroBASIC now follows these helpers instead of a class cast.
+- [x] A String in an `Object` converted to a `Long` uses
+      `BA.ObjectToLongNumber` / `Long.parseLong`: "1.5" raises
+      NumberFormatException, while conversion to Int gives 1 (recording
+      run 21: `level0/object_string_to_long`). FerroBASIC follows both.
 - [ ] How a new `Object` prints: `java.lang.Object@<hash>`, the identity
       hash, which changes on every run, as an array's does; FerroBASIC
       prints a hash too, which no recording can compare.
@@ -604,11 +630,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
   - [x] a `Dim` with no value in a Sub with a module constant's name is
         refused: "Cannot redeclare a const variable." (recording:
         `level0/const_local_dim_no_value`);
-  - [ ] a `For Each` without `As` over a constant is refused ("Current
+  - [x] a `For Each` without `As` over a constant is refused ("Current
         declaration does not match previous one", recording:
-        `level0/const_for_each_untyped`); two `Const`s of an `Int` build,
-        the second setting its value (recording: `level0/const_twice`),
-        and whether they may then be assigned is open; any other loop over a constant
+        [`level0/const_for_each_untyped`](../tests/conformance/level0/const_for_each_untyped.meta.toml)).
+  - [x] two `Const`s of an `Int` build, the second setting its value
+        (recording: [`level0/const_twice`](../tests/conformance/level0/const_twice.expected)).
+  - [ ] whether those two constants may then be assigned; any other loop over a constant
         (in `Process_Globals`, over a local constant, of another type than
         `Int`) or declaration again of its name (a third one).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
@@ -633,7 +660,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 ## Compatibility testing
 
 - [ ] Check that the B4X licence allows automated use of its compilers for testing; never redistribute B4X binaries.
-- [ ] Confirm the command-line builders for B4J, B4A and B4R and their options.
+- [x] B4J command-line building: `B4JBuilder.exe -Task=Build
+      -BaseFolder=<folder> -Project=<test>.b4j`, used by the
+      [recorder](../tools/recorder/README.md) and evidenced by
+      [run 21](research/recording-run-21.md). `--no-base-folder` handles
+      builders that do not accept `-BaseFolder`.
+- [ ] Confirm the command-line builders for B4A and B4R and their options.
 - [ ] Decide which deviations are acceptable by design.
 
 ## Project

@@ -257,6 +257,11 @@ pub fn convert(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value,
         Ty::Byte | Ty::Short | Ty::Int | Ty::Long | Ty::Float | Ty::Double => {
             to_number(v, from, to, program)
         }
+        // BA.ObjectToBoolean parses String.valueOf for every non-Boolean.
+        Ty::Boolean if *from == Ty::Object && !matches!(v, Value::Bool(_)) => {
+            let text = to_string_from(&v, from, program)?;
+            convert(text, &Ty::String, to, program)
+        }
         Ty::Boolean => match v {
             Value::Bool(_) => Ok(v),
             Value::Str(ref s) => match to_rust(s).as_str() {
@@ -270,6 +275,15 @@ pub fn convert(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value,
             Value::Null => Err(Exc::bare(NULL_POINTER)),
             _ => Err(class_cast(&v, "java.lang.Boolean", program)),
         },
+        // BA.ObjectToChar calls o.toString(), so Null raises before
+        // CharFromString can turn an empty string into Chr(0).
+        Ty::Char if *from == Ty::Object && !matches!(v, Value::Char(_)) => {
+            if matches!(v, Value::Null) {
+                return Err(Exc::bare(NULL_POINTER));
+            }
+            let text = to_string_from(&v, from, program)?;
+            convert(text, &Ty::String, to, program)
+        }
         Ty::Char => match v {
             Value::Char(_) => Ok(v),
             Value::Str(ref s) => Ok(Value::Char(s.first().copied().unwrap_or(0))),
@@ -312,6 +326,12 @@ pub fn convert(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value,
 }
 
 fn to_number(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value, Exc> {
+    if *from == Ty::Object && *to == Ty::Long && !v.is_number() {
+        let Value::Str(text) = to_string_from(&v, from, program)? else {
+            unreachable!("Object string conversion returns a String")
+        };
+        return parse_long(&text).map(Value::Long);
+    }
     let cast = |v: &Value| numeric_cast(v, to).ok_or_else(|| Exc::internal("numeric cast"));
     match &v {
         // Object → Long keeps an integer box exact (`ObjectToLongNumber`);
@@ -328,15 +348,50 @@ fn to_number(v: Value, from: &Ty, to: &Ty, program: &Program) -> Result<Value, E
         // Java widening of a char (not reachable from Level 0 type checking).
         Value::Char(_) if !matches!(from, Ty::Object) => cast(&v),
         Value::Str(_) => cast(&Value::Double(parse_number(&v)?)),
-        Value::Null => Err(Exc::bare(NULL_POINTER)),
         // `BA.ObjectToNumber` and `ObjectToLongNumber` parse
-        // `String.valueOf(o)`, so this always raises `For input string:
-        // "java.lang.Object@…"`.
-        Value::Plain(_) => {
+        // `String.valueOf(o)` for anything but a `Number`: `Null` is
+        // `For input string: "null"`, a new `Object` `"java.lang.Object@…"`,
+        // a List `"[1, 2]"`, and a Char `"7"` is 7
+        // (docs/research/level0-semantics.md, "Object to a number").
+        _ if matches!(from, Ty::Object) => {
             let text = to_string_from(&v, &Ty::Object, program)?;
             cast(&Value::Double(parse_number(&text)?))
         }
+        // A null String: `Double.parseDouble(null)`.
+        Value::Null => Err(Exc::bare(NULL_POINTER)),
         _ => Err(class_cast(&v, "java.lang.Number", program)),
+    }
+}
+
+/// Long.parseLong(String.valueOf(o)), including Java's UTF-16 digits.
+fn parse_long(text: &[u16]) -> Result<i64, Exc> {
+    let fail = || {
+        Exc::new(
+            NUMBER_FORMAT,
+            format!("For input string: \"{}\"", to_rust(text)),
+        )
+    };
+    let (negative, digits) = match text.first().copied() {
+        Some(0x2d) => (true, &text[1..]),
+        Some(0x2b) => (false, &text[1..]),
+        _ => (false, text),
+    };
+    if digits.is_empty() {
+        return Err(fail());
+    }
+    // Accumulate negatively so MIN_VALUE fits without overflowing.
+    let mut value = 0i64;
+    for &c in digits {
+        let digit = crate::builtins::java_digit(c, 10).ok_or_else(fail)?;
+        value = value
+            .checked_mul(10)
+            .and_then(|v| v.checked_sub(i64::from(digit)))
+            .ok_or_else(fail)?;
+    }
+    if negative {
+        Ok(value)
+    } else {
+        value.checked_neg().ok_or_else(fail)
     }
 }
 
@@ -514,13 +569,123 @@ mod tests {
             o(Value::str("5"), Ty::Int).unwrap(),
             Value::Int(5)
         ));
-        assert_eq!(o(Value::Bool(true), Ty::Int).unwrap_err().kind, CLASS_CAST);
-        assert_eq!(o(Value::Int(1), Ty::Boolean).unwrap_err().kind, CLASS_CAST);
+        // `BA.ObjectToNumber` parses `String.valueOf(o)` of a non-number.
+        assert_eq!(
+            o(Value::Bool(true), Ty::Int).unwrap_err().kind,
+            NUMBER_FORMAT
+        );
+        assert_eq!(o(Value::Null, Ty::Long).unwrap_err().kind, NUMBER_FORMAT);
+        assert!(matches!(
+            o(Value::Char(u16::from(b'7')), Ty::Int).unwrap(),
+            Value::Int(7)
+        ));
+        // A null String: `Double.parseDouble(null)`.
+        assert_eq!(
+            conv(Value::Null, Ty::String, Ty::Int).unwrap_err().kind,
+            NULL_POINTER
+        );
+        assert_eq!(o(Value::Int(1), Ty::Boolean).unwrap_err().kind, RUNTIME);
         assert_eq!(o(Value::Int(1), Ty::List).unwrap_err().kind, CLASS_CAST);
         assert_eq!(o(Value::str("x"), Ty::Map).unwrap_err().kind, CLASS_CAST);
         assert!(
             matches!(o(Value::Null, Ty::List).unwrap(), Value::List(w) if w.borrow().is_none())
         );
+    }
+
+    #[test]
+    fn object_boolean_and_char_helpers() {
+        let o = |v, to| conv(v, Ty::Object, to);
+        assert!(matches!(
+            o(Value::Bool(true), Ty::Boolean).unwrap(),
+            Value::Bool(true)
+        ));
+        assert!(matches!(
+            o(Value::str("false"), Ty::Boolean).unwrap(),
+            Value::Bool(false)
+        ));
+        for (v, text) in [
+            (Value::Int(1), "1"),
+            (Value::Null, "null"),
+            (Value::str("TRUE"), "TRUE"),
+        ] {
+            let e = o(v, Ty::Boolean).unwrap_err();
+            assert_eq!(e.kind, RUNTIME);
+            assert_eq!(
+                e.message.as_deref(),
+                Some(format!("Cannot parse: {text} as boolean").as_str())
+            );
+        }
+        for (v, c) in [
+            (Value::Int(65), 0x36),
+            (Value::Char(65), 65),
+            (Value::str(""), 0),
+            (Value::str("😀"), 0xd83d),
+        ] {
+            assert!(matches!(o(v, Ty::Char).unwrap(), Value::Char(actual) if actual == c));
+        }
+        assert_eq!(o(Value::Null, Ty::Char).unwrap_err().kind, NULL_POINTER);
+        assert!(matches!(
+            conv(Value::Int(65), Ty::Int, Ty::Char).unwrap(),
+            Value::Char(65)
+        ));
+    }
+
+    #[test]
+    fn object_long_parses_java_signed_decimal() {
+        for (text, value) in [
+            ("9223372036854775807", i64::MAX),
+            ("-9223372036854775808", i64::MIN),
+            ("+42", 42),
+            ("-0", 0),
+            ("００７", 7),
+            ("١٢", 12),
+        ] {
+            assert!(
+                matches!(conv(Value::str(text), Ty::Object, Ty::Long).unwrap(), Value::Long(n) if n == value)
+            );
+        }
+        for text in [
+            "9223372036854775808",
+            "-9223372036854775809",
+            "1.5",
+            "1e3",
+            " 1",
+            "1 ",
+            "",
+            "+",
+            "-",
+            "𝟙",
+        ] {
+            let e = conv(Value::str(text), Ty::Object, Ty::Long).unwrap_err();
+            assert_eq!(e.kind, NUMBER_FORMAT);
+            assert_eq!(
+                e.message.as_deref(),
+                Some(format!("For input string: \"{text}\"").as_str())
+            );
+        }
+        let e = conv(Value::Null, Ty::Object, Ty::Long).unwrap_err();
+        assert_eq!(e.kind, NUMBER_FORMAT);
+        assert_eq!(e.message.as_deref(), Some("For input string: \"null\""));
+        assert!(matches!(
+            conv(Value::str("1.5"), Ty::Object, Ty::Int).unwrap(),
+            Value::Int(1)
+        ));
+        assert!(matches!(
+            conv(Value::str("1.5"), Ty::String, Ty::Long).unwrap(),
+            Value::Long(1)
+        ));
+        assert!(matches!(
+            conv(Value::Char(55), Ty::Object, Ty::Long).unwrap(),
+            Value::Long(7)
+        ));
+        assert!(matches!(
+            conv(Value::Double(1.5), Ty::Object, Ty::Long).unwrap(),
+            Value::Long(1)
+        ));
+        assert!(matches!(
+            conv(Value::Long(i64::MAX), Ty::Object, Ty::Long).unwrap(),
+            Value::Long(i64::MAX)
+        ));
     }
 
     #[test]

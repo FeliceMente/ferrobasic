@@ -1,6 +1,11 @@
 # FerroBASIC architecture
 
-Version 0 · October 2026
+Design and implementation status · November 2026
+
+Implemented today: the B4J Level 0 frontend, interpreter, host standalone
+bundles, stateful REPL and diagnostics-only stdio language server. The diagram
+also includes planned Java/LLVM backends and DAP. See [language-support.md](language-support.md)
+for current limits and [roadmap.md](roadmap.md) for milestones.
 
 The parser and analysis are shared by the compiler, the REPL and the editor
 tooling; a new target is just one more backend fed by the MIR.
@@ -51,6 +56,8 @@ flowchart LR
 Every implicit B4X conversion becomes an explicit node in the MIR, so the
 interpreter and all backends implement it the same way. Details and the type
 table are in [spec/level0.md](spec/level0.md).
+
+The following describes planned execution beyond Level 0:
 
 - **Events (Level 1)**: a Sub named `Prefix_Event` binds to the object
   initialized with that prefix; binding is resolved at compile time when possible.
@@ -122,8 +129,8 @@ one of the backends, not the project's IR.
 | Arduino AVR | LLVM AVR or C backend | embedded profile | After the Pico |
 | REPL and tests | Interpreter | interpreter runtime | Semantic reference |
 
-The native runtime (`crates/runtime`: strings, `List`, `Map`, exceptions,
-refcounting) is written once and builds for desktop, WASM and `no_std` on
+The planned native runtime (`crates/runtime`, M4: strings, `List`, `Map`,
+exceptions, refcounting) will be written once and build for desktop, WASM and `no_std` on
 microcontrollers.
 
 Possible additions, not decided: Cranelift for a JIT-backed REPL and fast
@@ -132,13 +139,32 @@ debug builds on desktop; `zig cc` / `cargo-zigbuild` as the cross-linker.
 ## Tooling: REPL, LSP, DAP, VS Code
 
 The tooling reuses the compiler's parser and analysis: there is no second
-implementation of the language inside the extension.
+implementation of the language inside the planned extension. Items 1–2 and
+item 3 diagnostics are implemented; the remaining tools are planned.
 
-1. **One CLI** (`ferro`) with the commands `check`, `run`, `bundle`, `compile`, `targets`,
-   `build`, `repl`, `test` and `fmt` (see `docs/spec/cli.md`, "Commands").
-2. **REPL** on the interpreter: accepts statements and whole Subs, keeps state between inputs.
-3. **Language Server**, in this order: diagnostics, type hover, completion,
-   go to definition, rename, formatting.
+1. **One CLI** (`ferro`): `check`, `run`, `bundle`, `repl`, `lsp`, `licenses`,
+   `version` and `help` work today; `compile`, `targets`, `build`, `test`
+   and `fmt` are reserved and exit 2 (see [the CLI spec](spec/cli.md#commands)).
+2. **REPL** on the interpreter: accepts statements, expressions, Subs and Types,
+   keeping state between inputs. `crates/repl` owns fragment accumulation,
+   definition sources and diagnostic source maps. `ferro-hir::check_session`
+   seeds persistent, checked global bindings into a candidate synthetic module;
+   it never includes earlier executable submissions. Accepted Type/Sub sources
+   are rechecked together, with stable record/global identities and compatible
+   Sub signatures. `ferro-interp::SessionState` retains globals, shared values,
+   RNG and LastException independently of compiled programs. Each submission
+   uses fresh call frames and string-constant caches, and executes only its
+   own initializer. Compiler failures are atomic; runtime failures retain
+   completed mutations. See [the specification](spec/cli.md#interactive-repl)
+   and [tutorial](tutorial.md#9-the-interactive-repl).
+3. **Language Server**: `ferro lsp` implements diagnostics in `crates/cli/src/lsp.rs`,
+   sharing `ferro-cli::check` and its header validation without changing HIR.
+   A serial event loop checks full open-buffer snapshots and publishes versioned
+   diagnostics; the process never reads or writes source files. The project
+   loader can resolve module paths, but the compiler still refuses multi-module
+   projects at Level 0. [The server guide](language-server.md) specifies that
+   boundary and position encodings. Type hover, completion, go to definition,
+   rename and formatting remain planned.
 4. **Debug Adapter** on the interpreter: breakpoints, stepping, locals. Native
    binaries are debugged through LLDB later.
 5. **Tree-sitter grammar** for highlighting and folding in editors that support it.
@@ -149,7 +175,7 @@ implementation of the language inside the extension.
 
 | Decision | Choice | Notes |
 | --- | --- | --- |
-| Compiler language | Rust | inkwell for LLVM, rowan for the CST, salsa for incrementality, tower-lsp |
+| Compiler language | Rust | rowan for the CST, serde_json for stdio LSP; inkwell and salsa remain planned choices |
 | First real backend | Java source, as B4X does | Direct bytecode through a class-file library later |
 | License | MIT | Permissive, so programs built with FerroBASIC carry no conditions beyond the notice; see `LICENSE` |
 | Project name | FerroBASIC | CLI `ferro`, crates `ferro-*` |

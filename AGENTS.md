@@ -6,8 +6,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 
 ## Context
 
-- FerroBASIC is a compiler + interpreter + REPL + Language Server for a BASIC
-  dialect that is source-compatible with B4X. There is no IDE.
+- FerroBASIC aims to be a B4X-compatible compiler, interpreter, REPL and
+  Language Server. Today Level 0 checking, interpretation, bundling and the
+  stateful REPL and diagnostics-only language server are implemented. There is no IDE.
 - The defining promise: an existing B4X project (`.b4j`, `.b4a`, `.b4i`, `.b4r`)
   builds **without changes** to code, project files or layouts.
 - Pipeline: `syntax` (lossless CST) -> `hir` (names, types, target profiles)
@@ -15,11 +16,14 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - Language: Rust (stable, edition 2024). Workspace in `crates/`, one crate per
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
 - Current milestone: **M1** (M0 is complete). Done: the Level 0
-  interpreter, `ferro check`, `ferro run` and standalone `ferro bundle` (see
-  `docs/spec/cli.md`). Next: the REPL and the Language Server with
-  diagnostics. The Level 0 corpus is recorded with B4J 10.70 on a Windows
+  interpreter, `ferro check`, `ferro run`, standalone `ferro bundle` and `ferro repl` (see
+  `docs/spec/cli.md`), plus `ferro lsp` diagnostics (see `docs/language-server.md`).
+  The M1 conformance gate and tooling checklist are implemented.
+  The REPL walkthrough is in `docs/tutorial.md`, section 9.
+  The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
-  run. See `docs/roadmap.md`.
+  run. Recording run 21 is imported: 287 conformance tests, 281 passing,
+  6 deviations, none pending or provisional. See `docs/roadmap.md`.
 
 ## Read before working
 
@@ -28,7 +32,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - `docs/porting.md` — what "builds without changes" requires, layer by layer.
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
 - `docs/spec/level0-builtins.md` — keywords and library members at Level 0.
-- `docs/spec/cli.md` — `ferro check/run/bundle`, planned commands, exit codes, standalone binaries.
+- `docs/language-server.md` — stdio protocol, editor setup, single-module limits.
+- `docs/spec/cli.md` — `ferro check/run/bundle/repl/lsp`, planned commands, exit codes, standalone binaries.
 - `docs/spec/project-files.md` — project (`.b4j`) and module (`.bas`) file headers, and their sources.
 - `docs/research/level0-semantics.md` — where each Level 0 rule comes from.
 - `docs/compatibility-testing.md` — how compatibility is measured.
@@ -105,8 +110,9 @@ cargo test -p ferro-project --test projects -- --ignored
 
 ## Before closing a task
 
-1. `scripts/check-all.sh` passes: format, clippy for Linux, Windows and
-   macOS, the tests, the conformance tests in the interpreter and as
+1. `scripts/check-all.sh` passes (`--quick` is sufficient for docs/comments-only
+   changes, skipping the static Linux binary; name the skip in the PR):
+   format, clippy for Linux, Windows and macOS, the tests, the conformance tests in the interpreter and as
    standalone binaries, the recorder's dry run, the real-world corpus and,
    on Linux x86_64, the static Linux binary.
    CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for

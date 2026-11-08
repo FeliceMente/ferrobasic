@@ -14,6 +14,11 @@ const FERRO: &str = env!("CARGO_BIN_EXE_ferro");
 /// version of the same crate, such as zerocopy-derive 0.7, is still checked.
 const NOT_LINKED: &[(&str, &str)] = &[
     ("autocfg", "1.5.1"),
+    // serde_json uses serde_core; its optional serde/derive compatibility
+    // dependencies are locked but not enabled (cargo tree --edges normal).
+    ("serde", "1.0.229"),
+    ("serde_derive", "1.0.229"),
+    ("syn", "3.0.9"),
     ("version_check", "0.9.5"),
     ("zerocopy-derive", "0.8.63"),
     ("zlib-rs", "0.6.8"),

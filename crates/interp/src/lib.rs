@@ -90,3 +90,100 @@ fn failure(e: value::Exc, range: TextRange) -> Outcome {
         }),
     }
 }
+
+/// Persistent runtime storage, independent of any compiled program's lifetime.
+/// Values stay opaque and retain reference identity across submissions.
+#[derive(Default)]
+pub struct SessionState {
+    globals: Vec<value::Value>,
+    schema: Vec<(String, Ty)>,
+    records: Vec<(String, Vec<(String, Ty)>)>,
+    random: Option<number::JavaRandom>,
+    last_exception: Option<std::rc::Rc<value::Exc>>,
+}
+
+/// A submission's result; an explicit ExitApplication is distinct from return.
+pub struct SessionOutcome {
+    pub outcome: Outcome,
+    pub exited: bool,
+}
+
+impl SessionState {
+    /// Executes just init, never AppStart or any previous initializer.
+    /// Validation/schema failure leaves persistent state unchanged.
+    pub fn execute(
+        &mut self,
+        program: &Program,
+        stdout: &mut dyn Write,
+        stderr: &mut dyn Write,
+    ) -> SessionOutcome {
+        let schema: Vec<_> = program
+            .globals
+            .iter()
+            .map(|g| (g.name.to_ascii_lowercase(), g.ty.clone()))
+            .collect();
+        let records: Vec<_> = program
+            .records
+            .iter()
+            .map(|r| {
+                (
+                    r.name.to_ascii_lowercase(),
+                    r.fields
+                        .iter()
+                        .map(|f| (f.name.to_ascii_lowercase(), f.ty.clone()))
+                        .collect(),
+                )
+            })
+            .collect();
+        let error = ferro_mir::validate(program).err().or_else(|| {
+            (!schema.starts_with(&self.schema) || !records.starts_with(&self.records))
+                .then(|| "incompatible session storage schema".into())
+        });
+        if let Some(message) = error {
+            return SessionOutcome {
+                outcome: failure(value::Exc::internal(message), TextRange::default()),
+                exited: false,
+            };
+        }
+        self.schema = schema;
+        self.records = records;
+        self.globals.extend(
+            program.globals[self.globals.len()..]
+                .iter()
+                .map(|g| convert::default_value(&g.ty, program)),
+        );
+        // A fresh machine has no frames or address-keyed string cache. Only
+        // persistent values, RNG and LastException move across executions.
+        let mut machine = machine::Machine::with_globals(
+            program,
+            std::mem::take(&mut self.globals),
+            stdout,
+            stderr,
+        );
+        machine.random = self.random.take();
+        machine.last_exception = self.last_exception.take();
+        let result = machine.call(program.init, Vec::new());
+        machine.out.flush();
+        self.globals = std::mem::take(&mut machine.globals);
+        self.random = machine.random.take();
+        self.last_exception = machine.last_exception.take();
+        let (outcome, exited) = match result {
+            Ok(()) => (
+                Outcome {
+                    exit_code: 0,
+                    error: None,
+                },
+                false,
+            ),
+            Err(machine::Stop::Exit(code)) => (
+                Outcome {
+                    exit_code: code,
+                    error: None,
+                },
+                true,
+            ),
+            Err(machine::Stop::Error(error, range)) => (failure(error, range), false),
+        };
+        SessionOutcome { outcome, exited }
+    }
+}
