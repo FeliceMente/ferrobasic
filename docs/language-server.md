@@ -8,6 +8,9 @@ The first M1 server publishes Level 0 compiler diagnostics. Completion, hover,
 definitions, rename, formatting and debugging are not implemented. There is
 no IDE or editor extension to install from this repository yet.
 
+For editor setup, see the [VS Code example](#vs-code-example) or
+[Neovim example](#neovim-example) below.
+
 ## Protocol and diagnostics
 
 - LSP over stdin/stdout, using JSON-RPC 2.0 and `Content-Length` framing.
@@ -72,6 +75,74 @@ checks a single module. The server deliberately uses this supported boundary:
   authoritative, including new files and `untitled:` buffers. Closing a buffer
   clears diagnostics instead of falling back to a disk copy. No save or file
   watcher notification is needed; unopened siblings are never substituted.
+
+## VS Code example
+
+Until a dedicated FerroBASIC extension is available, use
+[Generic LSP Client (v2)](https://marketplace.visualstudio.com/items?itemName=zsol.vscode-glspc)
+to connect VS Code to the server:
+
+1. From the repository root, build the executable:
+
+   ```sh
+   cargo build --release -p ferro-cli
+   ```
+
+2. Install **Generic LSP Client (v2)** (`zsol.vscode-glspc`) from VS Code's
+   Extensions view.
+3. Merge the following into your project's `.vscode/settings.json`, replacing
+   the generic executable path with the absolute path to your built `ferro`:
+
+   ```json
+   {
+     "files.associations": {
+       "*.bas": "vb",
+       "*.b4j": "vb"
+     },
+     "glspc.server.command": "/absolute/path/to/ferrobasic/target/release/ferro",
+     "glspc.server.commandArguments": ["lsp"],
+     "glspc.server.languageId": ["vb"]
+   }
+   ```
+
+   On Windows, use the path to `ferro.exe`; forward slashes in the JSON path
+   avoid backslash escaping. The client launches `ferro lsp` automatically;
+   you do not need to start the server in a terminal.
+4. Run **Developer: Reload Window** from the Command Palette, then open
+   `example.bas` with this content:
+
+   ```vb
+   Sub Process_Globals
+   End Sub
+
+   Sub AppStart (Args() As String)
+       Log(Missing)
+   End Sub
+   ```
+
+   An unresolved-name diagnostic should underline `Missing` and appear in the
+   **Problems** panel. Replace `Missing` with `"hello"` without saving: the
+   diagnostic should clear. Remove the final `End Sub` to try incomplete-code
+   diagnostics.
+
+The bottom-right language selector should show **Visual Basic**. This is a
+temporary association: VS Code supplies its built-in Visual Basic syntax
+highlighting, while `ferro lsp` supplies FerroBASIC compiler diagnostics.
+Highlighting can differ from the FerroBASIC dialect. We have not yet provided
+a FerroBASIC syntax grammar or a dedicated editor extension. A future extension
+would register a `ferrobasic` language ID, supply the grammar and start the
+server automatically, replacing this manual setup.
+
+Keep `glspc.server.languageId` restricted to `vb`. Selecting `plaintext` also
+sends unrelated Plain Text buffers, such as `Cargo.lock`, to the BASIC checker
+and produces irrelevant diagnostics. This temporary configuration also checks
+any other files you open in Visual Basic mode within the workspace.
+
+For startup problems, check **View → Output → Generic LSP Client** and verify
+the executable path. After changing the configuration, reload the window to
+restart the client and clear diagnostics from the previous setup. Only the
+diagnostic features described above are available; the same single-module
+limits apply as in other editors.
 
 ## Neovim example
 

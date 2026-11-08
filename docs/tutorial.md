@@ -10,6 +10,10 @@ The full list is in [spec/level0.md](spec/level0.md) and
 was produced by `ferro` itself.
 
 Try code interactively in [section 9: the interactive REPL](#9-the-interactive-repl).
+For live compiler diagnostics in an editor, see the
+[VS Code language-server setup](language-server.md#vs-code-example). It uses
+temporary Visual Basic highlighting; a dedicated FerroBASIC extension and
+syntax grammar are not available yet.
 
 ## 1. Get `ferro`
 
