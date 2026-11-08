@@ -130,7 +130,7 @@ const DIGIT_ZEROS: [u16; 37] = [
 
 /// Java's `Character.digit(char, radix)`: any decimal digit, and the Latin
 /// letters `A`–`Z` and `a`–`z`, ASCII or fullwidth, for 10 to 35.
-fn java_digit(c: u16, radix: u32) -> Option<u32> {
+pub(crate) fn java_digit(c: u16, radix: u32) -> Option<u32> {
     let run = |zero: u16| c.checked_sub(zero).filter(|d| *d < 10);
     let value = match c {
         0x41..=0x5A => c - 0x41 + 10,

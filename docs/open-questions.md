@@ -471,13 +471,17 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       `level0/process_globals_for_each_untyped_before_typed_object`,
       `level0/process_globals_for_each_untyped_undeclared`), as FerroBASIC
       does.
-- [ ] A `For Each` over an `Object` that holds a number, not a
-      collection: which exception B4J raises. FerroBASIC stops with an
-      internal error (`level0/for_each_over_non_collection_object`).
-- [ ] Inside `Process_Globals`, over a `Type`'s name nothing else declares
-      (`level0/process_globals_for_each_untyped_named_like_type`), and over
-      a name nothing else declares that is read or assigned before the loop
-      there: FerroBASIC refuses them.
+- [x] A `For Each` over a collection statically typed `Object` is refused
+      at build time: generated Java cannot convert Object to IterableList
+      (recording run 21: `level0/for_each_over_non_collection_object`).
+      FerroBASIC now refuses it during type checking instead of raising an
+      internal error at runtime.
+- [x] Inside `Process_Globals`, an untyped `For Each` over a `Type`'s name
+      declares a module variable Object and leaves the last item there
+      (recording run 21:
+      `level0/process_globals_for_each_untyped_named_like_type`, prints 6).
+- [ ] Inside `Process_Globals`, over a name nothing else declares that is
+      read or assigned before the untyped loop there: FerroBASIC refuses it.
 - [x] In `Process_Globals`, a module variable read or assigned before its
       `Dim … As Object` there builds, one variable, and the read gives
       `Null` (recording run 19:
@@ -511,22 +515,21 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
       initialised List, `Null`, a Char, a Boolean): `BA.ObjectToNumber`
       parses `String.valueOf(o)`, so a `NumberFormatException` (`"null"`
       for `Null`), and a Char `"7"` is 7 (source; that the compiler calls
-      it for `Dim i As Int = o` is forum level; provisional output for
+      it for `Dim i As Int = o` is confirmed by recording run 21:
       `level0/object_list_to_int`, `level0/object_null_to_int`,
-      `level0/object_char_to_int`, `level0/object_boolean_to_double`,
-      which the next run records). FerroBASIC raised `ClassCastException`
+      `level0/object_char_to_int`, `level0/object_boolean_to_double`).
+      FerroBASIC raised `ClassCastException`
       and `NullPointerException` before.
-- [ ] A non-`Boolean` in an `Object` converted to a `Boolean`, and a
-      non-`Char` to a `Char`: `BA.ObjectToBoolean` and `ObjectToChar`
-      parse `String.valueOf(o)` (source), so a number `1` would raise
-      `RuntimeException` ("Cannot parse: 1 as boolean"), but whether the
-      compiler calls them is not recorded; `ObjectToChar` would give `"6"`
-      for `65`. FerroBASIC raises `ClassCastException`
-      (`level0/object_number_to_boolean`, `level0/object_number_to_char`).
-- [ ] A String in an `Object` converted to a `Long`: `"1.5"` gives 1 in
-      FerroBASIC (`Double.parseDouble`, as for an `Int`); if B4J uses
-      `BA.ObjectToLongNumber`, `Long.parseLong` raises
-      `NumberFormatException` instead (`level0/object_string_to_long`).
+- [x] A non-`Boolean` in an `Object` converted to a `Boolean` uses
+      `BA.ObjectToBoolean`: the number 1 raises RuntimeException
+      ("Cannot parse: 1 as boolean"). `ObjectToChar` uses `o.toString()`:
+      the number 65 gives "6" (recording run 21:
+      `level0/object_number_to_boolean`, `level0/object_number_to_char`).
+      FerroBASIC now follows these helpers instead of a class cast.
+- [x] A String in an `Object` converted to a `Long` uses
+      `BA.ObjectToLongNumber` / `Long.parseLong`: "1.5" raises
+      NumberFormatException, while conversion to Int gives 1 (recording
+      run 21: `level0/object_string_to_long`). FerroBASIC follows both.
 - [ ] How a new `Object` prints: `java.lang.Object@<hash>`, the identity
       hash, which changes on every run, as an array's does; FerroBASIC
       prints a hash too, which no recording can compare.

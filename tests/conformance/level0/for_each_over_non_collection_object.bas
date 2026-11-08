@@ -2,9 +2,9 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' A For Each over an Object that holds a number, not a collection: B4J
-    ' raises what (docs/open-questions.md)? FerroBASIC stops with an
-    ' internal error meanwhile.
+    ' Recording run 21 (B4J 10.70): this fails to build in generated
+    ' Java: Object cannot be converted to IterableList. A Catch cannot
+    ' handle this compile-time error.
     Dim o As Object = 5
     Try
         For Each v In o
