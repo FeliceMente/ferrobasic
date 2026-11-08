@@ -129,8 +129,10 @@ related tests stay `pending-recording`.
       names; whether `js` is its own backend or goes through `wasm`; the
       format and timing of a `ferro.toml` project file.
 
-Provisional runtime behaviour in `crates/mir` and `crates/interp` (each
-needs a recorded test):
+Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
+items link their evidence; unchecked parts still need investigation or probes.
+There are currently no pending or provisional corpus results; this does not
+mean that every possible language question has been settled.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:
       `level0/for_evaluation_order`). That the start is assigned after the
@@ -212,7 +214,8 @@ needs a recorded test):
       identity: two Maps with the same contents are two keys (recording:
       `level0/map_as_map_key`).
 
-Provisional type-checking rules in `crates/hir` (each needs a recorded test):
+Type-checking questions investigated in `crates/hir`; checked items have
+evidence, while unchecked parts remain open:
 
 - [x] Calling a member on an `Object` (`o.Size`) is a compile error: B4J
       says "Unknown type: Object" (recording: `level0/member_on_object`).
@@ -627,11 +630,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
   - [x] a `Dim` with no value in a Sub with a module constant's name is
         refused: "Cannot redeclare a const variable." (recording:
         `level0/const_local_dim_no_value`);
-  - [ ] a `For Each` without `As` over a constant is refused ("Current
+  - [x] a `For Each` without `As` over a constant is refused ("Current
         declaration does not match previous one", recording:
-        `level0/const_for_each_untyped`); two `Const`s of an `Int` build,
-        the second setting its value (recording: `level0/const_twice`),
-        and whether they may then be assigned is open; any other loop over a constant
+        [`level0/const_for_each_untyped`](../tests/conformance/level0/const_for_each_untyped.meta.toml)).
+  - [x] two `Const`s of an `Int` build, the second setting its value
+        (recording: [`level0/const_twice`](../tests/conformance/level0/const_twice.expected)).
+  - [ ] whether those two constants may then be assigned; any other loop over a constant
         (in `Process_Globals`, over a local constant, of another type than
         `Int`) or declaration again of its name (a third one).
 - [ ] An inline Java block (`#If Java` … `#End If`): whether B4X accepts a
@@ -656,7 +660,12 @@ Provisional type-checking rules in `crates/hir` (each needs a recorded test):
 ## Compatibility testing
 
 - [ ] Check that the B4X licence allows automated use of its compilers for testing; never redistribute B4X binaries.
-- [ ] Confirm the command-line builders for B4J, B4A and B4R and their options.
+- [x] B4J command-line building: `B4JBuilder.exe -Task=Build
+      -BaseFolder=<folder> -Project=<test>.b4j`, used by the
+      [recorder](../tools/recorder/README.md) and evidenced by
+      [run 21](research/recording-run-21.md). `--no-base-folder` handles
+      builders that do not accept `-BaseFolder`.
+- [ ] Confirm the command-line builders for B4A and B4R and their options.
 - [ ] Decide which deviations are acceptable by design.
 
 ## Project

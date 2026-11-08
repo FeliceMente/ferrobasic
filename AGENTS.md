@@ -6,8 +6,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 
 ## Context
 
-- FerroBASIC is a compiler + interpreter + REPL + Language Server for a BASIC
-  dialect that is source-compatible with B4X. There is no IDE.
+- FerroBASIC aims to be a B4X-compatible compiler, interpreter, REPL and
+  Language Server. Today Level 0 checking, interpretation, bundling and the
+  stateful REPL are implemented; the Language Server is planned. There is no IDE.
 - The defining promise: an existing B4X project (`.b4j`, `.b4a`, `.b4i`, `.b4r`)
   builds **without changes** to code, project files or layouts.
 - Pipeline: `syntax` (lossless CST) -> `hir` (names, types, target profiles)
@@ -30,7 +31,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - `docs/porting.md` — what "builds without changes" requires, layer by layer.
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
 - `docs/spec/level0-builtins.md` — keywords and library members at Level 0.
-- `docs/spec/cli.md` — `ferro check/run/bundle`, planned commands, exit codes, standalone binaries.
+- `docs/spec/cli.md` — `ferro check/run/bundle/repl`, planned commands, exit codes, standalone binaries.
 - `docs/spec/project-files.md` — project (`.b4j`) and module (`.bas`) file headers, and their sources.
 - `docs/research/level0-semantics.md` — where each Level 0 rule comes from.
 - `docs/compatibility-testing.md` — how compatibility is measured.
@@ -107,8 +108,9 @@ cargo test -p ferro-project --test projects -- --ignored
 
 ## Before closing a task
 
-1. `scripts/check-all.sh` passes: format, clippy for Linux, Windows and
-   macOS, the tests, the conformance tests in the interpreter and as
+1. `scripts/check-all.sh` passes (`--quick` is sufficient for docs/comments-only
+   changes, skipping the static Linux binary; name the skip in the PR):
+   format, clippy for Linux, Windows and macOS, the tests, the conformance tests in the interpreter and as
    standalone binaries, the recorder's dry run, the real-world corpus and,
    on Linux x86_64, the static Linux binary.
    CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for

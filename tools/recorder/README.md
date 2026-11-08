@@ -44,13 +44,19 @@ stderr), never its message.
 | `report.md` | one row per test, then the details: every difference from what the repository expected (the `.provisional` output, an earlier recording, how the program ends), the output in the machine's locale when it differs, anything written to stderr, builder output on a failure |
 | `tests/conformance/…/<test>.expected` | the recorded output, in `en-US` |
 | `tests/conformance/…/<test>.<locale>.expected` | the output in the machine's locale, only when it differs |
-| `tests/conformance/…/<test>.meta.toml` | `status = "recorded"`, the `[recording]` table (toolchain version, platform, Java, locales, date), no `[provisional]` table; `exit_code` / `uncaught_error` corrected if the program ended otherwise |
+| `tests/conformance/…/<test>.meta.toml` | for a successful pending probe: `status = "recorded"`, the `[recording]` table (product, version, platform, Java, locales, date), no `[provisional]` table; `exit_code` / `uncaught_error` corrected if the program ended otherwise. Negative/deviation classifications stay unchanged |
 | `remove.txt` | the `.provisional` files the recordings replace |
 | `deviation-outputs/…/<test>.txt` | what a deviation test prints, to compare by hand with the reference output in its `.meta.toml` (deviation tests get no `.expected`) |
 | `work/` | the generated projects, only with `--keep` |
 
 A negative test the toolchain refuses gets `rejected = true` in its
 `[recording]` table; one it builds is reported as a failure of the test.
+A pending probe that fails to build is different: its builder output is
+retained in `report.md`, but the recorder writes no `[recording]` table and
+does not change its status. Classifying that refusal remains manual (see
+[run 21](../../docs/research/recording-run-21.md)); automatic refusal metadata
+for pending probes remains an open proposal in
+[issue #69](https://github.com/FeliceMente/ferrobasic/issues/69).
 
 ## Running it
 
@@ -73,7 +79,7 @@ First one test, keeping its project to look at:
 
 ```bat
 ferro-recorder.exe --repo C:\ferrobasic --out C:\recordings ^
-  --toolchain-version 10.30 --only control_flow --keep
+  --toolchain-version 10.70 --only control_flow --keep
 ```
 
 `--toolchain-version` is the version Help → About shows. The defaults
@@ -89,7 +95,7 @@ If the builder does not accept `-BaseFolder`, add `--no-base-folder` (it
 still runs in the project's folder). Then everything:
 
 ```bat
-ferro-recorder.exe --repo C:\ferrobasic --out C:\recordings --toolchain-version 10.30
+ferro-recorder.exe --repo C:\ferrobasic --out C:\recordings --toolchain-version 10.70
 ```
 
 `--dry-run` lists the tests it would record; `--help` lists every option.

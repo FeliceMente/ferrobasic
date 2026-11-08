@@ -6,6 +6,10 @@ near-total compatibility, because
 [most B4A and B4J libraries are open source under Apache 2.0](https://www.b4x.com/android/forum/threads/114755)
 ([AnywhereSoftware on GitHub](https://github.com/AnywhereSoftware)) and can be reused as they are.
 
+Today only the B4J Level 0 console subset is implemented, through the
+interpreter, REPL and host bundles. The tables below describe the porting
+design, not current support; see [language-support.md](language-support.md).
+
 ## Layers
 
 | Layer | What the compiler must do | Unchanged on the original platform | Unchanged on other targets |

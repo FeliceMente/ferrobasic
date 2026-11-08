@@ -762,8 +762,8 @@ Implemented as recorded with B4J 10.70 (run 12,
 - **open**: any other loop over a constant or declaration again of its
   name (of another type than `Int` or `String`, a third one, inside
   another block than an `If`), assigning one declared by two `Const`s,
-  and assigning it in `Process_Globals`, each with a pending test where
-  one is recorded next ([open-questions.md](../open-questions.md)).
+  and assigning it in `Process_Globals`, with new pending probes to be added for
+  the next recording when those shapes are investigated ([open-questions.md](../open-questions.md)).
 
 ### Keywords used as names (generated)
 
@@ -793,7 +793,8 @@ Applied to [spec/level0.ebnf](../spec/level0.ebnf), [spec/level0.md](../spec/lev
 1. `level0.ebnf`:
    - add `:` as a statement separator;
    - allow `IDENT [= expr]` declarators sharing a final `As type`;
-   - drop the `[ "Case" ]` after `Select` until a recording settles it;
+   - accept optional `Case` after `Select`, now recorded by
+     `select_case_synonym`;
    - leave `Not` as an ordinary function call, not a primary;
    - add `IIf`.
 2. `level0.md`: replace "(to verify)" on scope with the hoisting rule; add `/`
@@ -801,13 +802,15 @@ Applied to [spec/level0.ebnf](../spec/level0.ebnf), [spec/level0.md](../spec/lev
 3. Runtime spec: `NumberToString`, `ObjectToString`, `NumberFormat`, smart
    string formatters, `Map` insertion order and key equality, `List` and the
    uninitialised-object error, as above.
-4. New pending tests: precedence of `&`, `And`/`Or`, `Exit` inside `Select`
+4. The initial research called for probes of precedence of `&`, `And`/`Or`, `Exit` inside `Select`
    inside a loop, `Dim` inside a loop, Float-to-string, Double formatting edge
    cases (`1e7`, `0.001`, `-0.0`), `/` between Ints assigned to Int.
 
 ## Expected output of the existing tests (not a recording)
 
-From the rules above; now kept as `.provisional` files next to the tests.
+Historical hand-derived expectations from the initial research. These tests
+now have recorder-written `.expected` files; no `.provisional` files remain
+after run 21. The recordings, not this derivation, are the oracle.
 Double formatting and `NumberFormat` results were checked by running the
 `jCore` code paths on OpenJDK 21.0.12:
 

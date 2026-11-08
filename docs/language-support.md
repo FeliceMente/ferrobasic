@@ -8,7 +8,9 @@ conformance tests in [`tests/conformance/level0/`](../tests/conformance/level0/)
 
 FerroBASIC currently implements **Level 0**: one console code module, run by
 the interpreter (`ferro run`) or bundled into a standalone executable
-(`ferro bundle`). What a level contains, and the milestone that brings it, is
+(`ferro bundle`), or explored in the stateful `ferro repl` (which supplies
+the session structure instead of requiring AppStart/Process_Globals).
+What a level contains, and the milestone that brings it, is
 in [spec/level0.md](spec/level0.md#language-levels) and
 [roadmap.md](roadmap.md).
 
@@ -35,7 +37,7 @@ The "not yet" rows come from the
 | --- | --- | --- |
 | A single code module (`.bas`) | ✅ | the main module of a B4J non-UI app; [cli.md](spec/cli.md#inputs) |
 | A B4J console project (`.b4j`), or the folder holding it | 🟡 | only a console app with the `jcore` library and no other modules or files; each line that stands in the way is an error ([project-files.md](spec/project-files.md)). `ferro bundle` writes its program into the project's folder ([cli.md](spec/cli.md#commands)). |
-| `Sub Process_Globals`, `Sub AppStart (Args() As String)` | ✅ | both required, as in B4J; [level0.md](spec/level0.md#program-structure); tests `process_globals_for`, `exit_code`, `missing_process_globals` |
+| `Sub Process_Globals`, `Sub AppStart (Args() As String)` | ✅ | both required for file programs, as in B4J; REPL submissions omit them; [level0.md](spec/level0.md#program-structure); tests `process_globals_for`, `exit_code`, `missing_process_globals` |
 | Several modules, calling another module's Subs | ❌ | Level 1. Today a call such as `Module2.F` is reported as an undeclared name. |
 | Class modules (`Class_Globals`, `Initialize`, `Me`) | ❌ | Level 1 |
 | UI apps (`AppType=JavaFX`, `Form`, layouts), B4XPages | ❌ | Level 4 |
