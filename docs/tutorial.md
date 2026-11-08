@@ -533,8 +533,10 @@ Enter BASIC statements, expressions, Types or complete Subs.
 
 EOF also leaves the session: Ctrl+D on Unix, or Ctrl+Z followed by Enter in
 a Windows console. Ctrl+C terminates the process; it does not cancel running
-BASIC code and return you to a prompt. History and line editing are deferred;
-your terminal may provide its own basic editing.
+BASIC code and return you to a prompt. Your terminal may provide basic editing.
+See [deferred REPL improvements](spec/cli.md#deferred-repl-improvements) for
+history, FerroBASIC line editing, session file loading and recoverable interruption;
+these proposals have no assigned schedule.
 
 ### Expressions and statements
 

@@ -4,6 +4,7 @@
 //! prints the licence notices; `build`, `compile`, `targets`, `test`
 //! and `fmt` are reserved. See `docs/spec/cli.md`.
 
+mod lsp;
 mod standalone;
 
 use std::ffi::OsString;
@@ -22,6 +23,7 @@ Commands:
   run <file> [-- <args>...]       Run with the reference interpreter
   bundle <file> [-o <output>]     Bundle the interpreter and the program into
                                   a standalone executable for this machine
+  lsp                             Start the stdio language server
   repl                            Start the interactive REPL
   licenses                        Print FerroBASIC's licence and the notices
                                   of the third-party code it contains
@@ -179,6 +181,16 @@ fn ferro_main() -> ExitCode {
              microcontrollers (M5); until then, use `ferro run` or `ferro bundle`",
         ),
         Some("targets") => not_implemented("targets", "it arrives with `ferro compile`"),
+        Some("lsp") => match &args[1..] {
+            [] => match lsp::run(&mut std::io::stdin().lock(), &mut std::io::stdout().lock()) {
+                Ok(code) => ExitCode::from(code),
+                Err(error) => {
+                    err(&format!("ferro lsp: {error}\n"));
+                    ExitCode::from(EXIT_USAGE)
+                }
+            },
+            _ => usage_error("ferro lsp: expected no arguments"),
+        },
         Some("repl") => match &args[1..] {
             [] => {
                 let stdin = std::io::stdin();

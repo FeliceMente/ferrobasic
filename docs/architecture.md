@@ -3,8 +3,8 @@
 Design and implementation status · November 2026
 
 Implemented today: the B4J Level 0 frontend, interpreter, host standalone
-bundles and stateful REPL. The diagram includes planned Java/LLVM backends,
-LSP and DAP; they are not implemented. See [language-support.md](language-support.md)
+bundles, stateful REPL and diagnostics-only stdio language server. The diagram
+also includes planned Java/LLVM backends and DAP. See [language-support.md](language-support.md)
 for current limits and [roadmap.md](roadmap.md) for milestones.
 
 The parser and analysis are shared by the compiler, the REPL and the editor
@@ -139,10 +139,10 @@ debug builds on desktop; `zig cc` / `cargo-zigbuild` as the cross-linker.
 ## Tooling: REPL, LSP, DAP, VS Code
 
 The tooling reuses the compiler's parser and analysis: there is no second
-implementation of the language inside the planned extension. Items 1–2 below
-are implemented; items 3–6 are planned, with diagnostics next in M1.
+implementation of the language inside the planned extension. Items 1–2 and
+item 3 diagnostics are implemented; the remaining tools are planned.
 
-1. **One CLI** (`ferro`): `check`, `run`, `bundle`, `repl`, `licenses`,
+1. **One CLI** (`ferro`): `check`, `run`, `bundle`, `repl`, `lsp`, `licenses`,
    `version` and `help` work today; `compile`, `targets`, `build`, `test`
    and `fmt` are reserved and exit 2 (see [the CLI spec](spec/cli.md#commands)).
 2. **REPL** on the interpreter: accepts statements, expressions, Subs and Types,
@@ -157,8 +157,14 @@ are implemented; items 3–6 are planned, with diagnostics next in M1.
    own initializer. Compiler failures are atomic; runtime failures retain
    completed mutations. See [the specification](spec/cli.md#interactive-repl)
    and [tutorial](tutorial.md#9-the-interactive-repl).
-3. **Language Server**, in this order: diagnostics, type hover, completion,
-   go to definition, rename, formatting.
+3. **Language Server**: `ferro lsp` implements diagnostics in `crates/cli/src/lsp.rs`,
+   sharing `ferro-cli::check` and its header validation without changing HIR.
+   A serial event loop checks full open-buffer snapshots and publishes versioned
+   diagnostics; the process never reads or writes source files. The project
+   loader can resolve module paths, but the compiler still refuses multi-module
+   projects at Level 0. [The server guide](language-server.md) specifies that
+   boundary and position encodings. Type hover, completion, go to definition,
+   rename and formatting remain planned.
 4. **Debug Adapter** on the interpreter: breakpoints, stepping, locals. Native
    binaries are debugged through LLDB later.
 5. **Tree-sitter grammar** for highlighting and folding in editors that support it.
@@ -169,7 +175,7 @@ are implemented; items 3–6 are planned, with diagnostics next in M1.
 
 | Decision | Choice | Notes |
 | --- | --- | --- |
-| Compiler language | Rust | rowan for the implemented CST; inkwell, salsa and tower-lsp are planned choices, not current dependencies |
+| Compiler language | Rust | rowan for the CST, serde_json for stdio LSP; inkwell and salsa remain planned choices |
 | First real backend | Java source, as B4X does | Direct bytecode through a class-file library later |
 | License | MIT | Permissive, so programs built with FerroBASIC carry no conditions beyond the notice; see `LICENSE` |
 | Project name | FerroBASIC | CLI `ferro`, crates `ferro-*` |

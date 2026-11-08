@@ -113,8 +113,9 @@ At `dev` commit `6275b26` (2026-11-08), both conformance targets report
 as expected. No `.provisional`
 files remain. [Run 21](research/recording-run-21.md), imported in
 [PR #102](https://github.com/FeliceMente/ferrobasic/pull/102), settled the last
-pending probes. The conformance gate is satisfied; M1 still needs Language
-Server diagnostics ([roadmap](roadmap.md#m1-task-breakdown-second-part)).
+pending probes. The conformance gate is satisfied, and the first M1
+[Language Server diagnostics](language-server.md) are implemented
+([roadmap](roadmap.md#m1-task-breakdown-second-part)).
 
 `status` is the test classification, not a recording timestamp. Negative and
 deviation tests keep their classification after recording. `[recording]`

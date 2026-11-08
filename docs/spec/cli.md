@@ -16,7 +16,8 @@ runtime plus the embedded program, the same approach as `deno compile`.
 
 `check`, `run` and `bundle` each take one `<input>` from the table below.
 `repl` reads submissions from stdin and takes no file argument; `licenses`,
-`version` and `help` need no source input.
+`version` and `help` need no source input. `lsp` exchanges protocol messages over
+stdin/stdout and takes no arguments (see [the language server](../language-server.md)).
 
 | Input | Meaning |
 | --- | --- |
@@ -53,6 +54,7 @@ ferro check  <input>                  parse and type-check, print diagnostics
 ferro run    <input> [-- <args>...]   check, then interpret; args go to AppStart
 ferro bundle <input> [-o <output>]    check, then write a standalone executable
 ferro repl                            start a persistent Level 0 session
+ferro lsp                             start the stdio language server
 ferro licenses                        print the licence notices
 ferro version | help
 ```
@@ -158,6 +160,19 @@ session with the ordinary exit status. Explicit AppStart, Process_Globals,
 project headers and project-only directives are refused in a session.
 Compact diagnostics identify the entered submission (`<repl:N>:line:column`),
 including errors in previously defined Subs. The session does not execute previous input again.
+
+#### Deferred REPL improvements
+
+These are proposals with no assigned milestone or schedule:
+
+- Command history: recall previous submissions.
+- Line editing supplied by FerroBASIC: edit the current input inside the REPL.
+  Terminal-provided editing may already work; FerroBASIC currently reads lines.
+- A session command to load commands or source from a file. Piping input into
+  `ferro repl` already works, but does not load a file into an existing session.
+- Recoverable interruption of executing BASIC code, returning to a usable
+  prompt. Ctrl+C currently terminates the process. `:cancel` only discards
+  pending input; it cannot interrupt code that is executing.
 
 ### Planned commands
 

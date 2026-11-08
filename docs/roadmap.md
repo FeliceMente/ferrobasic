@@ -79,15 +79,17 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
 - [x] `ferro repl` on the interpreter: statements, bare expressions, Subs
       and Types, with persistent state and interactive error recovery.
       Specified in `docs/spec/cli.md`; [tutorial](tutorial.md#9-the-interactive-repl).
-- [ ] Language Server with diagnostics: the same errors as `ferro check`,
-      published as the user types, on the lossless CST.
+- [x] Language Server with diagnostics: `ferro lsp` shares `ferro check`,
+      checking open buffers as the user types. [Setup and limits](language-server.md).
+      Multi-module linking remains Level 1; it is not supplied by the server.
 - [x] Conformance gate: the conformance tests pass in the interpreter and as standalone
       binaries. Recording run 21 (2026-11-08) settles the remaining probes:
       287 tests, 281 pass, 6 documented deviations, none pending or passing
       against provisional output, and none failing on either target.
 
-The conformance gate is satisfied; **M1 remains open** until its remaining
-scope, including Language Server diagnostics, is implemented. Run 21 imported
+The conformance gate and the M1 tooling items above are implemented.
+[Deferred REPL improvements](spec/cli.md#deferred-repl-improvements) have no
+assigned milestone or schedule. Run 21 imported
 eight expected-output files and one build-time refusal; its retained
 [report](research/recording-run-21.md) records 89 selected tests, one build
 failure and no disagreements. The refusal is now a negative conformance test.
