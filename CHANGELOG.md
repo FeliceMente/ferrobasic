@@ -13,8 +13,11 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   its text does, as `BA.ObjectToNumber` parses `String.valueOf(o)`: `Null`
   (`"null"`), a `List`, a `Map` or a `Boolean` raise
   `NumberFormatException`, and a `Char` `"7"` is 7. Before, they raised
-  `ClassCastException` or `NullPointerException`. A `String` with a
-  fraction converted to a `Long` is still open (a pending test).
+  `ClassCastException` or `NullPointerException`. Recording run 21 confirms
+  that an `Object` holding `"1.5"` raises `NumberFormatException` when
+  converted to `Long` (`BA.ObjectToLongNumber` / `Long.parseLong`), while
+  conversion to `Int` gives 1. A direct `String`-to-`Long` conversion still
+  parses a Double and narrows it, so `"1.5"` gives 1.
 
 ## 0.0.6 (pre-alpha)
 
