@@ -234,3 +234,16 @@ fn trailing_separators_preserve_expression_echo_and_source_locations() {
     assert_eq!(code, 3);
     assert!(err.contains("<repl:1>:1:5:"), "{err}");
 }
+
+#[test]
+fn expression_runtime_errors_map_to_current_submission_after_definitions() {
+    for definition in ["Sub S\nEnd Sub\n", "Type Point(X As Int)\n"] {
+        let input =
+            format!("{definition}Dim l As List\nl.Initialize\n    l.Get(5): ' trailing comment\n");
+        let (code, out, err) = script(&input, false);
+        assert_eq!(code, 1);
+        assert!(out.is_empty());
+        assert!(err.starts_with("<repl:4>:1:5: error:"), "{err}");
+        assert!(err.contains("IndexOutOfBoundsException"), "{err}");
+    }
+}

@@ -20,6 +20,8 @@ struct Definition {
 }
 struct Span {
     input_start: usize,
+    input_end: usize,
+    prefix_len: usize,
     start: usize,
     end: usize,
     cell: Cell,
@@ -38,6 +40,8 @@ impl Source {
         self.push(&cell.text);
         self.spans.push(Span {
             input_start: 0,
+            input_end: cell.text.len(),
+            prefix_len: 0,
             start,
             end: self.text.len(),
             cell: cell.clone(),
@@ -51,13 +55,15 @@ impl Source {
         let span = self
             .spans
             .iter()
-            .find(|s| s.start <= offset && offset <= s.end)
+            .find(|s| s.start <= offset && offset < s.end)
             .or_else(|| self.spans.last());
         let Some(span) = span else {
             return format!("repl: error: {message}\n");
         };
-        let offset =
-            (offset.saturating_sub(span.start) + span.input_start).min(span.cell.text.len());
+        // Generated expression wrappers belong to the entered expression too:
+        // runtime failures can point at Log rather than its argument.
+        let offset = (offset.saturating_sub(span.start + span.prefix_len) + span.input_start)
+            .min(span.input_end);
         let mut offset = offset;
         while !span.cell.text.is_char_boundary(offset) {
             offset -= 1;
@@ -253,16 +259,18 @@ impl Session {
                     let range = expression.text_range();
                     let input_start = usize::from(range.start());
                     let input_end = usize::from(range.end());
-                    source.push("Log(");
                     let start = source.text.len();
+                    source.push("Log(");
                     source.push(&cell.text[input_start..input_end]);
+                    source.push(")\n");
                     source.spans.push(Span {
                         input_start,
+                        input_end,
+                        prefix_len: "Log(".len(),
                         start,
                         end: source.text.len(),
                         cell: cell.clone(),
                     });
-                    source.push(")\n");
                 } else {
                     source.cell(&cell);
                 }
