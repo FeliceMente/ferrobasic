@@ -277,3 +277,53 @@ fn malformed_transport_fails_on_stderr_only() {
         assert!(String::from_utf8_lossy(&output.stderr).starts_with("ferro lsp:"));
     }
 }
+
+#[test]
+fn project_checks_follow_decoded_uri_paths() {
+    let mut c = Client::new();
+    c.initialize(Value::Null);
+    let text = format!("AppType=JavaFX\nLibrary1=jfx\nModule1=Tools\n@EndOfDesignText@\n{GOOD}");
+    let baseline = c.open("file:///virtual/App.b4j", &text);
+    assert_eq!(diagnostics(&baseline).len(), 3);
+    for uri in [
+        "file:///virtual/App.b4%6a",
+        "file:///virtual/App%2EB4J?revision=1#main",
+        "git:/virtual/App.b4j?ref=HEAD",
+        "untitled:App.b4j#main",
+    ] {
+        let response = c.open(uri, &text);
+        assert_eq!(response["params"]["uri"], uri);
+        assert_eq!(diagnostics(&response), diagnostics(&baseline), "{uri}");
+        c.change(
+            uri,
+            2,
+            &format!("AppType=StandardJava\nLibrary1=jcore\n@EndOfDesignText@\n{GOOD}"),
+        );
+        assert!(diagnostics(&c.receive()).is_empty());
+    }
+    c.finish();
+}
+
+#[test]
+fn error_heavy_buffers_publish_then_clear() {
+    let mut c = Client::new();
+    c.initialize(Value::Null);
+    // Large error lists previously took quadratic time to map. Exercise both
+    // many lines and one long line; checking only line starts misses the latter.
+    let count = 30_000;
+    for (uri, separator, last_line, last_column) in [
+        ("file:///many-lines.bas", "\n", count - 1, 0),
+        ("file:///long-line.bas", ":", 0, (count - 1) * 4),
+    ] {
+        let response = c.open(uri, &format!("bad{separator}").repeat(count));
+        let ds = diagnostics(&response);
+        assert_eq!(ds.len(), count);
+        assert_eq!(
+            ds.last().unwrap()["range"]["start"],
+            json!({"line":last_line,"character":last_column})
+        );
+        c.change(uri, 2, GOOD);
+        assert!(diagnostics(&c.receive()).is_empty());
+    }
+    c.finish();
+}

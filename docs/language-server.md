@@ -36,7 +36,8 @@ For editor setup, see the [VS Code example](#vs-code-example),
 - Chooses UTF-8 if the client's `general.positionEncodings` offers it;
   otherwise uses the LSP default, UTF-16. Both ends of every range are converted
   from compiler UTF-8 byte offsets. Supplementary characters count as two UTF-16
-  units. CRLF is one line ending; LF and lone CR also work.
+  units. CRLF is one line ending; LF and lone CR also work. A line and encoding
+  index is built once per analysis and reused for every diagnostic range.
 - Accepts only increasing document versions; checks and publications run in
   message order, synchronously. Earlier analyses cannot finish after later
   ones. Clients should use the published version to discard diagnostics for
@@ -55,8 +56,10 @@ module references (including case-insensitive disk lookup), and report missing
 files. That is a **loader**, not a multi-module compiler. The current compiler
 checks a single module. The server deliberately uses this supported boundary:
 
-- An open URI ending in `.b4j` (case-insensitive) is a project: it checks its
-  unsaved header and main code. Only console projects using jCore, with no
+- An open URI whose decoded path ends in `.b4j` (case-insensitive) is a
+  project: it checks its unsaved header and main code. URI queries and fragments
+  do not change the file type, and publications preserve the original URI.
+  Only console projects using jCore, with no
   `Module<n>` or `File<n>` entries, pass Level 0 header validation. Unsupported
   entries are diagnosed at the project header line, even if their files exist.
 - Every other URI is checked as an independent code module, including module

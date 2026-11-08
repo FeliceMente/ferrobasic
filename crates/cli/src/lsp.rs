@@ -76,41 +76,109 @@ struct Document {
     version: i64,
 }
 
-/// Byte offsets in compiler ranges become LSP code units. CRLF is one line
-/// break; lone CR is also accepted by the compiler. EOF ranges remain empty.
-fn position(text: &str, offset: usize, utf8: bool) -> Value {
-    let mut end = offset.min(text.len());
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    let bytes = text.as_bytes();
-    let (mut line, mut start, mut at) = (0, 0, 0);
-    while at < end {
-        if bytes[at] == b'\r' {
-            at += 1;
-            if bytes.get(at) == Some(&b'\n') {
-                at += 1;
-            }
-            if at > end {
-                break;
-            }
-            line += 1;
-            start = at;
-        } else if bytes[at] == b'\n' {
-            at += 1;
-            line += 1;
-            start = at;
+/// Classify the decoded URI path, leaving the original URI as the document key.
+/// Query/fragment text and the authority are not part of the source file name.
+fn is_project_uri(uri: &str) -> bool {
+    let resource = uri.split(['?', '#']).next().unwrap_or(uri);
+    let Some((_, rest)) = resource.split_once(':') else {
+        return false;
+    };
+    let path = if let Some(authority_path) = rest.strip_prefix("//") {
+        authority_path.split_once('/').map_or("", |(_, path)| path)
+    } else {
+        rest
+    };
+    let mut decoded = Vec::with_capacity(path.len());
+    let mut bytes = path.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte == b'%' {
+            let hex = |byte: u8| (byte as char).to_digit(16).map(|n| n as u8);
+            let pair = bytes.next().and_then(hex).zip(bytes.next().and_then(hex));
+            let Some((high, low)) = pair else {
+                return false;
+            };
+            decoded.push(high * 16 + low);
         } else {
-            at += 1;
+            decoded.push(byte);
         }
     }
-    let prefix = text[start..end].trim_end_matches(['\r', '\n']);
-    let character = if utf8 {
-        prefix.len()
-    } else {
-        prefix.encode_utf16().count()
-    };
-    json!({"line":line,"character":character})
+    decoded
+        .rsplit(|byte| *byte == b'/')
+        .next()
+        .is_some_and(|name| name.len() >= 4 && name[name.len() - 4..].eq_ignore_ascii_case(b".b4j"))
+}
+
+/// One pass builds line starts and cumulative UTF-8/UTF-16 differences.
+/// Lookups never rescan the source, even for many errors on one long line.
+struct PositionIndex<'a> {
+    text: &'a str,
+    starts: Vec<usize>,
+    /// (byte offset after a non-ASCII character, cumulative byte/unit excess).
+    utf16_excess: Vec<(usize, usize)>,
+}
+
+impl<'a> PositionIndex<'a> {
+    fn new(text: &'a str) -> Self {
+        let mut starts = vec![0];
+        let mut utf16_excess = Vec::new();
+        let mut excess = 0;
+        for (at, ch) in text.char_indices() {
+            match ch {
+                '\r' => starts.push(
+                    at + if text.as_bytes().get(at + 1) == Some(&b'\n') {
+                        2
+                    } else {
+                        1
+                    },
+                ),
+                '\n' if at == 0 || text.as_bytes()[at - 1] != b'\r' => starts.push(at + 1),
+                _ => {}
+            }
+            let difference = ch.len_utf8() - ch.len_utf16();
+            if difference != 0 {
+                excess += difference;
+                utf16_excess.push((at + ch.len_utf8(), excess));
+            }
+        }
+        Self {
+            text,
+            starts,
+            utf16_excess,
+        }
+    }
+
+    fn excess_at(&self, offset: usize) -> usize {
+        let end = self.utf16_excess.partition_point(|&(at, _)| at <= offset);
+        end.checked_sub(1).map_or(0, |i| self.utf16_excess[i].1)
+    }
+
+    /// CRLF is one line break; a position inside it is clamped to the preceding
+    /// line's end. Lone CR and LF work too, and EOF ranges remain empty.
+    fn position(&self, offset: usize, utf8: bool) -> Value {
+        let mut end = offset.min(self.text.len());
+        while !self.text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let line = self.starts.partition_point(|&start| start <= end) - 1;
+        let start = self.starts[line];
+        let mut line_end = self
+            .starts
+            .get(line + 1)
+            .copied()
+            .unwrap_or(self.text.len());
+        if line_end > start && self.text.as_bytes()[line_end - 1] == b'\n' {
+            line_end -= 1;
+        }
+        if line_end > start && self.text.as_bytes()[line_end - 1] == b'\r' {
+            line_end -= 1;
+        }
+        end = end.min(line_end);
+        let mut character = end - start;
+        if !utf8 {
+            character -= self.excess_at(end) - self.excess_at(start);
+        }
+        json!({"line":line,"character":character})
+    }
 }
 
 fn publish(
@@ -123,20 +191,16 @@ fn publish(
         .map(|doc| {
             // The compiler does not link modules at Level 0. Preserve its project
             // header errors rather than loading unsupported siblings from disk.
-            let project = uri
-                .rsplit('/')
-                .next()
-                .unwrap_or(uri)
-                .to_ascii_lowercase()
-                .ends_with(".b4j");
+            let project = is_project_uri(uri);
             let (_, errors) =
                 ferro_cli::check(&doc.text, ferro_cli::header_errors(&doc.text, project));
+            let positions = PositionIndex::new(&doc.text);
             errors
                 .into_iter()
                 .map(|(range, message)| {
                     json!({
-                        "range": {"start":position(&doc.text, usize::from(range.start()), utf8),
-                                   "end":position(&doc.text, usize::from(range.end()), utf8)},
+                        "range": {"start":positions.position(usize::from(range.start()), utf8),
+                                   "end":positions.position(usize::from(range.end()), utf8)},
                         "severity":1,"source":"ferro","message":message
                     })
                 })
@@ -262,14 +326,65 @@ pub fn run(input: &mut impl BufRead, output: &mut impl Write) -> io::Result<u8> 
 mod tests {
     use super::*;
     #[test]
+    fn project_uri_components() {
+        for uri in [
+            "file:///App.b4j",
+            "git:/App%2eb4%6A?ref=HEAD#main",
+            "untitled:App.B4J",
+        ] {
+            assert!(is_project_uri(uri), "{uri}");
+        }
+        for uri in [
+            "file://host.b4j",
+            "file:///App.bas?name=App.b4j",
+            "file:///App.bas#App.b4j",
+            "file:///App.b4j%3Fref",
+            "file:///App%xy.b4j",
+            "file:///App%.b4j",
+        ] {
+            assert!(!is_project_uri(uri), "{uri}");
+        }
+    }
+
+    #[test]
+    fn unicode_columns_restart_after_line_breaks() {
+        let index = PositionIndex::new("\u{feff}é😀x\r\n界😀z\ry\n");
+        for (offset, line, utf16_column, utf8_column) in [
+            (0, 0, 0, 0),
+            (3, 0, 1, 3),
+            (5, 0, 2, 5),
+            (9, 0, 4, 9),
+            (10, 0, 5, 10),
+            (11, 0, 5, 10),
+            (12, 1, 0, 0),
+            (15, 1, 1, 3),
+            (19, 1, 3, 7),
+            (20, 1, 4, 8),
+            (21, 2, 0, 0),
+            (22, 2, 1, 1),
+            (23, 3, 0, 0),
+        ] {
+            assert_eq!(
+                index.position(offset, false),
+                json!({"line":line,"character":utf16_column})
+            );
+            assert_eq!(
+                index.position(offset, true),
+                json!({"line":line,"character":utf8_column})
+            );
+        }
+    }
+
+    #[test]
     fn positions() {
         let text = "\u{feff}é😀x\r\ny\rz\n";
-        assert_eq!(position(text, 9, false), json!({"line":0,"character":4}));
-        assert_eq!(position(text, 9, true), json!({"line":0,"character":9}));
-        assert_eq!(position(text, 12, false), json!({"line":1,"character":0}));
-        assert_eq!(position(text, 14, false), json!({"line":2,"character":0}));
+        let index = PositionIndex::new(text);
+        assert_eq!(index.position(9, false), json!({"line":0,"character":4}));
+        assert_eq!(index.position(9, true), json!({"line":0,"character":9}));
+        assert_eq!(index.position(12, false), json!({"line":1,"character":0}));
+        assert_eq!(index.position(14, false), json!({"line":2,"character":0}));
         assert_eq!(
-            position(text, text.len(), false),
+            index.position(text.len(), false),
             json!({"line":3,"character":0})
         );
     }
