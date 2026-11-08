@@ -1,0 +1,18 @@
+[package]
+name = "ferro-repl"
+description = "Stateful interpreter sessions for FerroBASIC"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ferro-syntax = { path = "../syntax" }
+ferro-hir = { path = "../hir" }
+ferro-mir = { path = "../mir" }
+ferro-interp = { path = "../interp" }

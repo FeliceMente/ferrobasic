@@ -29,7 +29,71 @@ impl Parse {
 
 /// Parses a module: optional header, then members.
 pub fn parse(text: &str) -> Parse {
-    let (tokens, lex_errors) = lexer::lex(text);
+    parse_mode(text, false, false).0
+}
+
+/// How a REPL fragment is interpreted. Assignment takes precedence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FragmentKind {
+    Statements,
+    Expression,
+    Sub,
+    Type,
+}
+
+/// A fragment's completeness, without relying on diagnostic wording.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Completeness {
+    Complete,
+    Incomplete,
+    Invalid,
+}
+
+/// Parses one REPL submission with the same productions as module parsing.
+pub fn parse_fragment(text: &str) -> (Parse, FragmentKind, Completeness) {
+    let (statements, status) = parse_mode(text, true, false);
+    let root = statements.syntax();
+    let nodes: Vec<_> = root.children().collect();
+    let kind = if nodes.len() == 1 && nodes[0].kind() == SUB_DECL {
+        FragmentKind::Sub
+    } else if nodes.len() == 1 && nodes[0].kind() == TYPE_DECL {
+        FragmentKind::Type
+    } else if nodes.len() == 1 && nodes[0].kind() == EXPR_STMT {
+        FragmentKind::Expression
+    } else {
+        FragmentKind::Statements
+    };
+    if status == Completeness::Complete {
+        return (statements, kind, status);
+    }
+    if kind != FragmentKind::Sub
+        && !nodes.iter().any(|n| {
+            matches!(
+                n.kind(),
+                DIM_STMT
+                    | TYPE_DECL
+                    | ASSIGN_STMT
+                    | IF_STMT
+                    | FOR_STMT
+                    | FOR_EACH_STMT
+                    | DO_STMT
+                    | TRY_STMT
+                    | SELECT_STMT
+            )
+        })
+    {
+        let (expression, expression_status) = parse_mode(text, true, true);
+        if expression_status != Completeness::Invalid {
+            return (expression, FragmentKind::Expression, expression_status);
+        }
+    }
+    (statements, kind, status)
+}
+
+fn parse_mode(text: &str, fragment: bool, expression: bool) -> (Parse, Completeness) {
+    let (tokens, lex_errors, open_string) = lexer::lex_fragment(text);
+    let lexical_errors = lex_errors.len();
+    let invalid_lexical = lex_errors.iter().any(|e| !e.incomplete);
     let mut starts = Vec::with_capacity(tokens.len() + 1);
     let mut offset = 0u32;
     for token in &tokens {
@@ -45,6 +109,7 @@ pub fn parse(text: &str) -> Parse {
         builder: GreenNodeBuilder::new(),
         depth: 0,
         too_deep: false,
+        eof_errors: 0,
         errors: lex_errors
             .into_iter()
             .map(|e| SyntaxError {
@@ -53,13 +118,67 @@ pub fn parse(text: &str) -> Parse {
             })
             .collect(),
     };
-    parser.source_file();
+    if fragment {
+        parser.builder.start_node(SOURCE_FILE.into());
+        if expression {
+            parser.start(EXPR_STMT);
+            parser.expr();
+            parser.finish();
+            while matches!(parser.current(), Some(NEWLINE | COLON)) {
+                parser.bump();
+            }
+            if parser.current().is_some() {
+                parser.error_and_recover("expected end of expression");
+            }
+        } else {
+            while parser.current().is_some() {
+                let before = parser.pos;
+                if matches!(parser.current(), Some(NEWLINE | COLON)) {
+                    parser.bump();
+                } else if parser.at_sub_start() {
+                    parser.sub_decl();
+                } else {
+                    parser.statement();
+                    parser.expect_sep();
+                }
+                if parser.pos == before {
+                    parser.error("unexpected block terminator");
+                    parser.bump();
+                }
+            }
+        }
+        parser.eat_trivia();
+        parser.finish();
+    } else {
+        parser.source_file();
+    }
+    let continuation = parser
+        .tokens
+        .iter()
+        .rev()
+        .find(|t| !matches!(t.kind, WHITESPACE | COMMENT | NEWLINE))
+        .is_some_and(|t| t.kind == LINE_CONTINUATION);
+    let status = if parser.errors.is_empty() && !continuation {
+        Completeness::Complete
+    } else if !invalid_lexical
+        && !parser.too_deep
+        && (open_string || continuation || parser.eof_errors > 0)
+        && parser.errors.len() == parser.eof_errors + lexical_errors
+        && (lexical_errors == 0 || open_string)
+    {
+        Completeness::Incomplete
+    } else {
+        Completeness::Invalid
+    };
     let mut errors = parser.errors;
     errors.sort_by_key(|e| e.range.start());
-    Parse {
-        green: parser.builder.finish(),
-        errors,
-    }
+    (
+        Parse {
+            green: parser.builder.finish(),
+            errors,
+        },
+        status,
+    )
 }
 
 /// Binding powers of the binary operators, lowest first, as recorded from
@@ -116,6 +235,7 @@ struct Parser<'t> {
     /// The current Sub went past `MAX_NESTING`: the rest of it is one error
     /// node, and the errors of the unwinding levels are not reported.
     too_deep: bool,
+    eof_errors: usize,
 }
 
 // Token access and tree building.
@@ -221,6 +341,9 @@ impl Parser<'_> {
             Some(i) => TextRange::new(self.starts[i].into(), self.starts[i + 1].into()),
             None => TextRange::empty((*self.starts.last().unwrap()).into()),
         };
+        if self.current().is_none() {
+            self.eof_errors += 1;
+        }
         self.errors.push(SyntaxError {
             range,
             message: message.into(),

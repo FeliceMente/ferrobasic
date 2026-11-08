@@ -155,7 +155,7 @@ impl Drop for Output<'_> {
 
 pub struct Machine<'p, 'w> {
     pub program: &'p Program,
-    globals: Vec<Value>,
+    pub(super) globals: Vec<Value>,
     frames: Vec<Frame>,
     /// The error caught by the innermost `Catch` that ran.
     pub last_exception: Option<Rc<Exc>>,
@@ -171,13 +171,23 @@ impl<'p, 'w> Machine<'p, 'w> {
         stdout: &'w mut dyn Write,
         stderr: &'w mut dyn Write,
     ) -> Machine<'p, 'w> {
+        let globals = program
+            .globals
+            .iter()
+            .map(|g| default_value(&g.ty, program))
+            .collect();
+        Self::with_globals(program, globals, stdout, stderr)
+    }
+
+    pub(super) fn with_globals(
+        program: &'p Program,
+        globals: Vec<Value>,
+        stdout: &'w mut dyn Write,
+        stderr: &'w mut dyn Write,
+    ) -> Self {
         Machine {
             program,
-            globals: program
-                .globals
-                .iter()
-                .map(|g| default_value(&g.ty, program))
-                .collect(),
+            globals,
             frames: Vec::new(),
             last_exception: None,
             random: None,
