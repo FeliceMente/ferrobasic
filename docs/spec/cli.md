@@ -119,6 +119,42 @@ ferro version | help
 - `ferro-difftest` drives the conformance tests and prints the compatibility
   report ([../compatibility-testing.md](../compatibility-testing.md#the-report)).
 
+### Interactive REPL
+
+`ferro repl` starts a Level 0 session; it takes no file argument. See the
+[REPL tutorial](../tutorial-repl.md). Statements execute once; bare expressions
+print with Log's conversions. Assignment wins (`n = 3` assigns, `(n = 3)`
+compares). Calls returning values print once; void calls add no output.
+Statements, complete Subs, Type declarations, multiline blocks and strings
+are accepted. An incomplete construct gets a continuation prompt, not an
+error, until EOF or invalid syntax. Blank lines do not finish a block.
+
+Session variables are module globals. Values, aliases, collections, random
+state and LastException survive submissions. Types are fixed; a same-type
+Dim resets its value normally. Constants cannot be redefined. Types cannot
+be redeclared; reset to change their layout. A Sub can be replaced with the
+same parameter count/types and return type; dependent Subs are rechecked.
+New declarations that would change a previously checked Sub's local bindings
+are refused; choose another name. Definitions are submitted one at a time.
+Failed compilation leaves the session unchanged. Compilation commits the
+submission's declarations before execution; an uncaught runtime error keeps
+completed mutations and those declarations, unwinds execution and allows
+another interactive submission.
+
+Interactive prompts (`> ` and `... `) go to stderr; program output and
+expression results go to stdout. There is no input echo, history or line
+editing supplied by FerroBASIC. Ctrl+C terminates the process; recoverable
+execution cancellation is deferred. `:help`, `:quit`, `:reset` and `:cancel`
+are control lines outside string literals. Cancel discards pending input;
+reset clears pending input, definitions and runtime state. Normal EOF or
+quit exits 0; incomplete EOF exits 3. Piped input has no prompts and stops
+on the first error: 3 for compilation, 1 for runtime. Bad arguments and
+input-read failures exit 2. ExitApplication/ExitApplication2 terminate the
+session with the ordinary exit status. Explicit AppStart, Process_Globals,
+project headers and project-only directives are refused in a session.
+Compact diagnostics identify the entered submission (`<repl:N>:line:column`),
+including errors in previously defined Subs. The session does not execute previous input again.
+
 ### Planned commands
 
 These names are reserved. Until a command is implemented it exits with code 2
@@ -130,7 +166,7 @@ something else instead (`ferro build` on a module points to `ferro bundle`).
 | `ferro compile <input> [--target <t>] [--emit <kind>] [-o <output>]` | compile one module or project for this machine (no `--target`) or for another target | JVM backend (M3), native and WebAssembly (M4), microcontrollers (M5) |
 | `ferro targets` | list the targets and what each needs installed | `compile` |
 | `ferro build [<project>]` | build a project from its project file: compile for the project's default target, then package the result where the target needs it | JVM backend (M3) |
-| `ferro repl`, `ferro test`, `ferro fmt` | interactive REPL, conformance runner, formatter | M1 and later |
+| `ferro test`, `ferro fmt` | conformance runner, formatter | M1 and later |
 
 Decisions behind them:
 

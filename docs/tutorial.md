@@ -9,6 +9,8 @@ The full list is in [spec/level0.md](spec/level0.md) and
 [spec/level0-builtins.md](spec/level0-builtins.md). Every output shown below
 was produced by `ferro` itself.
 
+Try code interactively with the [REPL tutorial](tutorial-repl.md).
+
 ## 1. Get `ferro`
 
 You need a recent stable Rust toolchain. From the repository root:
@@ -29,10 +31,11 @@ The part in brackets is the platform `ferro` was built for, for example
 `macos-arm64` on an Apple Silicon Mac.
 
 `ferro help` (or `ferro` with no arguments) prints the same version and
-platform, then lists the commands. Three of them work at Level 0:
+platform, then lists the commands. The execution commands available at Level 0 are:
 
 | Command | What it does |
 | --- | --- |
+| `ferro repl` | start a persistent interactive BASIC session; see [the REPL tutorial](tutorial-repl.md) |
 | `ferro check <file>` | parses and type-checks the program and prints any errors |
 | `ferro run <file> [-- <args>...]` | checks it, then runs it with the interpreter |
 | `ferro bundle <file> [-o <output>]` | checks it, then bundles it with the interpreter into a standalone executable |
@@ -42,7 +45,7 @@ to others (see [section 8](#8-standalone-executables)).
 
 The help also lists planned commands, which are not implemented yet: `compile`
 (native code and other targets), `targets`, `build` (for whole projects),
-`repl`, `test` and `fmt`. In 0.0.1, `ferro bundle` was called `ferro build`.
+`test` and `fmt`. In 0.0.1, `ferro bundle` was called `ferro build`.
 
 ## 2. Hello, world
 

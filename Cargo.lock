@@ -134,6 +134,7 @@ dependencies = [
  "ferro-interp",
  "ferro-mir",
  "ferro-project",
+ "ferro-repl",
  "ferro-syntax",
  "libsui",
  "same-file",
@@ -198,6 +199,16 @@ name = "ferro-recorder"
 version = "0.0.7-dev"
 dependencies = [
  "ferro-corpus",
+]
+
+[[package]]
+name = "ferro-repl"
+version = "0.0.7-dev"
+dependencies = [
+ "ferro-hir",
+ "ferro-interp",
+ "ferro-mir",
+ "ferro-syntax",
 ]
 
 [[package]]

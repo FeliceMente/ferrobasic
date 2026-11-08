@@ -136,7 +136,18 @@ implementation of the language inside the extension.
 
 1. **One CLI** (`ferro`) with the commands `check`, `run`, `bundle`, `compile`, `targets`,
    `build`, `repl`, `test` and `fmt` (see `docs/spec/cli.md`, "Commands").
-2. **REPL** on the interpreter: accepts statements and whole Subs, keeps state between inputs.
+2. **REPL** on the interpreter: accepts statements, expressions, Subs and Types,
+   keeping state between inputs. `crates/repl` owns fragment accumulation,
+   definition sources and diagnostic source maps. `ferro-hir::check_session`
+   seeds persistent, checked global bindings into a candidate synthetic module;
+   it never includes earlier executable submissions. Accepted Type/Sub sources
+   are rechecked together, with stable record/global identities and compatible
+   Sub signatures. `ferro-interp::SessionState` retains globals, shared values,
+   RNG and LastException independently of compiled programs. Each submission
+   uses fresh call frames and string-constant caches, and executes only its
+   own initializer. Compiler failures are atomic; runtime failures retain
+   completed mutations. See [the specification](spec/cli.md#interactive-repl)
+   and [tutorial](tutorial-repl.md).
 3. **Language Server**, in this order: diagnostics, type hover, completion,
    go to definition, rename, formatting.
 4. **Debug Adapter** on the interpreter: breakpoints, stepping, locals. Native

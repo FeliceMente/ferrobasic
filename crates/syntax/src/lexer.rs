@@ -17,10 +17,19 @@ pub struct Token {
 pub struct LexError {
     pub offset: u32,
     pub message: String,
+    /// Input stopped inside a string/placeholder, rather than containing
+    /// an invalid character. Fragment parsing can request another line.
+    pub incomplete: bool,
 }
 
 /// Tokenises `text`. Never fails: problems become `ERROR_TOKEN`s or errors.
 pub fn lex(text: &str) -> (Vec<Token>, Vec<LexError>) {
+    let (tokens, errors, _) = lex_fragment(text);
+    (tokens, errors)
+}
+
+/// Tokens, errors, and whether input ended inside a string or smart string.
+pub fn lex_fragment(text: &str) -> (Vec<Token>, Vec<LexError>, bool) {
     let mut lexer = Lexer {
         src: text,
         pos: 0,
@@ -30,12 +39,13 @@ pub fn lex(text: &str) -> (Vec<Token>, Vec<LexError>) {
         smart_depth: 0,
         reported_too_deep: false,
         continued_comment: false,
+        incomplete: false,
     };
     lexer.prologue();
     while !lexer.at_end() {
         lexer.code_token(false);
     }
-    (lexer.tokens, lexer.errors)
+    (lexer.tokens, lexer.errors, lexer.incomplete)
 }
 
 struct Lexer<'a> {
@@ -53,6 +63,7 @@ struct Lexer<'a> {
     /// A comment follows a line continuation: the line break after it is
     /// part of the continuation.
     continued_comment: bool,
+    incomplete: bool,
 }
 
 /// Deepest nesting of smart strings (`$"${$"..."$}"$`). Smart strings are
@@ -90,6 +101,7 @@ impl Lexer<'_> {
         self.errors.push(LexError {
             offset: offset as u32,
             message: message.into(),
+            incomplete: false,
         });
     }
 
@@ -321,7 +333,9 @@ impl Lexer<'_> {
         match self.rest()[1..].find('"') {
             Some(i) => self.push(STRING, i + 2),
             None => {
+                self.incomplete = true;
                 self.error(start, "unterminated string literal");
+                self.errors.last_mut().unwrap().incomplete = true;
                 let len = self.rest().len();
                 self.push(STRING, len);
             }
@@ -335,7 +349,9 @@ impl Lexer<'_> {
         loop {
             let rest = self.rest();
             if rest.is_empty() {
+                self.incomplete = true;
                 self.error(start, "unterminated smart string literal");
+                self.errors.last_mut().unwrap().incomplete = true;
                 return;
             }
             if rest.starts_with("\"$") {
@@ -347,7 +363,9 @@ impl Lexer<'_> {
                 self.push(PLACEHOLDER_START, len);
                 loop {
                     if self.at_end() {
+                        self.incomplete = true;
                         self.error(placeholder, "unterminated smart string placeholder");
+                        self.errors.last_mut().unwrap().incomplete = true;
                         return;
                     }
                     if !self.code_token(true) {

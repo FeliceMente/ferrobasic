@@ -14,15 +14,49 @@ use crate::ty::{RecordId, Ty, builtin_type, can_convert};
 
 /// Lowers a parsed module.
 pub fn lower(root: &SyntaxNode) -> (Module, Vec<Diagnostic>) {
+    let (module, diags, _) = lower_session(root, &SessionBindings::default());
+    (module, diags)
+}
+
+/// Opaque checked session bindings. Cloning stages a submission atomically.
+#[derive(Debug, Clone, Default)]
+pub struct SessionBindings {
+    globals: Vec<(Var, bool)>,
+}
+
+pub fn lower_session(
+    root: &SyntaxNode,
+    bindings: &SessionBindings,
+) -> (Module, Vec<Diagnostic>, SessionBindings) {
     let mut lowerer = Lowerer::default();
+    for (var, loop_declared) in &bindings.globals {
+        let origin = if *loop_declared {
+            Origin::Counter
+        } else if var.is_const {
+            Origin::Const
+        } else {
+            Origin::Dim
+        };
+        lowerer.declare_global(var.name.clone(), var.ty.clone(), var.range, origin);
+        let id = *lowerer.globals.get(&key(&var.name)).unwrap();
+        lowerer.module.globals[id.0 as usize].is_const = var.is_const;
+        if var.is_const {
+            lowerer.const_states.insert(id, ConstState::Single);
+        }
+    }
     lowerer.module_items(root);
+    let globals = lowerer
+        .module
+        .globals
+        .iter()
+        .map(|var| (var.clone(), lowerer.declared_by_loop(&key(&var.name))))
+        .collect();
     let Lowerer {
         module, mut diags, ..
     } = lowerer;
-    // Some declarations are visited by more than one pass.
     diags.sort_by(|a, b| (a.range.start(), &a.message).cmp(&(b.range.start(), &b.message)));
     diags.dedup();
-    (module, diags)
+    (module, diags, SessionBindings { globals })
 }
 
 #[derive(Default)]

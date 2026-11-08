@@ -1,13 +1,13 @@
 //! `ferro`: the FerroBASIC command-line tool.
 //!
-//! `check`, `run` and `bundle` work for Level 0 modules, and `licenses`
-//! prints the licence notices; `build`, `compile`, `targets`, `repl`, `test`
+//! `check`, `run`, `bundle` and `repl` work for Level 0, and `licenses`
+//! prints the licence notices; `build`, `compile`, `targets`, `test`
 //! and `fmt` are reserved. See `docs/spec/cli.md`.
 
 mod standalone;
 
 use std::ffi::OsString;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -22,6 +22,7 @@ Commands:
   run <file> [-- <args>...]       Run with the reference interpreter
   bundle <file> [-o <output>]     Bundle the interpreter and the program into
                                   a standalone executable for this machine
+  repl                            Start the interactive REPL
   licenses                        Print FerroBASIC's licence and the notices
                                   of the third-party code it contains
   version                         Print the version and platform
@@ -31,7 +32,6 @@ Planned (not implemented yet):
   compile <file> [--target <t>]   Compile for this machine or another target
   targets                         List the compilation targets
   build [<project>]               Build a project from its project file
-  repl                            Start the interactive REPL
   test                            Run conformance tests
   fmt <file>                      Format source files
 ";
@@ -179,7 +179,20 @@ fn ferro_main() -> ExitCode {
              microcontrollers (M5); until then, use `ferro run` or `ferro bundle`",
         ),
         Some("targets") => not_implemented("targets", "it arrives with `ferro compile`"),
-        Some(cmd @ ("repl" | "test" | "fmt")) => not_implemented(cmd, "planned for milestone M1"),
+        Some("repl") => match &args[1..] {
+            [] => {
+                let stdin = std::io::stdin();
+                let code = ferro_repl::run(
+                    &mut stdin.lock(),
+                    &mut std::io::stdout().lock(),
+                    &mut std::io::stderr().lock(),
+                    stdin.is_terminal(),
+                );
+                ExitCode::from(code)
+            }
+            _ => usage_error("ferro repl: expected no arguments"),
+        },
+        Some(cmd @ ("test" | "fmt")) => not_implemented(cmd, "planned for milestone M1"),
         Some("help" | "--help" | "-h") | None => {
             out(&usage());
             ExitCode::SUCCESS

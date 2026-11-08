@@ -10,8 +10,9 @@ VS Code or any LSP-capable editor instead of a dedicated IDE.
 
 > **Status: pre-alpha (milestone M1).** Level 0 programs (one module,
 > language core, `List`/`Map`) can be checked, run with the reference
-> interpreter and built into standalone executables for the host. Start with
-> the [tutorial](docs/tutorial.md); see [`docs/roadmap.md`](docs/roadmap.md)
+> interpreter and built into standalone executables for the host. A stateful
+> REPL supports interactive experiments. Start with the [CLI tutorial](docs/tutorial.md)
+> or [REPL tutorial](docs/tutorial-repl.md); see [`docs/roadmap.md`](docs/roadmap.md)
 > for what comes next.
 
 FerroBASIC is an independent project. It is not affiliated with or endorsed by
@@ -34,7 +35,8 @@ crates/
   project/        reader for .b4j/.b4a/.b4i/.b4r and .b4xlib
   hir/            name resolution, types, target profiles
   mir/            typed IR and lowering
-  interp/         reference interpreter and REPL
+  interp/         reference interpreter and persistent runtime storage
+  repl/           interactive submissions, definitions and source mapping
   difftest/       differential runner, normalizer, differ, report
   compare/        compares how two builds of ferro check generated programs
   corpus/         the conformance corpus and the real-world corpus's
@@ -66,6 +68,7 @@ cargo run -p ferro-cli -- --help
 Running and building a Level 0 program:
 
 ```sh
+ferro repl                        # start an interactive session
 ferro check prog.bas              # parse and type-check
 ferro run prog.bas -- a b         # run with the reference interpreter
 ferro bundle prog.bas -o prog     # bundle into a standalone executable
