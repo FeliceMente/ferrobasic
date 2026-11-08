@@ -5,19 +5,75 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
-## Unreleased
+## 0.0.7 (pre-alpha)
+
+M1 is complete: `ferro repl` and `ferro lsp` join `check`, `run` and
+`bundle`, and recording run 21 answered the last pending tests.
+
+### Tools
+
+- `ferro repl` starts an interactive Level 0 session
+  (`docs/tutorial.md`, section 9). It runs statements, prints bare
+  expressions with `Log`'s conversions, and accepts multiline blocks,
+  complete Subs and `Type` declarations, with a continuation prompt while
+  a construct is incomplete. Variables, collections and definitions
+  persist between submissions; a Sub can be replaced with the same
+  signature. A compile error leaves the session unchanged, and a runtime
+  error keeps what ran before it. `:help`, `:cancel`, `:reset` and
+  `:quit` are control lines. Piped input stops at the first error, with
+  `run`'s exit codes (`docs/spec/cli.md`). History, line editing and
+  recoverable cancellation are not there yet.
+- `ferro lsp` is a language server over stdio that publishes the same
+  diagnostics as `ferro check` for each open buffer, unsaved text
+  included, with full-document sync and UTF-8 or UTF-16 positions. It
+  checks one module at a time: a `.b4j` buffer as a project, anything
+  else as a module, with no cross-module names. Completion, hover and
+  the other editor features are not implemented, and there is no editor
+  extension: `docs/language-server.md` shows how to connect VS Code
+  (through a generic LSP client) and Neovim, and Zed's status. It adds
+  `serde_json` as a dependency.
 
 ### Runtime, as in B4J
 
-- A value held in an `Object` that is not a number converts to a number as
-  its text does, as `BA.ObjectToNumber` parses `String.valueOf(o)`: `Null`
-  (`"null"`), a `List`, a `Map` or a `Boolean` raise
-  `NumberFormatException`, and a `Char` `"7"` is 7. Before, they raised
-  `ClassCastException` or `NullPointerException`. Recording run 21 confirms
-  that an `Object` holding `"1.5"` raises `NumberFormatException` when
-  converted to `Long` (`BA.ObjectToLongNumber` / `Long.parseLong`), while
-  conversion to `Int` gives 1. A direct `String`-to-`Long` conversion still
-  parses a Double and narrows it, so `"1.5"` gives 1.
+- A value held in an `Object` converts to a number, a `Boolean` or a
+  `Char` through its text, as B4J's `BA.ObjectToNumber`,
+  `ObjectToLongNumber`, `ObjectToBoolean` and `ObjectToChar` parse
+  `String.valueOf(o)`:
+  - to a number, `Null` (`"null"`), a `List`, a `Map` or a `Boolean`
+    raise `NumberFormatException`, and a `Char` `"7"` is 7. Before, they
+    raised `ClassCastException` or `NullPointerException`.
+  - to `Long`, the text is parsed as `Long.parseLong` does: `"1.5"`
+    raises `NumberFormatException`, while to `Int` it gives 1. A direct
+    `String`-to-`Long` conversion still parses a Double and narrows it,
+    so `"1.5"` gives 1.
+  - to `Boolean`, text other than `true` or `false` raises
+    `RuntimeException` ("Cannot parse: … as boolean").
+  - to `Char`, the first character of the text: an `Object` holding 65
+    gives `"6"`.
+
+### Language, as in B4J
+
+- A `For Each` without `As` in `Process_Globals` over a name that is a
+  `Type`'s declares an `Object` module variable; the `Type` stays usable.
+- A `For Each` over a collection whose static type is `Object` is an
+  error at build time, as in B4J, whose generated Java does not compile.
+  Before, an `Object` holding a number stopped FerroBASIC with an
+  internal error at run time.
+
+### Recorded from B4J
+
+- Recording run 21 settled the last pending tests. 287 conformance tests:
+  281 pass against recordings, in the interpreter and as standalone
+  binaries, 6 are documented deviations (D1, D3–D7), and none are
+  pending.
+
+### Testing and tools
+
+- `ferro-compare` retries starting `ferro` when the system reports the
+  freshly built binary as busy (`ETXTBSY`), which made it fail at random
+  on CI. This fix also shipped in 0.0.6's code on `main`.
+- The documentation was audited against `dev`: `docs/roadmap.md` marks M1
+  complete, and the guides describe what is implemented today.
 
 ## 0.0.6 (pre-alpha)
 
