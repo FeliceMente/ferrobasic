@@ -20,6 +20,8 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+# JSON-RPC serialization for the stdio language server.
+serde_json = "1"
 ferro-project = { path = "../project" }
 ferro-syntax = { path = "../syntax" }
 ferro-hir = { path = "../hir" }

@@ -5,8 +5,8 @@
 FerroBASIC aims to build existing B4X projects without changes, and to compile
 the same source to the JVM and Android, native desktop (Windows, macOS, Linux),
 iOS, WebAssembly and microcontrollers such as the Raspberry Pi Pico. It
-currently provides a reference interpreter and a stateful REPL. A Language Server for VS Code
-and other LSP-capable editors is planned; diagnostics are the next M1 feature.
+currently provides a reference interpreter, a stateful REPL and a diagnostics-only
+[language server](docs/language-server.md) for LSP-capable editors.
 
 > **Status: pre-alpha (milestone M1).** Level 0 programs (one module,
 > language core, `List`/`Map`) can be checked, run with the reference
@@ -52,7 +52,7 @@ docs/             architecture, porting, spec, testing, roadmap
 ```
 
 Planned crates (library descriptors, layouts, JVM and LLVM backends, native
-runtime, LSP, DAP, program generator) and editor integrations are added when
+runtime, DAP, program generator) and editor integrations are added when
 their milestone starts: see `docs/architecture.md` and `docs/roadmap.md`.
 
 ## Building
@@ -78,6 +78,7 @@ After building, use `target/debug/ferro` (or add `target/debug` to `PATH`)
 for these commands. Running and bundling a Level 0 program:
 
 ```sh
+ferro lsp                         # start the stdio language server
 ferro repl                        # start an interactive session
 ferro check prog.bas              # parse and type-check
 ferro run prog.bas -- a b         # run with the reference interpreter

@@ -171,8 +171,8 @@ The "not yet" rows come from the
 | Uncaught runtime errors | 🟡 | the program stops with exit code 1 and the error type; B4J's exact output and exit code are *(open)* |
 | JVM backend: real B4J projects unchanged | ❌ | M3 |
 | Native and WebAssembly backends, microcontrollers | ❌ | M4, M5 |
-| REPL: `ferro repl` | ✅ | persistent statements, expressions, Subs and Types; [tutorial](tutorial.md#9-the-interactive-repl); no history or recoverable execution cancellation yet |
-| Language server | ❌ | M1: diagnostics next |
+| REPL: `ferro repl` | ✅ | persistent statements, expressions, Subs and Types; [tutorial](tutorial.md#9-the-interactive-repl); [deferred improvements](spec/cli.md#deferred-repl-improvements) |
+| Language server | ✅ | `ferro lsp`: Level 0 diagnostics for open buffers; [setup and project limitations](language-server.md); other editor features are deferred |
 | Formatter | ❌ | planned, not scheduled; `ferro fmt` is reserved |
 
 ## Keeping this page current

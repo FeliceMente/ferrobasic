@@ -10,6 +10,10 @@ The full list is in [spec/level0.md](spec/level0.md) and
 was produced by `ferro` itself.
 
 Try code interactively in [section 9: the interactive REPL](#9-the-interactive-repl).
+For live compiler diagnostics in an editor, see the
+[VS Code language-server setup](language-server.md#vs-code-example). It uses
+temporary Visual Basic highlighting; a dedicated FerroBASIC extension and
+syntax grammar are not available yet.
 
 ## 1. Get `ferro`
 
@@ -533,8 +537,10 @@ Enter BASIC statements, expressions, Types or complete Subs.
 
 EOF also leaves the session: Ctrl+D on Unix, or Ctrl+Z followed by Enter in
 a Windows console. Ctrl+C terminates the process; it does not cancel running
-BASIC code and return you to a prompt. History and line editing are deferred;
-your terminal may provide its own basic editing.
+BASIC code and return you to a prompt. Your terminal may provide basic editing.
+See [deferred REPL improvements](spec/cli.md#deferred-repl-improvements) for
+history, FerroBASIC line editing, session file loading and recoverable interruption;
+these proposals have no assigned schedule.
 
 ### Expressions and statements
 
