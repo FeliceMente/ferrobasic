@@ -8,7 +8,8 @@ The first M1 server publishes Level 0 compiler diagnostics. Completion, hover,
 definitions, rename, formatting and debugging are not implemented. There is
 no IDE or editor extension to install from this repository yet.
 
-For editor setup, see the [VS Code example](#vs-code-example) or
+For editor setup, see the [VS Code example](#vs-code-example),
+[Zed integration status](#zed-integration-status) or
 [Neovim example](#neovim-example) below.
 
 ## Protocol and diagnostics
@@ -143,6 +144,31 @@ the executable path. After changing the configuration, reload the window to
 restart the client and clear diagnostics from the previous setup. Only the
 diagnostic features described above are available; the same single-module
 limits apply as in other editors.
+
+## Zed integration status
+
+Zed supports LSP servers through language extensions. A FerroBASIC extension
+must register the language and its server, then launch
+`/absolute/path/to/ferro` with the argument `lsp`. Adding a `ferro` entry to
+Zed's `lsp` settings alone does not register that language/server association.
+The VS Code Generic LSP Client extension and its settings are specific to
+VS Code.
+
+There is currently no FerroBASIC extension or syntax grammar for Zed in this
+repository, so there is no ready-to-use Zed configuration to install yet.
+Compiler diagnostics come from `ferro lsp`; syntax highlighting would be
+provided separately by the editor extension's grammar. The temporary Visual
+Basic highlighting in the VS Code example is not a FerroBASIC grammar.
+
+For a local Zed integration, follow Zed's
+[language-extension guide](https://zed.dev/docs/extensions/languages#language-servers)
+to register the server in `extension.toml` and implement its
+`language_server_command` in the extension's Rust code. Load it through
+**zed: install dev extension**, as described in
+[Developing Extensions](https://zed.dev/docs/extensions/developing-extensions).
+Once connected, use the same `example.bas` and unsaved correction from the
+VS Code example to exercise diagnostics. A Zed integration has not yet been
+tested, and no extension release is scheduled here.
 
 ## Neovim example
 
