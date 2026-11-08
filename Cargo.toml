@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.7-dev"
+version = "0.0.7"
 edition = "2024"
 rust-version = "1.85"
 repository = "https://github.com/FeliceMente/ferrobasic"
