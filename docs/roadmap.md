@@ -78,7 +78,7 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
 
 - [x] `ferro repl` on the interpreter: statements, bare expressions, Subs
       and Types, with persistent state and interactive error recovery.
-      Specified in `docs/spec/cli.md`; [tutorial](tutorial-repl.md).
+      Specified in `docs/spec/cli.md`; [tutorial](tutorial.md#9-the-interactive-repl).
 - [ ] Language Server with diagnostics: the same errors as `ferro check`,
       published as the user types, on the lossless CST.
 - [ ] Gate: the conformance tests pass in the interpreter and as standalone

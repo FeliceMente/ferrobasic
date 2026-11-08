@@ -122,7 +122,7 @@ ferro version | help
 ### Interactive REPL
 
 `ferro repl` starts a Level 0 session; it takes no file argument. See the
-[REPL tutorial](../tutorial-repl.md). Statements execute once; bare expressions
+[REPL tutorial](../tutorial.md#9-the-interactive-repl). Statements execute once; bare expressions
 print with Log's conversions. Assignment wins (`n = 3` assigns, `(n = 3)`
 compares). Calls returning values print once; void calls add no output.
 Statements, complete Subs, Type declarations, multiline blocks and strings

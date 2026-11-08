@@ -147,7 +147,7 @@ implementation of the language inside the extension.
    uses fresh call frames and string-constant caches, and executes only its
    own initializer. Compiler failures are atomic; runtime failures retain
    completed mutations. See [the specification](spec/cli.md#interactive-repl)
-   and [tutorial](tutorial-repl.md).
+   and [tutorial](tutorial.md#9-the-interactive-repl).
 3. **Language Server**, in this order: diagnostics, type hover, completion,
    go to definition, rename, formatting.
 4. **Debug Adapter** on the interpreter: breakpoints, stepping, locals. Native

@@ -11,8 +11,8 @@ VS Code or any LSP-capable editor instead of a dedicated IDE.
 > **Status: pre-alpha (milestone M1).** Level 0 programs (one module,
 > language core, `List`/`Map`) can be checked, run with the reference
 > interpreter and built into standalone executables for the host. A stateful
-> REPL supports interactive experiments. Start with the [CLI tutorial](docs/tutorial.md)
-> or [REPL tutorial](docs/tutorial-repl.md); see [`docs/roadmap.md`](docs/roadmap.md)
+> REPL supports interactive experiments. Start with the [tutorial](docs/tutorial.md),
+> including its [interactive REPL section](docs/tutorial.md#9-the-interactive-repl); see [`docs/roadmap.md`](docs/roadmap.md)
 > for what comes next.
 
 FerroBASIC is an independent project. It is not affiliated with or endorsed by

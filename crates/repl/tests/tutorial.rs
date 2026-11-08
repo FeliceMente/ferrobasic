@@ -2,7 +2,7 @@ use ferro_repl::run;
 
 #[test]
 fn interactive_tutorial_transcripts_are_real() {
-    let tutorial = include_str!("../../../docs/tutorial-repl.md");
+    let tutorial = include_str!("../../../docs/tutorial.md");
     let mut count = 0;
     for block in tutorial.split("```repl\n").skip(1) {
         let block = block.split("```").next().unwrap();
@@ -38,7 +38,7 @@ fn interactive_tutorial_transcripts_are_real() {
 
 #[test]
 fn piped_tutorial_transcripts_stop_at_errors() {
-    let tutorial = include_str!("../../../docs/tutorial-repl.md");
+    let tutorial = include_str!("../../../docs/tutorial.md");
     for (i, block) in tutorial.split("```repl-script\n").skip(1).enumerate() {
         let input = block.split("```").next().unwrap();
         let output = block
