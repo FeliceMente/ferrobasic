@@ -19,6 +19,7 @@ struct Definition {
     signature: Option<(Vec<Ty>, Ty)>,
 }
 struct Span {
+    input_start: usize,
     start: usize,
     end: usize,
     cell: Cell,
@@ -36,6 +37,7 @@ impl Source {
         let start = self.text.len();
         self.push(&cell.text);
         self.spans.push(Span {
+            input_start: 0,
             start,
             end: self.text.len(),
             cell: cell.clone(),
@@ -54,7 +56,8 @@ impl Source {
         let Some(span) = span else {
             return format!("repl: error: {message}\n");
         };
-        let offset = offset.saturating_sub(span.start).min(span.cell.text.len());
+        let offset =
+            (offset.saturating_sub(span.start) + span.input_start).min(span.cell.text.len());
         let mut offset = offset;
         while !span.cell.text.is_char_boundary(offset) {
             offset -= 1;
@@ -126,6 +129,16 @@ impl Session {
         }) {
             return reject(
                 "project attributes and directives are not accepted in a REPL",
+                err,
+            );
+        }
+        if kind != FragmentKind::Type
+            && root
+                .descendants()
+                .any(|n| n.kind() == SyntaxKind::TYPE_DECL)
+        {
+            return reject(
+                "submit each Type definition separately, outside blocks and Subs",
                 err,
             );
         }
@@ -233,19 +246,18 @@ impl Session {
             }
             if !matches!(kind, FragmentKind::Sub | FragmentKind::Type) {
                 if echo {
-                    let (tokens, _) = ferro_syntax::lexer::lex(&cell.text);
-                    let mut offset = 0usize;
-                    let mut end = 0usize;
-                    for token in tokens {
-                        offset += token.len as usize;
-                        if !token.kind.is_trivia() && token.kind != SyntaxKind::NEWLINE {
-                            end = offset;
-                        }
-                    }
+                    let expression = root
+                        .children()
+                        .find(|node| node.kind() == SyntaxKind::EXPR_STMT)
+                        .expect("expression fragment has an expression statement");
+                    let range = expression.text_range();
+                    let input_start = usize::from(range.start());
+                    let input_end = usize::from(range.end());
                     source.push("Log(");
                     let start = source.text.len();
-                    source.push(&cell.text[..end]);
+                    source.push(&cell.text[input_start..input_end]);
                     source.spans.push(Span {
+                        input_start,
                         start,
                         end: source.text.len(),
                         cell: cell.clone(),

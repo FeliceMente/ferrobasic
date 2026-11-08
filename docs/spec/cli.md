@@ -135,7 +135,8 @@ Dim resets its value normally. Constants cannot be redefined. Types cannot
 be redeclared; reset to change their layout. A Sub can be replaced with the
 same parameter count/types and return type; dependent Subs are rechecked.
 New declarations that would change a previously checked Sub's local bindings
-are refused; choose another name. Definitions are submitted one at a time.
+are refused; choose another name. Definitions are submitted one at a time. Type declarations must be standalone
+submissions, not nested in blocks or Subs.
 Failed compilation leaves the session unchanged. Compilation commits the
 submission's declarations before execution; an uncaught runtime error keeps
 completed mutations and those declarations, unwinds execution and allows

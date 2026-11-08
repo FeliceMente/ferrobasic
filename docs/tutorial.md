@@ -587,7 +587,8 @@ type. Existing callers then use the new body.
 > :quit
 ```
 
-Submit definitions one at a time. A new Sub must use names already declared
+Submit definitions one at a time. Enter each Type as a standalone submission,
+outside blocks and Subs. A new Sub must use names already declared
 in the session (or itself for recursion); define helper Subs before callers.
 The REPL supplies the module structure: do not wrap input in `AppStart` or
 `Process_Globals`, or paste project-file headers and attributes.

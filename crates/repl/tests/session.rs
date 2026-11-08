@@ -211,3 +211,26 @@ fn generated_entry_parameter_does_not_reserve_user_variable_names() {
         "0\n15\n",
     );
 }
+
+#[test]
+fn nested_types_are_rejected_without_poisoning_the_session() {
+    let (_, out, err) = script(
+        "Dim n As Int = 7\nIf True Then\nType Point(X As Int)\nDim p As Point\np.Initialize\nEnd If\nn\nSub F As Int\nType Hidden(X As Int)\nReturn 1\nEnd Sub\nn\nType Point(X As Int)\nDim p As Point\np.Initialize\np.X\n",
+        true,
+    );
+    assert_eq!(out, "7\n7\n0\n");
+    assert_eq!(err.matches("outside blocks and Subs").count(), 2, "{err}");
+    assert!(!err.contains("InternalError"));
+    good("Sub F As Int\nReturn 1\nEnd Sub\nF()\n", "1\n");
+}
+
+#[test]
+fn trailing_separators_preserve_expression_echo_and_source_locations() {
+    good(
+        "1:\nAbs(-1):\n1 + 2: ' comment\n(1 = 1):\nLog(4):\n",
+        "1\n1\n3\ntrue\n4\n",
+    );
+    let (code, _, err) = script("    Missing:\n", false);
+    assert_eq!(code, 3);
+    assert!(err.contains("<repl:1>:1:5:"), "{err}");
+}

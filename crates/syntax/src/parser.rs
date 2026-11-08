@@ -124,7 +124,9 @@ fn parse_mode(text: &str, fragment: bool, expression: bool) -> (Parse, Completen
             parser.start(EXPR_STMT);
             parser.expr();
             parser.finish();
-            while parser.eat(NEWLINE) {}
+            while matches!(parser.current(), Some(NEWLINE | COLON)) {
+                parser.bump();
+            }
             if parser.current().is_some() {
                 parser.error_and_recover("expected end of expression");
             }
