@@ -5,7 +5,7 @@ Sub AppStart (Args() As String)
     ' An initialised List held in an Object, assigned to an Int: B4J's
     ' BA.ObjectToNumber parses String.valueOf(o), "[1, 2]", a
     ' NumberFormatException rather than a ClassCastException
-    ' (docs/research/level0-semantics.md, "Object to a number"). Only the
+    ' (docs/research/level0-semantics.md, "Object conversions"). Only the
     ' kind is printed: a message can hold a hash.
     Dim l As List
     l.Initialize

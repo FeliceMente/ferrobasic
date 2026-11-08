@@ -2,10 +2,9 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' A String with a fraction held in an Object, assigned to a Long and to
-    ' an Int: does B4J convert to a Long with BA.ObjectToLongNumber
-    ' (Long.parseLong, a NumberFormatException) or with ObjectToNumber
-    ' (Double.parseDouble, 1)? docs/open-questions.md
+    ' Recording run 21 (B4J 10.70): ObjectToLongNumber uses
+    ' Long.parseLong, so "1.5" raises NumberFormatException for a Long;
+    ' ObjectToNumber still parses it as a Double for an Int, giving 1.
     Dim o As Object = "1.5"
     Try
         Dim n As Long = o

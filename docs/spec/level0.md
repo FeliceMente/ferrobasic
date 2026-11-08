@@ -207,6 +207,12 @@ End Sub
   `Dim` statement executes, its variables are reset: to the initialiser if
   there is one, otherwise to the default value. For `List`, `Map`, arrays and
   `Type` records this means a fresh object.
+- An untyped `For Each` in `Process_Globals` may declare an Object variable
+  with a Type's name; value uses read the variable and type positions still
+  resolve the Type (recording run 21: `process_globals_for_each_untyped_named_like_type`).
+- A `For Each` collection must be an array of rank one, a List or an iterable
+  such as `Map.Keys` / `Map.Values`. A statically typed Object is refused,
+  even before runtime (recording run 21: `for_each_over_non_collection_object`).
 - Locals start at their default value on every call.
 - The counter of `For i = …` is implicitly declared as `Int` if it was not
   declared before. A name that nothing in the Sub or the module declares,
@@ -221,6 +227,8 @@ End Sub
 ## Conversions
 
 Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
+The distinction between a numeric or String source and an Object source is
+preserved: a direct String-to-Long conversion still parses a Double.
 
 | From → to | Rule |
 | --- | --- |
@@ -231,7 +239,10 @@ Implicit conversions become explicit `Convert(from, to)` nodes in the MIR.
 | String → number | parsed as a Java `double` literal, then narrowed. An unparsable string raises `NumberFormatException`. |
 | String → Boolean | only `"true"` / `"false"` (case-sensitive), else a runtime error |
 | String → Char | first character, or `Chr(0)` for an empty string |
-| Object → T | unbox. A number box converts to any numeric type. To a number, anything else converts as its text (`String.valueOf`) does: a String as above, `Null` (`"null"`), a List, a Boolean or a new `Object` raise `NumberFormatException`, and a Char `"7"` is 7 (`BA.ObjectToNumber`, source; pending: `object_list_to_int`, `object_null_to_int`, `object_char_to_int`, `object_boolean_to_double`). To another type, a runtime `ClassCastException`. |
+| Object → number | A number box converts to any numeric type. Anything else converts through `String.valueOf`: `Long.parseLong` for Long, `Double.parseDouble` followed by narrowing for other numeric types. Thus "1.5" raises NumberFormatException for Long but gives 1 for Int; Null ("null"), a List, a Boolean or a new Object also raise, while a Char "7" is 7 (recording run 21). |
+| Object → Boolean | Preserve a Boolean; otherwise parse `String.valueOf(o)` as exactly "true" or "false", else raise RuntimeException: `Cannot parse: <text> as boolean` (recorded: `object_number_to_boolean`). |
+| Object → Char | Preserve a Char; otherwise take the first UTF-16 code unit of `o.toString()`, or Chr(0) for empty text. Null raises NullPointerException. A boxed number 65 gives "6" (recorded: `object_number_to_char`; runtime source for empty/null). |
+| Object → other type | Unbox or rewrap; an incompatible value raises ClassCastException. |
 | Null → String | the text `"null"`, also when assigned, passed or returned as a String: B4J compiles `s = Null` to `_s = BA.ObjectToString(Common.Null)` (generated code, recorded). A String that is null (an unset record field) stays null. |
 | any other value → String | `BA.ObjectToString` (Java `String.valueOf`): B4X compiles `Log(LastException)` and `"e: " & LastException` this way (generated code) |
 

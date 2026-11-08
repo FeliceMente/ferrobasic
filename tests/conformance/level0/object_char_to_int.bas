@@ -5,7 +5,7 @@ Sub AppStart (Args() As String)
     ' A Char held in an Object, assigned to an Int: B4J's BA.ObjectToNumber
     ' parses String.valueOf(o), the character itself, so "7" gives 7 and
     ' "A" a NumberFormatException rather than a ClassCastException
-    ' (docs/research/level0-semantics.md, "Object to a number").
+    ' (docs/research/level0-semantics.md, "Object conversions").
     Dim c As Char = "7"
     Dim o As Object = c
     Try

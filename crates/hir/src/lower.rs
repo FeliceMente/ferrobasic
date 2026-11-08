@@ -1081,7 +1081,7 @@ impl Lowerer {
     /// else there declares makes it a module variable `Object`, which every
     /// Sub sees (recorded: `process_globals_for_each_untyped_undeclared`).
     /// Not recorded, so left undeclared and refused when lowered: over the
-    /// name of a Sub, a `Type`, a built-in or `Bit`, after a use or an
+    /// name of a Sub, a built-in or `Bit`, after a use or an
     /// assignment of the name there, and with a `For … As` over it there.
     fn declare_untyped_loop_globals(&mut self, sub: &SyntaxNode) {
         let mut seen = HashSet::new();
@@ -1118,7 +1118,10 @@ impl Lowerer {
             if !self.globals.contains_key(&k)
                 && !skip.contains(&k)
                 && !self.refused_loop_names.contains(&k)
-                && self.plain_name(&text)
+                // A Type's name can also declare a variable (run 21:
+                // process_globals_for_each_untyped_named_like_type).
+                && !self.subs.contains_key(&k)
+                && builtins::lookup(Owner::Global, &text).is_none()
                 && !text.eq_ignore_ascii_case("Bit")
             {
                 self.declare_global(text, Ty::Object, range(&name), Origin::UntypedForEach);
@@ -1913,7 +1916,7 @@ impl Lowerer {
                 let collection = self.expr(&coll);
                 let element = match &collection.ty {
                     Ty::Array(elem, 1) => (**elem).clone(),
-                    Ty::List | Ty::Iterable | Ty::Object => Ty::Object,
+                    Ty::List | Ty::Iterable => Ty::Object,
                     Ty::Error => Ty::Error,
                     other => {
                         let other = self.ty_name(other);

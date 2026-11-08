@@ -2018,6 +2018,12 @@ fn for_each_without_as_over_a_declared_variable() {
         "    For Each u In Array As Int(5)\n    Next\n",
         "    Log(u)\n",
     ));
+    // Run 21: the loop declares an Object sharing the Type's name;
+    // the type namespace remains available to declarations.
+    ok(&app(
+        "    Type Point (X As Int)\n    For Each Point In Array As Int(5, 6)\n    Next\n",
+        "    Log(Point)\n    Dim p As Point\n    p.Initialize\n    p.X = 7\n",
+    ));
     // Not recorded after a use or an assignment of the name there, when
     // nothing else declares it, nor with a `For … As` over it there.
     for before in [

@@ -2,10 +2,8 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' A number held in an Object, assigned to a Char: if B4J converts with
-    ' BA.ObjectToChar, which takes the first character of o.toString(), 65
-    ' gives "6"; FerroBASIC raises ClassCastException meanwhile
-    ' (docs/open-questions.md).
+    ' Recording run 21 (B4J 10.70): BA.ObjectToChar takes the first
+    ' character of the boxed number's text, so 65 gives "6".
     Dim o As Object = 65
     Try
         Dim c As Char = o

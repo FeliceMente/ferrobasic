@@ -314,7 +314,7 @@ Checked on OpenJDK 21 (the `math_builtins`, `bit_functions`,
   `char`s, neither a digit. FerroBASIC's table is checked against JDK 21
   (Unicode 15).
 
-### Object to a number (source, forum)
+### Object conversions (source, forum, recorded)
 
 - B4J converts a value whose static type is `Object` to a number with
   [`BA.ObjectToNumber`, or `ObjectToLongNumber` for a
@@ -327,21 +327,35 @@ Checked on OpenJDK 21 (the `math_builtins`, `bit_functions`,
   the `Objects/` folders of Booklets.zip hold no such line, and the
   recorded `n = Null` comparisons raise the `NumberFormatException` of
   `ObjectToNumber` (**recorded**: `null_number_compare`,
-  `number_types_eq_null`).
+  `number_types_eq_null`). Recording run 21 confirms assignment conversions
+  with `object_list_to_int`, `object_null_to_int`, `object_char_to_int` and
+  `object_boolean_to_double`.
 - For a `Number` both return its `doubleValue()` (`longValue()`); for
   anything else they parse `String.valueOf(o)`, so the static type
   `Object` never raises a `ClassCastException` here: `Null` raises
   `NumberFormatException: For input string: "null"`, an initialised List
   `For input string: "[1, 2]"`, a Boolean `"true"`, a new `Object`
-  `"java.lang.Object@<hash>"`, and a Char `"7"` is 7 (pending:
+  `"java.lang.Object@<hash>"`, and a Char `"7"` is 7 (**recorded**:
   `object_list_to_int`, `object_null_to_int`, `object_char_to_int`,
-  `object_boolean_to_double`, `object_plain_to_number`, with provisional
-  output of basis `source`). A null String (static type `String`) is
+  `object_boolean_to_double` in run 21; `object_plain_to_number` in run 18). A null String (static type `String`) is
   different: `Double.parseDouble(null)` raises `NullPointerException`.
-- `ObjectToLongNumber` parses with `Long.parseLong`, so `"1.5"` in an
-  `Object` would raise where `ObjectToNumber` gives 1. FerroBASIC parses a
-  `Double` for every number type, `Long` included, until
-  `object_string_to_long` is recorded (*open*).
+- `ObjectToLongNumber` parses non-numbers with `Long.parseLong`, so "1.5"
+  in an Object raises NumberFormatException for Long while giving 1 for
+  Int (**recorded**, run 21: `object_string_to_long`). Java accepts a
+  leading ASCII sign and decimal UTF-16 digits, with no trimming, fraction
+  or exponent; overflow raises NumberFormatException (**source**:
+  [Long.parseLong](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/Long.html#parseLong(java.lang.String))).
+  Direct String-to-Long still uses Double parsing and narrowing.
+- [`BA.ObjectToBoolean` and `ObjectToChar`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L451-L462)
+  preserve Boolean / Character values; otherwise Boolean parses
+  `String.valueOf(o)` and Char takes the first UTF-16 code unit of
+  `o.toString()`. The number 1 converted to Boolean raises RuntimeException
+  ("Cannot parse: 1 as boolean"); 65 converted to Char gives "6"
+  (**recorded**, run 21: `object_number_to_boolean`, `object_number_to_char`).
+  Boolean parsing accepts only lower-case "true" / "false". A Null Object
+  therefore raises a Boolean parsing RuntimeException, but Char conversion
+  raises NullPointerException before CharFromString runs. Empty Char text
+  gives Chr(0) (**source**, these helpers and CharFromString).
 - `Select` does not go through them: [`BA.switchObjectToInt`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L514-L533)
   casts each `Case` value with `(Number)` when the tested value is a
   number, a `ClassCastException` for a String and a
@@ -498,8 +512,10 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `process_globals_for_each_untyped_after_typed_object`,
   `process_globals_for_each_untyped_before_typed_object`), and over a name
   nothing declares it declares a module variable `Object` (**recorded**:
-  `process_globals_for_each_untyped_undeclared`); over a `Type`'s name it is
-  *open* (`process_globals_for_each_untyped_named_like_type`). A read or an
+  `process_globals_for_each_untyped_undeclared`); over a Type's name it
+  also declares an Object variable whose final value is visible to
+  AppStart (**recorded**, run 21:
+  `process_globals_for_each_untyped_named_like_type`, prints 6). A read or an
   assignment there before a `Dim … As Object` builds too, the read giving
   `Null` (**recorded**: `process_globals_read_before_dim_object`,
   `process_globals_assign_before_dim_object`). It builds over a parameter `Object`
@@ -510,6 +526,12 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   value." (**recorded**: `for_each_untyped_read_before`). The real-world corpus's
   `JSONWebToken.bas`, a class, loops `For Each Key In Claims.Keys` in
   `setClaims` with `Key` declared nowhere.
+- **`For Each` over a statically typed Object** is a compile-time error:
+  generated Java assigns it to `BA.IterableList`, which javac refuses
+  ("Object cannot be converted to IterableList"). The run 21 recorder
+  reports `for_each_over_non_collection_object` as a build failure because
+  this probe was expected to compile; it is now a negative test. The original
+  builder output is retained in [the run 21 report](recording-run-21.md).
 - **`For`**: `For i = a To b [Step s]`. If the variable was not declared it
   is implicitly declared as `Int` (**docs**, coreref), in `Process_Globals`
   too, where it is a module variable: AppStart reads it (4 after

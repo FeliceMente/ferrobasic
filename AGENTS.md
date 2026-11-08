@@ -19,7 +19,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   `docs/spec/cli.md`). Next: the REPL and the Language Server with
   diagnostics. The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
-  run. See `docs/roadmap.md`.
+  run. Recording run 21 is imported: 287 conformance tests, 281 passing,
+  6 deviations, none pending or provisional. See `docs/roadmap.md`.
 
 ## Read before working
 
