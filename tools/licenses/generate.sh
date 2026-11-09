@@ -20,3 +20,6 @@ if grep -q WARN "$log"; then
     echo "generate.sh: fix the warnings above (README.md, \"Regenerating\")" >&2
     exit 1
 fi
+# Licence files may use CRLF; keep the combined generated document in LF.
+tr -d '\015' < THIRD-PARTY-NOTICES.txt > "$log"
+cat "$log" > THIRD-PARTY-NOTICES.txt

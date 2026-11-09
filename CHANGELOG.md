@@ -5,6 +5,15 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+- `ferro repl` supplies terminal line editing and editable history of complete
+  BASIC submissions, including multiline Subs and blocks. History keeps up to
+  100 nonblank submissions in memory, skips consecutive exact duplicates, and
+  survives `:reset`; it is never saved to disk. Prompts/editing stay on stderr
+  and BASIC output on stdout. Redirected input retains its plain, prompt-free,
+  stop-on-error behavior. See `docs/spec/cli.md` for terminal fallback and EOF.
+
 ## 0.0.7 (pre-alpha)
 
 M1 is complete: `ferro repl` and `ferro lsp` join `check`, `run` and

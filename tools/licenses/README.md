@@ -27,6 +27,11 @@ fails while the crate list in the notices and `Cargo.lock` disagree.
   (`[<crate>.clarify]`); their checksums change with each new version of
   those crates, and `generate.sh` then fails until they are updated.
   `cargo about clarify <file> path <crate directory>` prints the new entry.
+- Chrono's combined file is clarified to its MIT subsection. The two
+  `winapi-*-pc-windows-gnu` import-library archives omit their licence files;
+  their clarifications use the checksum-verified MIT text from the locked
+  sibling `winapi-0.3.9` package, also fetched by `cargo fetch --locked`.
+  Keep that source path/checksum in sync if WinAPI changes.
 - `about.hbs` is the template. It also holds the notices that do not come
   from a crate in `Cargo.lock`: musl's `COPYRIGHT` (version 1.2.5), and the
   Rust standard library's. The latter are copied by hand from

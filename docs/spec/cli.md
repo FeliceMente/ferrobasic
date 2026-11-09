@@ -147,13 +147,46 @@ submission's declarations before execution; an uncaught runtime error keeps
 completed mutations and those declarations, unwinds execution and allows
 another interactive submission.
 
-Interactive prompts (`> ` and `... `) go to stderr; program output and
-expression results go to stdout. There is no input echo, history or line
-editing supplied by FerroBASIC. Ctrl+C terminates the process; recoverable
-execution cancellation is deferred. `:help`, `:quit`, `:reset` and `:cancel`
+Interactive prompts (`> ` and `... `) and terminal editing/echo go to stderr;
+program output and expression results go to stdout. FerroBASIC supplies line
+editing and in-memory history when stdin and stderr are terminals and TERM is
+supported. Unix requires a nonempty TERM; Windows also accepts an unset TERM.
+`dumb`, `unknown` and `emacs` (case insensitive) use the plain reader. Redirecting
+stdout alone still allows editing; redirecting stderr disables editing and
+history. The plain reader retains prompts and interactive error recovery when
+stdin is a terminal, without FerroBASIC echo or escape sequences. Piped stdin
+always uses the plain reader, without prompts or history processing, regardless
+of the output destinations.
+
+In editing mode, Left/Right and Home/End move the cursor; Backspace/Delete and
+ordinary typing edit input. Up/Down move within multiline input and recall
+previous/next submissions at the first/last line. Recalled input is editable;
+recall never executes it. Enter submits a syntactically complete submission or
+adds a continuation line when the parser says it is incomplete. Blank lines
+never finish incomplete blocks. A recalled multiline Sub or block is one
+editable buffer and Enter submits it as a whole, from any cursor position.
+There is no completion, syntax highlighting or persistent history.
+
+History retains the latest 100 nonblank BASIC submissions for this REPL process
+only, including submissions with compilation/runtime errors so they can be
+corrected. It preserves source whitespace and internal newlines, removes only
+the final input newline, and suppresses consecutive exact duplicates. Older
+duplicates remain. Control lines, cancelled pending input and incomplete EOF
+input are not saved. No history file is read or written. `:reset` keeps recall
+history: runtime session state and input history are independent. On exit all
+history is discarded. During an incomplete block, recalled input is appended to
+any input already accepted before a control line such as `:help`; use `:cancel`
+to discard pending input before recalling an unrelated submission.
+
+Ctrl+C terminates the process, including while BASIC executes; recoverable
+execution cancellation is deferred. In editing mode it exits 130 after terminal
+cleanup at a prompt; during execution the ordinary OS termination applies.
+Raw mode is left before execution. `:help`, `:quit`, `:reset` and `:cancel`
 are control lines outside string literals. Cancel discards pending input;
-reset clears pending input, definitions and runtime state. Normal EOF or
-quit exits 0; incomplete EOF exits 3. Piped input has no prompts and stops
+reset clears pending input, definitions and runtime state, keeping history.
+In editing mode Ctrl+D signals EOF even in a nonempty buffer (Ctrl+Z also does
+on Windows); plain Windows console input uses Ctrl+Z followed by Enter.
+Normal EOF or quit exits 0; incomplete EOF exits 3. Piped input has no prompts and stops
 on the first error: 3 for compilation, 1 for runtime. Bad arguments and
 input-read failures exit 2. ExitApplication/ExitApplication2 terminate the
 session with the ordinary exit status. Explicit AppStart, Process_Globals,
@@ -161,13 +194,20 @@ project headers and project-only directives are refused in a session.
 Compact diagnostics identify the entered submission (`<repl:N>:line:column`),
 including errors in previously defined Subs. The session does not execute previous input again.
 
+Terminal modes and stdout routing are restored on normal exit and handled input
+errors. A terminal that advertises support but cannot answer cursor-position
+queries produces an input-read error (exit 2) after cleanup; set `TERM=dumb`
+to select the plain reader. Unhandled external termination cannot guarantee
+cleanup. The editor runs only in the serial CLI input phase, never concurrently
+with BASIC execution.
+
+The [terminal library decision](../research/repl-line-editing.md) records the
+adapter design and dependency tradeoffs.
+
 #### Deferred REPL improvements
 
 These are proposals with no assigned milestone or schedule:
 
-- Command history: recall previous submissions.
-- Line editing supplied by FerroBASIC: edit the current input inside the REPL.
-  Terminal-provided editing may already work; FerroBASIC currently reads lines.
 - A session command to load commands or source from a file. Piping input into
   `ferro repl` already works, but does not load a file into an existing session.
 - Recoverable interruption of executing BASIC code, returning to a usable

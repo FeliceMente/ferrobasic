@@ -147,7 +147,9 @@ item 3 diagnostics are implemented; the remaining tools are planned.
    and `fmt` are reserved and exit 2 (see [the CLI spec](spec/cli.md#commands)).
 2. **REPL** on the interpreter: accepts statements, expressions, Subs and Types,
    keeping state between inputs. `crates/repl` owns fragment accumulation,
-   definition sources and diagnostic source maps. `ferro-hir::check_session`
+   definition sources and diagnostic source maps. A Reedline terminal adapter
+   provides grammar-validated multiline editing and bounded in-memory history;
+   redirected input keeps the plain stream reader. `ferro-hir::check_session`
    seeds persistent, checked global bindings into a candidate synthetic module;
    it never includes earlier executable submissions. Accepted Type/Sub sources
    are rechecked together, with stable record/global identities and compatible

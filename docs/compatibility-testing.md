@@ -263,6 +263,11 @@ and recorder tests. It does not run format or Clippy, the explicit
 `ferro-difftest` reports, `ferro-recorder --dry-run`, the ignored downloaded
 project tests, or the static Linux build. It exercises the host OS;
 cross-target Clippy checks compilation but does not execute foreign binaries.
+On Linux, CLI REPL tests also run `scripts/test-repl-terminal.py` using Python 3's
+standard-library PTYs. They exercise real editing, multiline recall, control
+commands, prompt/output routing, redirected streams, fallback, EOF, Ctrl+C and
+terminal restoration. Python 3 is required for this Linux test. Windows and
+macOS compilation does not establish terminal runtime behavior on those OSes.
 
 Before every push into a `dev` PR, run:
 

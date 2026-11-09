@@ -19,6 +19,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   interpreter, `ferro check`, `ferro run`, standalone `ferro bundle` and `ferro repl` (see
   `docs/spec/cli.md`), plus `ferro lsp` diagnostics (see `docs/language-server.md`).
   The M1 conformance gate and tooling checklist are implemented.
+  The REPL also supplies terminal line editing and bounded in-memory history
+  with editable multiline recall; file loading and recoverable execution
+  interruption remain unscheduled proposals.
   The REPL walkthrough is in `docs/tutorial.md`, section 9.
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
