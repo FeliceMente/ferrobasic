@@ -631,7 +631,7 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `process_globals_typed_for_each_named_like_sub_nested`). So the name is
   a loop variable like any other once declared, and only a `For Each`
   without `As` is refused over it; FerroBASIC follows that rule
-  (`recorded_loop` in `crates/hir/src/lower.rs`), also for a `For Each v
+  (`recorded_loop` in `crates/hir/src/lower/mod.rs`), also for a `For Each v
   As String` again (**recorded**:
   `local_typed_for_each_string_loop_again_named_like_sub`). Not recorded
   (*open*): a `Dim` of `Class_Globals` with a Sub's name.
