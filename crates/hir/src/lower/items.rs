@@ -510,20 +510,21 @@ impl Lowerer {
                     .extend(again.iter().map(|&r| (r, true)));
                 continue;
             }
-            if pair.is_some() {
+            if let Some(pair) = pair {
                 // The pair, then what makes it open: reported there; another
                 // type is the clash reported already.
                 match &found[2] {
                     Ok(d) if d.ty == ty => {
                         self.error(
                             d.at,
-                            redeclared_const(&name, "may be declared again").message(),
+                            redeclared_const(&name, pair, "may be declared again").message(),
                         );
                     }
                     Ok(_) => {}
-                    Err(at) => {
-                        self.error(*at, redeclared_const(&name, "may be looped over").message())
-                    }
+                    Err(at) => self.error(
+                        *at,
+                        redeclared_const(&name, pair, "may be looped over").message(),
+                    ),
                 }
                 self.const_states.insert(id, ConstState::Reported);
                 self.const_declarations

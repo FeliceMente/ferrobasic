@@ -72,13 +72,8 @@ impl Lowerer {
         }
     }
 
-    /// Whether a constant was declared again in `Process_Globals`, so that
-    /// whether it may change is not known.
-    pub(super) fn redeclared_const(&self, var: &VarRef) -> bool {
-        matches!(self.const_state(var), Some(ConstState::Redeclared { .. }))
-    }
-
-    /// The two declarations of a name declared twice in `Process_Globals`.
+    /// The two declarations of a name declared twice in `Process_Globals`,
+    /// if it was: whether it may change is then not known.
     pub(super) fn pair(&self, var: &VarRef) -> Option<Pair> {
         match self.const_state(var) {
             Some(ConstState::Redeclared { pair, .. }) => Some(pair),
@@ -125,8 +120,8 @@ impl Lowerer {
                 && has_value
             {
                 format!("`{name}` is a `Const` of the module: a `Dim` cannot declare it again")
-            } else if self.redeclared_const(var) {
-                redeclared_const(&name, "may be declared again").message()
+            } else if let Some(pair) = self.pair(var) {
+                redeclared_const(&name, pair, "may be declared again").message()
             } else {
                 const_again_open(&name, is_const)
             };
@@ -163,8 +158,8 @@ impl Lowerer {
                     let name = &self.var(var).name;
                     return Some((
                         *var,
-                        if self.redeclared_const(var) {
-                            redeclared_const(name, "may change").message()
+                        if let Some(pair) = self.pair(var) {
+                            redeclared_const(name, pair, "may change").message()
                         } else if item {
                             format!("`{name}` is a `Const`: its items cannot be assigned")
                         } else if field {
