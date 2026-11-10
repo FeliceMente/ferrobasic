@@ -563,11 +563,6 @@ fn constants() {
             "    Size = 5",
             "`Size` is a `Const`: it cannot be assigned".to_string(),
         ),
-        (
-            "    Private Const Size As Int = 10\n    Private Const Size As Int = 3",
-            "    Size = 5",
-            redeclared("may be assigned"),
-        ),
         // In `Process_Globals`, between the declarations or after them.
         (
             &format!("{dim_after}\n    Size = 5"),
@@ -844,6 +839,34 @@ fn constants() {
     );
     // A variable named `Const` is still a variable.
     ok(&program("Dim Const As Int = 1\nLog(Const)"));
+}
+
+/// A name declared by two `Const`s (`const_twice`): what else may change it
+/// is not recorded, and the refusal names the two `Const`s, not a `Dim`.
+#[test]
+fn constant_declared_twice() {
+    let module = |globals: &str, body: &str| {
+        format!(
+            "Sub Process_Globals\n    Private Const Size As Int = 10\n    Private Const Size As Int = 3\n{globals}\nEnd Sub\nSub AppStart (Args() As String)\n{body}\nEnd Sub\n"
+        )
+    };
+    let redeclared = |what: &str| {
+        format!("`Size` is declared by two `Const`s: whether it {what} is not known yet")
+    };
+    for (globals, body, what) in [
+        ("", "    Size = 5", "may be assigned"),
+        ("    Size = 5", "", "may be assigned"),
+        ("", "    For Size = 1 To 2\n    Next", "may be looped over"),
+        ("", "    Dim Size As Int = 4", "may be declared again"),
+        ("    Private Size As Int = 4", "", "may be declared again"),
+        ("    For Size = 1 To 2\n    Next", "", "may be looped over"),
+    ] {
+        assert_eq!(
+            errors(&module(globals, body)),
+            [redeclared(what)],
+            "{globals}{body}"
+        );
+    }
 }
 
 /// The error covers `#If Java` alone, not a trailing comment or spaces.
