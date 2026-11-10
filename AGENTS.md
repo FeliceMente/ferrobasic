@@ -134,8 +134,11 @@ cargo test -p ferro-project --test projects -- --ignored
 
 ## Branches and releases
 
-- Features: branch from `dev`, open the PR into `dev`. Never open a feature
-  PR into `main`.
+- Each PR gets its own new branch from `origin/dev`, named after its topic:
+  `feat/…`, `fix/…`, `refactor/…`, `docs/…`, and `release/X.Y.Z` for
+  release preparation. A merged branch is never reset, force-pushed or
+  reused. The release PR is the exception: its head is `dev` itself.
+- Features: open the PR into `dev`. Never open a feature PR into `main`.
 - Release preparation (version, CHANGELOG section, the tutorial re-run) is a
   PR into `dev` too, so `dev` holds exactly what ships.
 - Release: a PR from `dev` into `main`. CI runs on it (see

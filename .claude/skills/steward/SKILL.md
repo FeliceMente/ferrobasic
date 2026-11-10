@@ -81,10 +81,11 @@ seem to disagree, `AGENTS.md` wins.
 
 ## After a pull request is merged
 
-Delete any pending check-in for it, then reset the working branch to the
-new `dev` (`git fetch origin dev && git checkout -B <branch> origin/dev`,
-then `git push --force-with-lease`), and wait for the owner before the next
-step.
+Delete any pending check-in for it, and leave the merged branch as it is:
+never reset, force-push or reuse it; the owner deletes it when they like.
+The next task starts on a new branch from `origin/dev`, named after its
+topic as `AGENTS.md` says (`git fetch origin dev && git switch -c
+<topic-branch> origin/dev`); wait for the owner before the next step.
 
 ## Releases
 
@@ -97,7 +98,7 @@ The sequence is in `AGENTS.md`, "Branches and releases". In practice:
    earlier sections, and `docs/tutorial.md` re-run: every example's output
    compared with what `ferro` prints now, and the version line updated.
 2. **The release**, a pull request whose head is `dev` itself, into `main`
-   (not the working branch, even when it equals `dev`). CI runs on it, on
+   (not a topic branch, even one that equals `dev`). CI runs on it, on
    Linux, Windows, macOS arm64 and macOS Intel. Every red job is this pull
    request's to fix, through a pull request into `dev` that the release
    pull request then picks up, so `main` receives only what is on `dev`;
