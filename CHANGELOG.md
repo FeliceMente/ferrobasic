@@ -5,6 +5,12 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+### Diagnostics
+
+- A name declared by two `Const`s in `Process_Globals` is refused as "declared by two `Const`s", no longer as "declared both by a `Const` and by a `Dim`".
+
 ## 0.0.7 (pre-alpha)
 
 M1 is complete: `ferro repl` and `ferro lsp` join `check`, `run` and

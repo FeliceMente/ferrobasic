@@ -253,6 +253,16 @@ enum Pair {
     ConstConst,
 }
 
+impl Pair {
+    /// What declares the name, as a refusal names it.
+    fn declarations(self) -> &'static str {
+        match self {
+            Pair::ConstDim | Pair::DimConst => "both by a `Const` and by a `Dim`",
+            Pair::ConstConst => "by two `Const`s",
+        }
+    }
+}
+
 /// What the declarations of `Process_Globals` make of a constant.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ConstState {
@@ -341,11 +351,11 @@ fn const_again_open(name: &str, is_const: bool) -> String {
     .message()
 }
 
-/// A module variable declared both by a `Const` and by a `Dim`: whether it
-/// may change is not known.
-fn redeclared_const(name: &str, what: &str) -> Refusal {
+/// A module variable declared by two declarations, as `pair` names them:
+/// whether it may change is not known.
+fn redeclared_const(name: &str, pair: Pair, what: &str) -> Refusal {
     Refusal::asked(
-        format!("`{name}` is declared both by a `Const` and by a `Dim`"),
+        format!("`{name}` is declared {}", pair.declarations()),
         format!("it {what}"),
     )
 }

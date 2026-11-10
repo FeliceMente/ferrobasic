@@ -430,8 +430,8 @@ impl Lowerer {
                 && (node.kind() == FOR_STMT || child(node, TYPE_REF).is_some())
             {
                 Refusal::Recorded(format!("`{text}` is a `Const`: a loop cannot loop over it"))
-            } else if self.redeclared_const(var) {
-                redeclared_const(text, "may be looped over")
+            } else if let Some(pair) = self.pair(var) {
+                redeclared_const(text, pair, "may be looped over")
             } else {
                 Refusal::open(
                     format!("`{text}` is a `Const`"),
@@ -589,10 +589,13 @@ impl Lowerer {
                         // B4J: "Cannot modify Const variable." (recorded), also
                         // when the `Const` follows a `Dim` of the name.
                         let name = self.var(&var).name.clone();
+                        let pair = self.pair(&var);
                         let recorded_pair =
-                            !self.in_process_globals && self.pair(&var) == Some(Pair::DimConst);
-                        let message = if self.redeclared_const(&var) && !recorded_pair {
-                            redeclared_const(&name, "may be assigned").message()
+                            !self.in_process_globals && pair == Some(Pair::DimConst);
+                        let message = if let Some(pair) = pair
+                            && !recorded_pair
+                        {
+                            redeclared_const(&name, pair, "may be assigned").message()
                         } else {
                             format!("`{name}` is a `Const`: it cannot be assigned")
                         };
