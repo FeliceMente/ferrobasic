@@ -43,7 +43,7 @@ fn repl_linux_terminal_interactions() {
         .arg(script)
         .arg(FERRO)
         .output()
-        .unwrap();
+        .expect("python3 is required for the Linux REPL terminal tests");
     assert!(
         output.status.success(),
         "{}\n{}",

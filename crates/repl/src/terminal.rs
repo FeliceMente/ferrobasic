@@ -1,13 +1,14 @@
 //! Terminal input only: the session engine and stream reader do not depend on
 //! terminal state. Reedline leaves raw mode before returning any input to us.
 use std::borrow::Cow;
-use std::collections::VecDeque;
 use std::io::{IsTerminal, Write};
+use std::sync::{Arc, Mutex};
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use reedline::{
-    Emacs, FileBackedHistory, History, HistoryItem, Prompt, PromptEditMode, PromptHistorySearch,
-    Reedline, ReedlineEvent, Signal, ValidationResult, Validator, default_emacs_keybindings,
+    Emacs, FileBackedHistory, History, HistoryItem, HistoryItemId, HistorySessionId, Prompt,
+    PromptEditMode, PromptHistorySearch, Reedline, ReedlineEvent, SearchQuery, Signal,
+    ValidationResult, Validator, default_emacs_keybindings,
 };
 
 use super::{Input, InputEvent, control_line, run_input};
@@ -54,33 +55,60 @@ pub fn run_terminal() -> u8 {
     code
 }
 
-#[derive(Default)]
-struct Recall(VecDeque<String>);
-impl Recall {
-    fn remember(&mut self, text: &str) {
-        // Remove the transport newline only; preserve BASIC whitespace and all
-        // internal newlines. Failed submissions remain useful for correction.
-        let text = text.strip_suffix('\n').unwrap_or(text);
-        if text.trim().is_empty() || self.0.back().is_some_and(|last| last == text) {
-            return;
-        }
-        if self.0.len() == HISTORY_LIMIT {
-            self.0.pop_front();
-        }
-        self.0.push_back(text.to_owned());
+// The engine explicitly records completed BASIC submissions. Reedline's own
+// save() calls contain control lines/partial input, so its view is read-only.
+#[derive(Clone)]
+struct Recall(Arc<Mutex<FileBackedHistory>>);
+impl Default for Recall {
+    fn default() -> Self {
+        Self(Arc::new(Mutex::new(
+            FileBackedHistory::new(HISTORY_LIMIT).expect("bounded in-memory history"),
+        )))
     }
-
-    fn install(&self, history: &mut dyn History) -> std::io::Result<()> {
-        // Reedline automatically saves editor buffers, including control lines.
-        // Rebuild its small navigation cache from the engine's submissions so
-        // :help/:cancel and partial input never become recall entries.
-        history.clear().map_err(std::io::Error::other)?;
-        for text in &self.0 {
-            history
-                .save(HistoryItem::from_command_line(text.clone()))
-                .map_err(std::io::Error::other)?;
+}
+impl Recall {
+    fn remember(&self, text: &str) {
+        let text = text.strip_suffix('\n').unwrap_or(text);
+        if !text.trim().is_empty() {
+            self.0
+                .lock()
+                .expect("history lock")
+                .save(HistoryItem::from_command_line(text))
+                .expect("in-memory history save");
         }
+    }
+}
+impl History for Recall {
+    fn save(&mut self, item: HistoryItem) -> reedline::Result<HistoryItem> {
+        Ok(item)
+    }
+    fn load(&self, id: HistoryItemId) -> reedline::Result<HistoryItem> {
+        self.0.lock().expect("history lock").load(id)
+    }
+    fn count(&self, query: SearchQuery) -> reedline::Result<i64> {
+        self.0.lock().expect("history lock").count(query)
+    }
+    fn search(&self, query: SearchQuery) -> reedline::Result<Vec<HistoryItem>> {
+        self.0.lock().expect("history lock").search(query)
+    }
+    fn update(
+        &mut self,
+        id: HistoryItemId,
+        f: &dyn Fn(HistoryItem) -> HistoryItem,
+    ) -> reedline::Result<()> {
+        self.0.lock().expect("history lock").update(id, f)
+    }
+    fn clear(&mut self) -> reedline::Result<()> {
+        self.0.lock().expect("history lock").clear()
+    }
+    fn delete(&mut self, id: HistoryItemId) -> reedline::Result<()> {
+        self.0.lock().expect("history lock").delete(id)
+    }
+    fn sync(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+    fn session(&self) -> Option<HistorySessionId> {
+        None
     }
 }
 
@@ -125,7 +153,9 @@ impl Prompt for BasicPrompt {
 // Crossterm's cursor-position query uses stdout even though Reedline paints
 // on stderr. The CLI is serial: while reading, no BASIC or other output runs.
 // Use safe descriptor APIs and restore before the session engine is entered.
+#[cfg(unix)]
 struct EditorOutput(Option<filedescriptor::FileDescriptor>);
+#[cfg(unix)]
 impl EditorOutput {
     fn new() -> std::io::Result<Self> {
         std::io::stdout().flush()?;
@@ -149,10 +179,37 @@ impl EditorOutput {
         Ok(())
     }
 }
+#[cfg(unix)]
 impl Drop for EditorOutput {
     fn drop(&mut self) {
         let _ = self.restore();
     }
+}
+
+// Windows uses WinAPI for cursor queries. Redirecting there is unnecessary
+// and can close a console handle shared by stdout and stderr.
+#[cfg(not(unix))]
+struct EditorOutput;
+#[cfg(not(unix))]
+impl EditorOutput {
+    fn new() -> std::io::Result<Self> {
+        Ok(Self)
+    }
+    fn restore(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn explicit_eof() -> ReedlineEvent {
+    ReedlineEvent::ExecuteHostCommand(EOF_COMMAND.into())
+}
+
+// Keep fallible terminal setup/read/restoration separate from editor ownership.
+fn read_editor(editor: &mut Reedline, prompt: &BasicPrompt) -> std::io::Result<Signal> {
+    let mut output = EditorOutput::new()?;
+    let result = editor.read_line(prompt);
+    output.restore()?;
+    result
 }
 
 struct TerminalInput {
@@ -162,58 +219,69 @@ struct TerminalInput {
 impl TerminalInput {
     fn new() -> Self {
         let mut bindings = default_emacs_keybindings();
-        // EOF must also diagnose an incomplete editable block. Reedline's
-        // default Ctrl+D deletes a character whenever the buffer is nonempty.
+        // Keep Emacs Ctrl+D (delete-forward, or EOF on an empty buffer).
+        // Explicit EOF is separate so recalling/editing can never submit code.
         bindings.add_binding(
-            KeyModifiers::CONTROL,
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
             KeyCode::Char('d'),
-            ReedlineEvent::ExecuteHostCommand(EOF_COMMAND.into()),
+            explicit_eof(),
         );
         #[cfg(windows)]
-        bindings.add_binding(
-            KeyModifiers::CONTROL,
-            KeyCode::Char('z'),
-            ReedlineEvent::ExecuteHostCommand(EOF_COMMAND.into()),
-        );
+        bindings.add_binding(KeyModifiers::CONTROL, KeyCode::Char('z'), explicit_eof());
         bindings.add_binding(KeyModifiers::NONE, KeyCode::Tab, ReedlineEvent::None);
+        let recall = Recall::default();
         Self {
             editor: Some(
                 Reedline::create()
                     .with_edit_mode(Box::new(Emacs::new(bindings)))
                     .with_ansi_colors(false)
-                    .with_history(Box::new(
-                        FileBackedHistory::new(HISTORY_LIMIT).expect("bounded history"),
-                    )),
+                    .with_history(Box::new(recall.clone())),
             ),
-            recall: Recall::default(),
+            recall,
         }
+    }
+
+    fn with_editor<T>(
+        &mut self,
+        pending: &str,
+        read: impl FnOnce(Reedline) -> (Reedline, std::io::Result<T>),
+    ) -> std::io::Result<T> {
+        let editor = self.editor.take().expect("editor returned after each read");
+        let editor = editor.with_validator(Box::new(BasicValidator(pending.to_owned())));
+        // The callback returns ownership even if setup/read/restoration failed.
+        let (editor, result) = read(editor);
+        self.editor = Some(editor);
+        result
     }
 }
 impl Input for TerminalInput {
     fn read(&mut self, pending: &str, _: &mut dyn Write) -> std::io::Result<InputEvent> {
-        let mut editor = self.editor.take().expect("editor returned after each read");
-        self.recall.install(editor.history_mut())?;
-        editor = editor.with_validator(Box::new(BasicValidator(pending.to_owned())));
-        let mut output = EditorOutput::new()?;
-        let result = editor.read_line(&BasicPrompt(!pending.is_empty()));
-        output.restore()?;
-        let event = match result {
-            Ok(Signal::HostCommand(text)) if text == EOF_COMMAND => {
-                Ok(InputEvent::Eof(editor.current_buffer_contents().to_owned()))
-            }
-            Ok(Signal::Success(mut text)) => {
-                text.push('\n');
-                Ok(InputEvent::Text(text))
-            }
-            Ok(Signal::CtrlD) => Ok(InputEvent::Eof(String::new())),
-            // This ends the process after cleanup, rather than recovering at a
-            // prompt. During BASIC execution the OS's ordinary Ctrl+C applies.
-            Ok(Signal::CtrlC) => Ok(InputEvent::Interrupted),
-            Ok(_) => Err(std::io::Error::other("unexpected terminal editor signal")),
-            Err(error) => Err(error),
-        };
-        self.editor = Some(editor);
-        event
+        self.with_editor(pending, |mut editor| {
+            let prompt = BasicPrompt(!pending.is_empty());
+            let result = match read_editor(&mut editor, &prompt) {
+                Ok(Signal::HostCommand(text)) if text == EOF_COMMAND => {
+                    let text = editor.current_buffer_contents().to_owned();
+                    // Host commands suspend the painter. Finish through Reedline's
+                    // ordinary Submit exit path so it paints the rest of the buffer
+                    // and moves below it, even if the cursor was on an earlier line.
+                    // This only finalizes the UI: no BASIC executes here and the
+                    // read-only history wrapper discards its automatic save.
+                    editor = editor.with_immediately_accept(true);
+                    let finish = read_editor(&mut editor, &prompt);
+                    editor = editor.with_immediately_accept(false);
+                    finish.map(|_| InputEvent::Eof(text))
+                }
+                Ok(Signal::Success(mut text)) => {
+                    text.push('\n');
+                    Ok(InputEvent::Text(text))
+                }
+                Ok(Signal::CtrlD) => Ok(InputEvent::Eof(String::new())),
+                Ok(Signal::CtrlC) => Ok(InputEvent::Interrupted),
+                Ok(_) => Err(std::io::Error::other("unexpected terminal editor signal")),
+                Err(error) => Err(error),
+            };
+            (editor, result)
+        })
     }
     fn remember(&mut self, text: &str) {
         self.recall.remember(text);
@@ -227,32 +295,61 @@ mod tests {
 
     #[test]
     fn recall_filters_bounds_and_preserves_multiline() {
-        let mut recall = Recall::default();
+        let recall = Recall::default();
         recall.remember("  \n");
         recall.remember("Sub F\n\nLog(1)\nEnd Sub\n");
         recall.remember("Sub F\n\nLog(1)\nEnd Sub\n");
-        assert_eq!(recall.0.len(), 1);
-        assert_eq!(recall.0[0], "Sub F\n\nLog(1)\nEnd Sub");
+        let entries = recall
+            .search(SearchQuery::everything(SearchDirection::Forward, None))
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].command_line, "Sub F\n\nLog(1)\nEnd Sub");
         recall.remember("1\n");
         recall.remember("2\n");
-        recall.remember("1\n"); // older duplicates remain
-        recall.remember(" 1\n"); // whitespace is significant for filtering
-        assert_eq!(recall.0.len(), 5);
-        assert_eq!(recall.0.back().unwrap(), " 1");
+        recall.remember("1\n");
+        recall.remember(" 1\n");
+        assert_eq!(recall.count_all().unwrap(), 5);
         for n in 0..HISTORY_LIMIT {
             recall.remember(&format!("{n}\n"));
         }
-        let mut history = FileBackedHistory::new(HISTORY_LIMIT).unwrap();
+        // The editor can see explicit submissions but cannot save its buffers.
+        let mut history = recall.clone();
         history
             .save(HistoryItem::from_command_line(":reset"))
             .unwrap();
-        recall.install(&mut history).unwrap();
+        history
+            .save(HistoryItem::from_command_line("If True Then\n:cancel"))
+            .unwrap();
         let entries = history
             .search(SearchQuery::everything(SearchDirection::Forward, None))
             .unwrap();
         assert_eq!(entries.len(), HISTORY_LIMIT);
         assert_eq!(entries[0].command_line, "0");
         assert_eq!(entries.last().unwrap().command_line, "99");
+    }
+
+    #[test]
+    fn read_errors_return_editor_for_a_later_read() {
+        let mut input = TerminalInput::new();
+        for _ in 0..2 {
+            assert!(
+                input
+                    .with_editor("", |editor| {
+                        (
+                            editor,
+                            Err::<(), _>(std::io::Error::other("injected input failure")),
+                        )
+                    })
+                    .is_err()
+            );
+            assert!(input.editor.is_some());
+        }
+        input
+            .with_editor("", |editor| {
+                assert_eq!(editor.current_buffer_contents(), "");
+                (editor, Ok(()))
+            })
+            .unwrap();
     }
 
     #[test]

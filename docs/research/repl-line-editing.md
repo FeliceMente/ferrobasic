@@ -34,8 +34,11 @@ external buffer editor or file history is installed.
 Crossterm's Unix cursor-position function writes its query to stdout even though
 Reedline paints on stderr. A small `filedescriptor` (MIT) guard temporarily
 routes stdout to stderr during `read_line`, flushes and restores stdout before
-any BASIC executes, and retries restoration on Drop. Its safe portable API
-avoids adding unsafe code to FerroBASIC. The CLI is serial: no BASIC output or
+any BASIC executes, and retries restoration on Drop. This guard and dependency
+are Unix-only: Windows cursor queries use WinAPI and require no redirection.
+Avoiding Windows redirection also avoids taking ownership of a console handle
+that stdout and stderr may share. The safe API avoids adding unsafe code to
+FerroBASIC. The CLI is serial: no BASIC output or
 other CLI work runs while this process-wide descriptor routing is active.
 Restoration failure is an input error, never permission to execute with changed
 routing. Libraries therefore have concrete integration costs, but neither
@@ -45,21 +48,27 @@ justifies writing our own editor.
 
 The [CLI specification](../spec/cli.md#interactive-repl) defines terminal
 selection, EOF, history filtering and control commands. History is a 100-entry
-in-memory recall list, independent of runtime state. Before each read, its
-contents replace Reedline's navigation cache, excluding automatically saved
-control lines and cancelled buffers. This small copy keeps history policy in
-the existing submission engine and avoids a custom history backend.
+in-memory store, independent of runtime state. A small shared `History` wrapper
+ignores Reedline's automatic buffer saves; the engine explicitly records only
+completed BASIC submissions. `FileBackedHistory::new` supplies memory-only
+storage, consecutive duplicate filtering and eviction, with an extra blank-line
+filter at the engine boundary. No navigation-cache rebuilding is needed.
 
 Enter uses the BASIC fragment parser. Control lines outside string literals
 return to the engine immediately; `:help` preserves pending BASIC input,
 `:cancel` discards it, and `:reset` clears language state while keeping recall.
-Ctrl+D signals EOF even with a nonempty editor buffer, diagnosing incomplete
-input; Ctrl+Z does the same on Windows. Ctrl+C at a prompt exits 130 after
-cleanup. BASIC executes with normal terminal modes and OS interruption behavior.
+Ctrl+D retains delete-forward for nonempty input and EOF on an empty buffer.
+Ctrl+Alt+D explicitly sends EOF for incomplete editable input; Ctrl+Z does so on
+Windows. Explicit EOF finishes through Reedline's normal painter exit; this UI
+finalization neither executes BASIC nor saves the editor buffer. The stream
+engine then handles the EOF input as usual. On Unix, Ctrl+Z retains Emacs undo
+in editing mode; plain input retains terminal job suspension. Ctrl+C at a prompt
+exits 130 after cleanup. BASIC executes with normal terminal modes and OS interruption behavior.
 
 The Linux PTY suite exercises all eight stdin/stdout/stderr terminal/redirected
 combinations, cursor edits, multiline Sub/block recall, control commands, EOF,
-Ctrl+C at a prompt and during execution, cursor-query errors and terminal mode
+Ctrl+D delete-forward, explicit EOF from an earlier buffer line, Unix Ctrl+Z
+undo, Ctrl+C at a prompt and during execution, cursor-query errors and terminal mode
 restoration. It also checks an empty private HOME after each session. Unit tests
 cover the 100-entry bound, duplicate/blank filtering, parser validation and the
 shared input engine. Deterministic tutorial tests continue through the plain

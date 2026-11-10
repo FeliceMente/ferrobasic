@@ -535,10 +535,13 @@ Enter BASIC statements, expressions, Types or complete Subs.
 > :quit
 ```
 
-EOF also leaves the session: Ctrl+D in editing mode (also Ctrl+Z on Windows),
-or Ctrl+Z followed by Enter in a plain Windows console. Incomplete input at EOF
-is diagnosed and exits 3. Ctrl+C terminates the process, including during BASIC
-execution; it does not return to a prompt. At an editing prompt it exits 130
+EOF also leaves the session. In editing mode Ctrl+D signals EOF on an empty
+buffer; with nonempty input it deletes forward without executing anything.
+Ctrl+Alt+D (or Esc then Ctrl+D) explicitly sends EOF with editable input still
+present, diagnosing incomplete input with exit 3. Windows Ctrl+Z also sends EOF;
+a plain Windows console uses Ctrl+Z followed by Enter. On Unix, editing-mode
+Ctrl+Z is undo, while the plain reader retains shell suspension. Ctrl+C
+terminates the process, including during BASIC execution; it does not return to a prompt. At an editing prompt it exits 130
 after restoring the terminal.
 
 ### Editing and recalling input

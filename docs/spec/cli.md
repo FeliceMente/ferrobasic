@@ -184,8 +184,15 @@ cleanup at a prompt; during execution the ordinary OS termination applies.
 Raw mode is left before execution. `:help`, `:quit`, `:reset` and `:cancel`
 are control lines outside string literals. Cancel discards pending input;
 reset clears pending input, definitions and runtime state, keeping history.
-In editing mode Ctrl+D signals EOF even in a nonempty buffer (Ctrl+Z also does
-on Windows); plain Windows console input uses Ctrl+Z followed by Enter.
+In editing mode Ctrl+D deletes forward in nonempty input and signals EOF on an
+empty buffer, including an empty continuation after `:help`. To send EOF while
+preserving incomplete editable input for diagnosis, use Ctrl+Alt+D (or Esc then
+Ctrl+D where the terminal encodes Alt that way). Windows Ctrl+Z also signals
+explicit EOF; plain Windows console input uses Ctrl+Z followed by Enter.
+On Unix, Ctrl+Z in editing mode is Emacs undo, not shell job suspension. The
+plain reader retains the terminal's Ctrl+Z suspension behavior. Ctrl+C still
+terminates in either mode. Explicit EOF finalizes the displayed input before
+printing diagnostics or returning to the shell.
 Normal EOF or quit exits 0; incomplete EOF exits 3. Piped input has no prompts and stops
 on the first error: 3 for compilation, 1 for runtime. Bad arguments and
 input-read failures exit 2. ExitApplication/ExitApplication2 terminate the

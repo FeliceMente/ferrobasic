@@ -2,6 +2,7 @@
 """Linux PTY integration tests, stdlib only. Pass the built ferro executable."""
 import fcntl
 import os
+import re
 import select
 import signal
 import struct
@@ -13,10 +14,12 @@ import time
 import unittest
 
 FERRO = os.path.abspath(sys.argv.pop(1))
+EXPLICIT_EOF = b"\x1b\x04"  # Ctrl+Alt+D
+CLEAR_BUFFER = b"\x1b[1;5H\x1b[1;6F\x1b[3~"  # Ctrl+Home, Ctrl+Shift+End, Delete
 
 
 class Terminal:
-    def __init__(self, *, stdin=True, stdout=False, stderr=True, term="xterm", respond=True):
+    def __init__(self, *, stdin=True, stdout=False, stderr=True, term="xterm", respond=True, close_stdout=False):
         self.master, self.slave = os.openpty()
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 100, 0, 0))
         self.respond = respond
@@ -30,6 +33,8 @@ class Terminal:
         def setup():
             os.setsid()
             fcntl.ioctl(self.slave, termios.TIOCSCTTY, 0)
+            if close_stdout:
+                os.close(1)
 
         env = dict(os.environ, HOME=self.home.name)
         if term is None:
@@ -117,12 +122,14 @@ class ReplTerminalTests(unittest.TestCase):
         t.send(b"10+2\r")
         t.wait_for(lambda: t.out == b"12\n")
         t.send(b"\x1b[A")
-        self.assertEqual(t.out, b"12\n")  # recall alone never executes
         # Home, Delete, insert, End, Backspace, insert: 10+2 -> 20+3.
         t.send(b"\x1b[H\x1b[3~2\x1b[F\x7f3\r")
         t.wait_for(lambda: t.out == b"12\n23\n")
+        t.send(b'Log("sentinel")\r')
+        t.wait_for(lambda: t.out.endswith(b"sentinel\n"))
         t.send(b":quit\r")
         t.finish()
+        self.assertEqual(t.out, b"12\n23\nsentinel\n")
         self.assertNotIn(b"\x1b", t.out)
 
     def test_multiline_sub_recall_edit_and_blank_line(self):
@@ -130,24 +137,29 @@ class ReplTerminalTests(unittest.TestCase):
         t.send(b"Sub F As Int\r")
         t.wait_for(lambda: b"... " in t.terminal)
         t.send(b"\rReturn 4\rEnd Sub\r")
-        self.assertEqual(t.out, b"")
         t.send(b"\x1b[A")
-        self.assertEqual(t.out, b"")
         # Recalled multiline input starts on its first line. Move to Return.
         t.send(b"\x1b[B\x1b[B\x1b[F\x7f7\r")
         t.send(b"F()\r")
         t.wait_for(lambda: t.out == b"7\n")
+        t.send(b'Log("sentinel")\r')
+        t.wait_for(lambda: t.out.endswith(b"sentinel\n"))
         t.send(b":quit\r")
         t.finish()
+        self.assertEqual(t.out, b"7\nsentinel\n")
 
     def test_multiline_block_recall(self):
         t = self.edited()
         t.send(b"For i = 1 To 2\rLog(i)\rNext\r")
         t.wait_for(lambda: t.out == b"1\n2\n")
         t.send(b"\x1b[A")
-        self.assertEqual(t.out, b"1\n2\n")
-        t.send(b"\r")
-        t.wait_for(lambda: t.out == b"1\n2\n1\n2\n")
+        # Replace recalled input with a sentinel, then wait positively for it.
+        # Any accidental recall execution must precede the sentinel in stdout.
+        t.send(CLEAR_BUFFER + b'Log("sentinel")\r')
+        t.wait_for(lambda: t.out.endswith(b"sentinel\n"))
+        self.assertEqual(t.out, b"1\n2\nsentinel\n")
+        t.send(b"\x1b[A\x1b[A\r")
+        t.wait_for(lambda: t.out == b"1\n2\nsentinel\n1\n2\n")
         t.send(b":quit\r")
         t.finish()
 
@@ -164,10 +176,52 @@ class ReplTerminalTests(unittest.TestCase):
         for text, code in [(b"", 0), (b":quit", 0), (b"If True Then\r\r", 3), (b"If True Then\r:cancel", 0), (b'"open\r', 3)]:
             with self.subTest(text=text):
                 t = self.edited()
-                t.send(text + b"\x04")
+                t.send(text + EXPLICIT_EOF)
                 t.finish(code)
                 if code:
                     self.assertIn(b"<repl:1>", t.terminal)
+
+    def test_ctrl_d_deletes_without_executing_or_exiting(self):
+        t = self.edited()
+        t.send(b"10+22\r")
+        t.wait_for(lambda: t.out == b"32\n")
+        # Recall, delete the final 2 with Ctrl+D, then explicitly submit 10+2.
+        t.send(b"\x1b[A\x1b[F\x1b[D\x04\r")
+        t.send(b'Log("sentinel")\r')
+        t.wait_for(lambda: t.out.endswith(b"sentinel\n"))
+        self.assertEqual(t.out, b"32\n12\nsentinel\n")
+        t.send(b"\x04")  # Ctrl+D on the empty prompt still signals EOF.
+        t.finish()
+
+    def test_ctrl_d_empty_continuation_diagnoses_pending_input(self):
+        t = self.edited()
+        t.send(b"If True Then\r:help\r")
+        t.wait_for(lambda: b"Show this help" in t.out)
+        t.send(b"\x04")
+        t.finish(3)
+        self.assertIn(b"<repl:1>", t.terminal)
+
+    def test_explicit_eof_finishes_below_multiline_buffer(self):
+        t = self.edited()
+        t.send(b"If True Then\rLog(1)\rLog(2)\r")
+        t.send(b"\x1b[A\x1b[A" + EXPLICIT_EOF)
+        t.finish(3)
+        # Strip terminal controls, retaining CR/LF. The final painted input
+        # must end before diagnostics, even when EOF was pressed on an earlier row.
+        painted = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", t.terminal)
+        self.assertIn(b"\r\n<repl:1>", painted)
+        self.assertEqual(t.out, b"")
+
+    def test_unix_ctrl_z_is_editor_undo(self):
+        t = self.edited()
+        t.send(b"10+2")
+        t.send(b"\x7f")
+        t.send(b"\x1a\r")  # Undo deletion, rather than suspending the process.
+        t.send(b'Log("sentinel")\r')
+        t.wait_for(lambda: t.out.endswith(b"sentinel\n"))
+        self.assertEqual(t.out, b"12\nsentinel\n")
+        t.send(b":quit\r")
+        t.finish()
 
     def test_ctrl_c_at_prompt(self):
         t = self.edited()
@@ -226,6 +280,15 @@ class ReplTerminalTests(unittest.TestCase):
         t.finish(2)
         self.assertIn(b"cannot read input", t.terminal)
         self.assertEqual(t.out, b"")
+
+    def test_stdout_closed_before_exec(self):
+        # Rust reopens closed stdio as /dev/null before main. Keep the
+        # reviewer's retracted finding covered without an unnecessary workaround.
+        t = self.start(close_stdout=True)
+        t.wait_for(lambda: b"> " in t.terminal)
+        t.send(b"Log(1)\r:quit\r")
+        t.finish()
+        self.assertNotIn(b"cannot read input", t.terminal)
 
     def test_other_redirected_combinations(self):
         for stdout in [False, True]:
