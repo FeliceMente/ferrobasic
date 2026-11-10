@@ -18,6 +18,16 @@ seem to disagree, `AGENTS.md` wins.
   enough for a push that changes only comments or docs, with no Rust,
   workflow or build change; name the skipped step in the pull request. A
   red step is fixed before the push, never left for a reviewer.
+- A fresh environment (a new container, say) has only its host's target.
+  Before its first full `check-all.sh`, install the others:
+
+  ```sh
+  rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl
+  ```
+
+  Without a clippy target the script stops; without the musl target it
+  skips the static Linux binary on Linux x86_64. Such a run stands in only
+  for a `--quick` run, and the pull request says so.
 - A change to what `ferro check` accepts or refuses, or a refactor of
   `crates/hir`, also runs `cargo run --release -p ferro-compare` against
   `origin/dev`. Read every group it reports, not only the counts:

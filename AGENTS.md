@@ -114,7 +114,9 @@ cargo test -p ferro-project --test projects -- --ignored
    changes, skipping the static Linux binary; name the skip in the PR):
    format, clippy for Linux, Windows and macOS, the tests, the conformance tests in the interpreter and as
    standalone binaries, the recorder's dry run, the real-world corpus and,
-   on Linux x86_64, the static Linux binary.
+   on Linux x86_64, the static Linux binary. A fresh environment first needs
+   every target (`docs/compatibility-testing.md`, "Local checks"):
+   `rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl`.
    CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for
    pull requests into `main` and on demand (see
    `docs/compatibility-testing.md`, "CI").

@@ -281,7 +281,17 @@ The script needs rustup, rustfmt, Clippy and the Rust standard libraries for
 `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-gnu`,
 `aarch64-apple-darwin` and `x86_64-apple-darwin` (install missing ones with
 `rustup target add <target>`). Corpus fetching also needs `curl`; the static
-check needs the musl target and `file`. It stops at the first failed step.
+check needs the musl target and `file`. A fresh environment has only its
+host's target; one command installs the rest, the musl target included
+(a target already installed is left as it is):
+
+```sh
+rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl
+```
+
+A missing clippy target stops the script. A missing musl target does not: on
+Linux x86_64 the script then skips the static Linux binary, so the run counts
+only as a `--quick` run. It stops at the first failed step.
 `--offline` skips the corpus download and, if not already fetched, its tests;
 it does not force Cargo offline. Report every skip from the final summary.
 The [steward skill](../.claude/skills/steward/SKILL.md) permits `--quick` for
