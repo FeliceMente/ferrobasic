@@ -93,8 +93,9 @@ seem to disagree, `AGENTS.md` wins.
 
 Delete any pending check-in for it, and leave the merged branch as it is:
 never reset, force-push or reuse it; the owner deletes it when they like.
-The next task starts on a new branch from `origin/dev`, named after its
-topic as `AGENTS.md` says (`git fetch origin dev && git switch -c
+The next task starts on a new branch from `origin/dev` (from
+`origin/main` for the pull request back into `dev` after a release), named
+after its topic as `AGENTS.md` says (`git fetch origin dev && git switch -c
 <topic-branch> origin/dev`); wait for the owner before the next step.
 
 ## Releases
@@ -118,7 +119,7 @@ The sequence is in `AGENTS.md`, "Branches and releases". In practice:
    green.
 3. **The tag**: `vX.Y.Z` on the merge commit on `main`, and the GitHub
    release, with notes in the style of the previous release.
-4. **Back into `dev`**: a pull request from `main` into `dev` that also
-   bumps the version to the next `-dev`.
+4. **Back into `dev`**: a pull request into `dev` from a new branch cut
+   from `origin/main`, which also bumps the version to the next `-dev`.
 
 Merging, tagging and publishing are the owner's to do or to ask for.
