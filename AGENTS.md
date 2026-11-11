@@ -114,7 +114,9 @@ cargo test -p ferro-project --test projects -- --ignored
    changes, skipping the static Linux binary; name the skip in the PR):
    format, clippy for Linux, Windows and macOS, the tests, the conformance tests in the interpreter and as
    standalone binaries, the recorder's dry run, the real-world corpus and,
-   on Linux x86_64, the static Linux binary.
+   on Linux x86_64, the static Linux binary. A fresh environment first needs
+   every target (`docs/compatibility-testing.md`, "Local checks"):
+   `rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl`.
    CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for
    pull requests into `main` and on demand (see
    `docs/compatibility-testing.md`, "CI").
@@ -134,12 +136,18 @@ cargo test -p ferro-project --test projects -- --ignored
 
 ## Branches and releases
 
-- Features: branch from `dev`, open the PR into `dev`. Never open a feature
-  PR into `main`.
+- Each PR gets its own new branch, named after its topic: `feat/…`,
+  `fix/…`, `refactor/…`, `docs/…`, and `release/X.Y.Z` for release
+  preparation. It starts from `origin/dev`, except for the PR from `main`
+  back into `dev` after a release, whose branch starts from `origin/main`.
+  A merged branch is never reset, force-pushed or reused. The release PR
+  has no branch of its own: its head is `dev` itself.
+- Features: open the PR into `dev`. Never open a feature PR into `main`.
 - Release preparation (version, CHANGELOG section, the tutorial re-run) is a
   PR into `dev` too, so `dev` holds exactly what ships.
 - Release: a PR from `dev` into `main`. CI runs on it (see
   `docs/compatibility-testing.md`, "CI"), and it is merged only with CI
   green. Tag the merge commit on `main` (`vX.Y.Z`) and publish the release.
-- After a release: a PR from `main` back into `dev`, so the two do not
-  diverge; it also bumps the version to the next `-dev`.
+- After a release: a PR from `main` back into `dev`, on a new branch from
+  `origin/main`, so the two do not diverge; it also bumps the version to
+  the next `-dev`.
