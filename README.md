@@ -1,4 +1,9 @@
-# FerroBASIC
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ferrobasic-dark.svg">
+    <img src="docs/assets/ferrobasic-light.svg" alt="FerroBASIC" width="360">
+  </picture>
+</h1>
 
 **A B4X-compatible, multi-target BASIC compiler, written in Rust.**
 
