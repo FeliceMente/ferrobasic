@@ -165,7 +165,9 @@ recall never executes it. Enter submits a syntactically complete submission or
 adds a continuation line when the parser says it is incomplete. Blank lines
 never finish incomplete blocks. A recalled multiline Sub or block is one
 editable buffer and Enter submits it as a whole, from any cursor position.
-There is no completion, syntax highlighting or persistent history.
+An edited buffer is checked and run as one submission, so an error anywhere
+in it runs none of it; only a control line inside it splits it, and the
+lines before the control line are submitted first. There is no completion, syntax highlighting or persistent history.
 
 History retains the latest 100 nonblank BASIC submissions for this REPL process
 only, including submissions with compilation/runtime errors so they can be

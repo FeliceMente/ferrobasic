@@ -150,6 +150,20 @@ class ReplTerminalTests(unittest.TestCase):
         t.finish()
         self.assertEqual(t.out, b"7\nsentinel\n")
 
+    def test_edited_recall_runs_nothing_before_an_error(self):
+        t = self.edited()
+        t.send(b'Sub F\rLog("unexpected")\rEnd Sub\r')
+        t.send(b"\x1b[A")
+        # Recalled input starts on its first line: cut `Sub F` (Home, Ctrl+K)
+        # and the line break after it (Delete), leaving an unmatched End Sub.
+        t.send(b"\x1b[H\x0b\x1b[3~\r")
+        t.wait_for(lambda: b"error" in t.terminal)
+        t.send(b'Log("sentinel")\r')
+        t.wait_for(lambda: t.out.endswith(b"sentinel\n"))
+        t.send(b":quit\r")
+        t.finish()
+        self.assertEqual(t.out, b"sentinel\n")
+
     def test_multiline_block_recall(self):
         t = self.edited()
         t.send(b"For i = 1 To 2\rLog(i)\rNext\r")
