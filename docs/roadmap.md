@@ -88,7 +88,10 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       against provisional output, and none failing on either target.
 
 The conformance gate and the M1 tooling items above are implemented.
-[Deferred REPL improvements](spec/cli.md#deferred-repl-improvements) have no
+REPL history and line editing are implemented with bounded in-memory multiline
+recall on supported terminals. The remaining
+[deferred REPL improvements](spec/cli.md#deferred-repl-improvements), session file
+loading and recoverable execution interruption, have no
 assigned milestone or schedule. Run 21 imported
 eight expected-output files and one build-time refusal; its retained
 [report](research/recording-run-21.md) records 89 selected tests, one build

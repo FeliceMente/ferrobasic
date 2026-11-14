@@ -530,17 +530,55 @@ below starts in a **new session**. All displayed results are checked by tests.
 Enter BASIC statements, expressions, Types or complete Subs.
 :help    Show this help
 :cancel  Discard pending input
-:reset   Clear the session
+:reset   Clear the session (keep input history)
 :quit    Leave the REPL
 > :quit
 ```
 
-EOF also leaves the session: Ctrl+D on Unix, or Ctrl+Z followed by Enter in
-a Windows console. Ctrl+C terminates the process; it does not cancel running
-BASIC code and return you to a prompt. Your terminal may provide basic editing.
-See [deferred REPL improvements](spec/cli.md#deferred-repl-improvements) for
-history, FerroBASIC line editing, session file loading and recoverable interruption;
-these proposals have no assigned schedule.
+EOF also leaves the session. In editing mode Ctrl+D signals EOF on an empty
+buffer; with nonempty input it deletes forward without executing anything.
+Ctrl+Alt+D explicitly sends EOF with editable input still present, diagnosing
+incomplete input with exit 3. On macOS press Ctrl+Option+D, after enabling
+"Use Option as Meta key" in Terminal.app (or Left Option key "Esc+" in iTerm2);
+both are off by default. Esc followed by Ctrl+D does not work: Ctrl+D then
+deletes forward. Windows Ctrl+Z also sends EOF;
+a plain Windows console uses Ctrl+Z followed by Enter. On Unix, editing-mode
+Ctrl+Z is undo, while the plain reader retains shell suspension. Ctrl+C
+terminates the process, including during BASIC execution; it does not return to a prompt. At an editing prompt it exits 130
+after restoring the terminal.
+
+### Editing and recalling input
+
+On a supported terminal, FerroBASIC supplies cursor movement, insertion,
+Backspace/Delete and Up/Down history recall. Up/Down move between lines of a
+multiline buffer and recall previous/next submissions at its first/last line.
+For example, enter `10+2` and press Enter: it prints `12`. Press Up to recall
+`10+2`; nothing executes. Change it to `20+3` and press Enter: it prints `23`.
+A multiline Sub or block is recalled as one editable submission. Enter submits
+it from any cursor position when the grammar is complete; otherwise it adds a
+line with the `... ` prompt. Blank lines do not finish incomplete blocks.
+
+History keeps the latest 100 nonblank BASIC submissions in memory, including
+failed submissions for correction. Consecutive exact duplicates are skipped;
+other duplicates and source whitespace are kept. Control commands, cancelled
+input and incomplete EOF input are excluded. `:reset` clears runtime state and
+definitions but keeps recall history. `:cancel` discards pending input; use it
+before recalling an unrelated submission if a block is still pending after
+`:help`. History disappears when this process exits. No session history is read
+from or saved to disk.
+
+Editing requires terminal stdin and stderr. Prompts and editing echo go to
+stderr, so `ferro repl >results.txt` keeps only BASIC output in the file while
+you edit in the terminal. Redirecting stderr uses the plain reader, with
+prompts but without FerroBASIC editing/history. Piping stdin uses the plain
+reader with no prompts and stops at the first error. On Unix, an unset/empty
+TERM or `TERM=dumb`, `unknown` or `emacs` selects plain input; Windows permits
+unset TERM. If a terminal cannot answer cursor queries, `TERM=dumb` selects
+plain input explicitly. See the [REPL spec](spec/cli.md#interactive-repl) for
+the full terminal and EOF rules.
+
+[Session file loading and recoverable execution interruption](spec/cli.md#deferred-repl-improvements)
+remain proposals with no assigned schedule.
 
 ### Expressions and statements
 
