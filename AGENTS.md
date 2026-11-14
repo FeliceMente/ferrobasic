@@ -15,10 +15,11 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   -> `mir` (typed IR) -> `interp` | `backend-java` | `backend-llvm`.
 - Language: Rust (stable, edition 2024). Workspace in `crates/`, one crate per
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
-- Current milestone: **M1** (M0 is complete). Done: the Level 0
+- Current milestone: **M2**, classes and events (`docs/roadmap.md`).
+  M0 and M1 are complete. M1 delivered the Level 0
   interpreter, `ferro check`, `ferro run`, standalone `ferro bundle` and `ferro repl` (see
   `docs/spec/cli.md`), plus `ferro lsp` diagnostics (see `docs/language-server.md`).
-  The M1 conformance gate and tooling checklist are implemented.
+  The M1 conformance gate and tooling checklist are met.
   The REPL also supplies terminal line editing and bounded in-memory history
   with editable multiline recall; file loading and recoverable execution
   interruption remain unscheduled proposals.
