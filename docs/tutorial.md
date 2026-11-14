@@ -28,7 +28,7 @@ by its full path. The examples below just write `ferro`.
 
 ```console
 $ ferro version
-ferro 0.0.8-dev (linux-x64)
+ferro 0.1.0 (linux-x64)
 ```
 
 The part in brackets is the platform `ferro` was built for, for example
