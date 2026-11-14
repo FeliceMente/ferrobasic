@@ -447,6 +447,26 @@ fn control_line(pending: &str, line: &str) -> bool {
     !ferro_syntax::lexer::lex_fragment(pending).2 && line.trim().starts_with(':')
 }
 
+/// Submits `pending` unless it is incomplete; returns the exit code when the
+/// session ends.
+fn submit_pending(
+    session: &mut Session,
+    pending: &mut String,
+    input: &mut dyn Input,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    interactive: bool,
+) -> Option<u8> {
+    if ferro_syntax::parse_fragment(pending).2 == Completeness::Incomplete {
+        return None;
+    }
+    input.remember(pending);
+    let result = session.submit(pending, out, err);
+    pending.clear();
+    let _ = out.flush();
+    (result.exited || (!interactive && result.code != 0)).then_some(result.code)
+}
+
 fn run_input(
     input: &mut dyn Input,
     out: &mut dyn Write,
@@ -465,10 +485,19 @@ fn run_input(
             Ok(InputEvent::Eof(text)) => (text, true),
             Ok(InputEvent::Text(text)) => (text, false),
         };
-        // A terminal read can contain an entire editable multiline submission.
-        // Consume its physical lines through the same engine as redirected input.
+        // A terminal read can contain an entire edited multiline buffer. Its
+        // BASIC lines between control lines are checked and run as one
+        // submission, so no complete prefix runs before an error further on;
+        // a redirected read is one line, which makes no difference there.
+        let mut fed = false;
         for line in text.split_inclusive('\n') {
             if control_line(&pending, line) {
+                if std::mem::take(&mut fed)
+                    && let Some(code) =
+                        submit_pending(&mut session, &mut pending, input, out, err, interactive)
+                {
+                    return code;
+                }
                 match line.trim() {
                     ":help" => {
                         let _ = out.write_all(HELP.as_bytes());
@@ -494,16 +523,13 @@ fn run_input(
                 continue;
             }
             pending.push_str(line);
-            if ferro_syntax::parse_fragment(&pending).2 == Completeness::Incomplete {
-                continue;
-            }
-            input.remember(&pending);
-            let result = session.submit(&pending, out, err);
-            pending.clear();
-            let _ = out.flush();
-            if result.exited || (!interactive && result.code != 0) {
-                return result.code;
-            }
+            fed = true;
+        }
+        if fed
+            && let Some(code) =
+                submit_pending(&mut session, &mut pending, input, out, err, interactive)
+        {
+            return code;
         }
         if eof {
             return if pending.is_empty() {
@@ -593,5 +619,39 @@ mod input_tests {
             );
             assert!(input.history.is_empty());
         }
+    }
+
+    #[test]
+    fn an_edited_buffer_is_checked_and_run_as_one_submission() {
+        let run = |events: &[&str]| {
+            let mut input = Inputs {
+                events: events
+                    .iter()
+                    .map(|s| InputEvent::Text((*s).into()))
+                    .collect(),
+                history: Vec::new(),
+            };
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            run_input(&mut input, &mut out, &mut err, true);
+            (
+                String::from_utf8(out).unwrap(),
+                String::from_utf8(err).unwrap(),
+                input.history,
+            )
+        };
+        // A recalled Sub whose header was deleted: its complete first line
+        // must not run before the unmatched `End Sub` is reported.
+        let (out, err, history) = run(&["Log(\"unexpected\")\nEnd Sub\n"]);
+        assert!(!out.contains("unexpected"), "{out}");
+        assert!(err.contains("error"), "{err}");
+        assert_eq!(history, ["Log(\"unexpected\")\nEnd Sub\n"]);
+        // A valid edited buffer of several statements runs once, in order.
+        let (out, err, history) = run(&["Dim a As Int = 1\nLog(a)\nLog(a + 1)\n"]);
+        assert_eq!(out, "1\n2\n", "{err}");
+        assert_eq!(history, ["Dim a As Int = 1\nLog(a)\nLog(a + 1)\n"]);
+        // Control lines still split a buffer: what precedes runs first.
+        let (out, _, history) = run(&["Log(1)\n:quit\nLog(2)\n"]);
+        assert_eq!(out, "1\n");
+        assert_eq!(history, ["Log(1)\n"]);
     }
 }
