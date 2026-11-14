@@ -13,7 +13,8 @@ iOS, WebAssembly and microcontrollers such as the Raspberry Pi Pico. It
 currently provides a reference interpreter, a stateful REPL and a diagnostics-only
 [language server](docs/language-server.md) for LSP-capable editors.
 
-> **Status: pre-alpha (milestone M1).** Level 0 programs (one module,
+> **Status: pre-alpha.** Milestones M0 and M1 are complete; M2 (classes and
+> events) is next. Level 0 programs (one module,
 > language core, `List`/`Map`) can be checked, run with the reference
 > interpreter and built into standalone executables for the host. A stateful
 > REPL supports interactive experiments. Start with the [tutorial](docs/tutorial.md),

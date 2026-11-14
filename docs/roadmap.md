@@ -5,6 +5,10 @@ comes last because it is the most expensive part. Milestones have no dates.
 From M2 on, gates are measured by the compatibility report against the original
 B4X; M3 is the first milestone where real B4J projects build unchanged.
 
+M0 and M1 are complete; M2 is next. Versions follow the milestones: the
+release that completes a milestone raises the minor version (0.1.0 for M0
+and M1, 0.2.0 for M2), and releases in between raise the patch version.
+
 | Milestone | Scope | Gate |
 | --- | --- | --- |
 | **M0 · Foundations** | Project-file reader, lexer, parser, lossless CST, Level 0 test corpus, recorder | The whole corpus parses without errors |
@@ -44,7 +48,7 @@ came later, with `.provisional` outputs standing in
 - [x] CI green on Linux, macOS and Windows (`.github/workflows/ci.yml`;
       runs on release pull requests and on demand).
 
-## M1 task breakdown (first part)
+## M1 task breakdown (first part, complete)
 
 Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
 
@@ -72,7 +76,7 @@ Acceptance criteria are in [spec/cli.md](spec/cli.md#acceptance-criteria).
       ([#33](https://github.com/FeliceMente/ferrobasic/issues/33)), as
       recording runs 12 and 13 settled them.
 
-## M1 task breakdown (second part)
+## M1 task breakdown (second part, complete)
 
 The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs-code).
 

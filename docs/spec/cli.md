@@ -237,7 +237,7 @@ something else instead (`ferro build` on a module points to `ferro bundle`).
 | `ferro compile <input> [--target <t>] [--emit <kind>] [-o <output>]` | compile one module or project for this machine (no `--target`) or for another target | JVM backend (M3), native and WebAssembly (M4), microcontrollers (M5) |
 | `ferro targets` | list the targets and what each needs installed | `compile` |
 | `ferro build [<project>]` | build a project from its project file: compile for the project's default target, then package the result where the target needs it | JVM backend (M3) |
-| `ferro test`, `ferro fmt` | conformance runner, formatter | M1 and later |
+| `ferro test`, `ferro fmt` | conformance runner, formatter | not scheduled yet |
 
 Decisions behind them:
 
