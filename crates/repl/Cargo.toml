@@ -16,3 +16,10 @@ ferro-syntax = { path = "../syntax" }
 ferro-hir = { path = "../hir" }
 ferro-mir = { path = "../mir" }
 ferro-interp = { path = "../interp" }
+# Native multiline prompt/validator support; no disk history or optional UI features.
+# See docs/research/repl-line-editing.md for the library/toolchain comparison.
+reedline = { version = "=0.49.0", default-features = false }
+crossterm = { version = "0.29", default-features = false }
+# Route Unix cursor queries only; Windows uses WinAPI without redirection.
+[target.'cfg(unix)'.dependencies]
+filedescriptor = "0.8.3"

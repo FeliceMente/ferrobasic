@@ -31,3 +31,23 @@ fn repl_process_accepts_piped_input_without_prompts() {
     assert!(help.split("Planned").next().unwrap().contains("repl"));
     assert!(!help.split("Planned").nth(1).unwrap().contains("repl"));
 }
+
+// Python's stdlib supplies PTYs without adding a platform-specific Rust test
+// dependency. Other platforms still compile this suite's ordinary CLI tests.
+#[test]
+#[cfg(target_os = "linux")]
+fn repl_linux_terminal_interactions() {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/test-repl-terminal.py");
+    let output = Command::new("python3")
+        .arg(script)
+        .arg(FERRO)
+        .output()
+        .expect("python3 is required for the Linux REPL terminal tests");
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

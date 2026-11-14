@@ -8,7 +8,7 @@ mod lsp;
 mod standalone;
 
 use std::ffi::OsString;
-use std::io::{IsTerminal, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -193,13 +193,7 @@ fn ferro_main() -> ExitCode {
         },
         Some("repl") => match &args[1..] {
             [] => {
-                let stdin = std::io::stdin();
-                let code = ferro_repl::run(
-                    &mut stdin.lock(),
-                    &mut std::io::stdout().lock(),
-                    &mut std::io::stderr().lock(),
-                    stdin.is_terminal(),
-                );
+                let code = ferro_repl::run_terminal();
                 ExitCode::from(code)
             }
             _ => usage_error("ferro repl: expected no arguments"),

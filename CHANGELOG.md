@@ -5,6 +5,62 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## 0.1.0 (pre-alpha)
+
+Milestones M0 and M1 are complete, so this release raises the minor
+version (`docs/roadmap.md`). The interpreter, `check`, `run`, `bundle`,
+`repl` and `lsp` cover Level 0; M2, classes and events, is next.
+
+### Tools
+
+- `ferro repl` edits lines and keeps a history on interactive terminals:
+  the cursor moves within the input, and Up and Down recall whole earlier
+  submissions, multiline Subs and blocks included, to edit them. History
+  holds up to 100 nonblank submissions, failed ones too, skips
+  consecutive duplicates and survives `:reset`; it stays in memory and is
+  never written to disk. Prompts and editing go to stderr and results to
+  stdout. Piped input, a redirected stderr or a terminal without editing
+  support (`TERM` `dumb`, `unknown` or `emacs`, or on Unix unset or
+  empty) keep the plain reader, with
+  the same output and exit codes as before. Ctrl+D deletes forward, or
+  ends the session on an empty line; Ctrl+C still ends the process.
+  `docs/spec/cli.md` lists the keys on each platform. It adds `reedline`
+  (0.49.0, pinned: later versions need a newer Rust) as a dependency.
+- `ferro check` names both declarations when a `Process_Globals` name is
+  declared by two `Const`s ("declared by two `Const`s"). Before, the
+  message said "declared both by a `Const` and by a `Dim`".
+
+### Recorded from B4J
+
+- Unchanged since 0.0.7: 287 conformance tests, 281 pass against
+  recordings in the interpreter and as standalone binaries, 6 are
+  documented deviations (D1, D3–D7), and none are pending.
+
+### Project
+
+- The README shows a FerroBASIC logo, in light and dark versions
+  (`docs/assets/`), drawn with the Figtree typeface (SIL Open Font
+  License 1.1).
+- `docs/roadmap.md` states the version policy: the release that completes
+  a milestone raises the minor version, and releases in between raise the
+  patch version. `AGENTS.md` names M2 as the current milestone.
+- Each pull request has its own branch, named after its topic, and
+  `docs/compatibility-testing.md` gives the one `rustup` line a fresh
+  environment needs before the full `scripts/check-all.sh`.
+- The checker's lowering (`crates/hir/src/lower/`) is split into modules,
+  with no change in what it accepts, refuses or reports.
+
+### Known limitations
+
+- Line editing was tried by hand on macOS (Terminal.app) and Windows 10
+  (Windows Terminal, and part of conhost); automated terminal tests run on
+  Linux only. iTerm2, and a Windows console whose stdout and stderr share
+  one handle, are not tested yet.
+- The REPL cannot load a file into a session or interrupt a running
+  program without ending it; the language server gives diagnostics only.
+- Classes, other modules, libraries other than jCore, `DateTime`, `Sleep`
+  and `Wait For` arrive at later levels (M2 onward).
+
 ## 0.0.7 (pre-alpha)
 
 M1 is complete: `ferro repl` and `ferro lsp` join `check`, `run` and

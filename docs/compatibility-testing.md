@@ -115,7 +115,7 @@ files remain. [Run 21](research/recording-run-21.md), imported in
 [PR #102](https://github.com/FeliceMente/ferrobasic/pull/102), settled the last
 pending probes. The conformance gate is satisfied, and the first M1
 [Language Server diagnostics](language-server.md) are implemented
-([roadmap](roadmap.md#m1-task-breakdown-second-part)).
+([roadmap](roadmap.md#m1-task-breakdown-second-part-complete)).
 
 `status` is the test classification, not a recording timestamp. Negative and
 deviation tests keep their classification after recording. `[recording]`
@@ -263,6 +263,11 @@ and recorder tests. It does not run format or Clippy, the explicit
 `ferro-difftest` reports, `ferro-recorder --dry-run`, the ignored downloaded
 project tests, or the static Linux build. It exercises the host OS;
 cross-target Clippy checks compilation but does not execute foreign binaries.
+On Linux, CLI REPL tests also run `scripts/test-repl-terminal.py` using Python 3's
+standard-library PTYs. They exercise real editing, multiline recall, control
+commands, prompt/output routing, redirected streams, fallback, EOF, Ctrl+C and
+terminal restoration. Python 3 is required for this Linux test. Windows and
+macOS compilation does not establish terminal runtime behavior on those OSes.
 
 Before every push into a `dev` PR, run:
 
@@ -281,7 +286,17 @@ The script needs rustup, rustfmt, Clippy and the Rust standard libraries for
 `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-gnu`,
 `aarch64-apple-darwin` and `x86_64-apple-darwin` (install missing ones with
 `rustup target add <target>`). Corpus fetching also needs `curl`; the static
-check needs the musl target and `file`. It stops at the first failed step.
+check needs the musl target and `file`. A fresh environment has only its
+host's target; one command installs the rest, the musl target included
+(a target already installed is left as it is):
+
+```sh
+rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl
+```
+
+A missing clippy target stops the script. A missing musl target does not: on
+Linux x86_64 the script then skips the static Linux binary, so the run counts
+only as a `--quick` run. It stops at the first failed step.
 `--offline` skips the corpus download and, if not already fetched, its tests;
 it does not force Cargo offline. Report every skip from the final summary.
 The [steward skill](../.claude/skills/steward/SKILL.md) permits `--quick` for

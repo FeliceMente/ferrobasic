@@ -18,6 +18,16 @@ seem to disagree, `AGENTS.md` wins.
   enough for a push that changes only comments or docs, with no Rust,
   workflow or build change; name the skipped step in the pull request. A
   red step is fixed before the push, never left for a reviewer.
+- A fresh environment (a new container, say) has only its host's target.
+  Before its first full `check-all.sh`, install the others:
+
+  ```sh
+  rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl
+  ```
+
+  Without a clippy target the script stops; without the musl target it
+  skips the static Linux binary on Linux x86_64. Such a run stands in only
+  for a `--quick` run, and the pull request says so.
 - A change to what `ferro check` accepts or refuses, or a refactor of
   `crates/hir`, also runs `cargo run --release -p ferro-compare` against
   `origin/dev`. Read every group it reports, not only the counts:
@@ -81,10 +91,12 @@ seem to disagree, `AGENTS.md` wins.
 
 ## After a pull request is merged
 
-Delete any pending check-in for it, then reset the working branch to the
-new `dev` (`git fetch origin dev && git checkout -B <branch> origin/dev`,
-then `git push --force-with-lease`), and wait for the owner before the next
-step.
+Delete any pending check-in for it, and leave the merged branch as it is:
+never reset, force-push or reuse it; the owner deletes it when they like.
+The next task starts on a new branch from `origin/dev` (from
+`origin/main` for the pull request back into `dev` after a release), named
+after its topic as `AGENTS.md` says (`git fetch origin dev && git switch -c
+<topic-branch> origin/dev`); wait for the owner before the next step.
 
 ## Releases
 
@@ -97,7 +109,7 @@ The sequence is in `AGENTS.md`, "Branches and releases". In practice:
    earlier sections, and `docs/tutorial.md` re-run: every example's output
    compared with what `ferro` prints now, and the version line updated.
 2. **The release**, a pull request whose head is `dev` itself, into `main`
-   (not the working branch, even when it equals `dev`). CI runs on it, on
+   (not a topic branch, even one that equals `dev`). CI runs on it, on
    Linux, Windows, macOS arm64 and macOS Intel. Every red job is this pull
    request's to fix, through a pull request into `dev` that the release
    pull request then picks up, so `main` receives only what is on `dev`;
@@ -107,7 +119,7 @@ The sequence is in `AGENTS.md`, "Branches and releases". In practice:
    green.
 3. **The tag**: `vX.Y.Z` on the merge commit on `main`, and the GitHub
    release, with notes in the style of the previous release.
-4. **Back into `dev`**: a pull request from `main` into `dev` that also
-   bumps the version to the next `-dev`.
+4. **Back into `dev`**: a pull request into `dev` from a new branch cut
+   from `origin/main`, which also bumps the version to the next `-dev`.
 
 Merging, tagging and publishing are the owner's to do or to ask for.

@@ -15,10 +15,14 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   -> `mir` (typed IR) -> `interp` | `backend-java` | `backend-llvm`.
 - Language: Rust (stable, edition 2024). Workspace in `crates/`, one crate per
   component, package names prefixed `ferro-`. The CLI binary is `ferro`.
-- Current milestone: **M1** (M0 is complete). Done: the Level 0
+- Current milestone: **M2**, classes and events (`docs/roadmap.md`).
+  M0 and M1 are complete. M1 delivered the Level 0
   interpreter, `ferro check`, `ferro run`, standalone `ferro bundle` and `ferro repl` (see
   `docs/spec/cli.md`), plus `ferro lsp` diagnostics (see `docs/language-server.md`).
-  The M1 conformance gate and tooling checklist are implemented.
+  The M1 conformance gate and tooling checklist are met.
+  The REPL also supplies terminal line editing and bounded in-memory history
+  with editable multiline recall; file loading and recoverable execution
+  interruption remain unscheduled proposals.
   The REPL walkthrough is in `docs/tutorial.md`, section 9.
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
@@ -114,7 +118,9 @@ cargo test -p ferro-project --test projects -- --ignored
    changes, skipping the static Linux binary; name the skip in the PR):
    format, clippy for Linux, Windows and macOS, the tests, the conformance tests in the interpreter and as
    standalone binaries, the recorder's dry run, the real-world corpus and,
-   on Linux x86_64, the static Linux binary.
+   on Linux x86_64, the static Linux binary. A fresh environment first needs
+   every target (`docs/compatibility-testing.md`, "Local checks"):
+   `rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl`.
    CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for
    pull requests into `main` and on demand (see
    `docs/compatibility-testing.md`, "CI").
@@ -134,12 +140,18 @@ cargo test -p ferro-project --test projects -- --ignored
 
 ## Branches and releases
 
-- Features: branch from `dev`, open the PR into `dev`. Never open a feature
-  PR into `main`.
+- Each PR gets its own new branch, named after its topic: `feat/…`,
+  `fix/…`, `refactor/…`, `docs/…`, and `release/X.Y.Z` for release
+  preparation. It starts from `origin/dev`, except for the PR from `main`
+  back into `dev` after a release, whose branch starts from `origin/main`.
+  A merged branch is never reset, force-pushed or reused. The release PR
+  has no branch of its own: its head is `dev` itself.
+- Features: open the PR into `dev`. Never open a feature PR into `main`.
 - Release preparation (version, CHANGELOG section, the tutorial re-run) is a
   PR into `dev` too, so `dev` holds exactly what ships.
 - Release: a PR from `dev` into `main`. CI runs on it (see
   `docs/compatibility-testing.md`, "CI"), and it is merged only with CI
   green. Tag the merge commit on `main` (`vX.Y.Z`) and publish the release.
-- After a release: a PR from `main` back into `dev`, so the two do not
-  diverge; it also bumps the version to the next `-dev`.
+- After a release: a PR from `main` back into `dev`, on a new branch from
+  `origin/main`, so the two do not diverge; it also bumps the version to
+  the next `-dev`.
