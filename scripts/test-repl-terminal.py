@@ -14,7 +14,9 @@ import time
 import unittest
 
 FERRO = os.path.abspath(sys.argv.pop(1))
-EXPLICIT_EOF = b"\x1b\x04"  # Ctrl+Alt+D
+# Ctrl+Alt+D as a terminal sends the chord: both bytes in one write. Esc and
+# Ctrl+D typed separately arrive apart and do not signal EOF.
+EXPLICIT_EOF = b"\x1b\x04"
 CLEAR_BUFFER = b"\x1b[1;5H\x1b[1;6F\x1b[3~"  # Ctrl+Home, Ctrl+Shift+End, Delete
 
 

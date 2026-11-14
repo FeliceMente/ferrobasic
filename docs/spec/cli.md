@@ -186,8 +186,13 @@ are control lines outside string literals. Cancel discards pending input;
 reset clears pending input, definitions and runtime state, keeping history.
 In editing mode Ctrl+D deletes forward in nonempty input and signals EOF on an
 empty buffer, including an empty continuation after `:help`. To send EOF while
-preserving incomplete editable input for diagnosis, use Ctrl+Alt+D (or Esc then
-Ctrl+D where the terminal encodes Alt that way). Windows Ctrl+Z also signals
+preserving incomplete editable input for diagnosis, use Ctrl+Alt+D as a single
+chord. On macOS this is Ctrl+Option+D, and the terminal must send Option as
+Meta (Alt): in Terminal.app, "Use Option as Meta key" under Settings, Profiles,
+Keyboard; in iTerm2, Left Option key "Esc+" under Settings, Profiles, Keys.
+Both are off by default. Pressing Esc and then Ctrl+D as separate keys does
+not send EOF: the editor reads a plain Esc followed by Ctrl+D, which deletes
+forward. Windows needs no setting. Windows Ctrl+Z also signals
 explicit EOF; plain Windows console input uses Ctrl+Z followed by Enter.
 On Unix, Ctrl+Z in editing mode is Emacs undo, not shell job suspension. The
 plain reader retains the terminal's Ctrl+Z suspension behavior. Ctrl+C still

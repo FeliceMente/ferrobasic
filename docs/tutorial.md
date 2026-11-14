@@ -537,8 +537,11 @@ Enter BASIC statements, expressions, Types or complete Subs.
 
 EOF also leaves the session. In editing mode Ctrl+D signals EOF on an empty
 buffer; with nonempty input it deletes forward without executing anything.
-Ctrl+Alt+D (or Esc then Ctrl+D) explicitly sends EOF with editable input still
-present, diagnosing incomplete input with exit 3. Windows Ctrl+Z also sends EOF;
+Ctrl+Alt+D explicitly sends EOF with editable input still present, diagnosing
+incomplete input with exit 3. On macOS press Ctrl+Option+D, after enabling
+"Use Option as Meta key" in Terminal.app (or Left Option key "Esc+" in iTerm2);
+both are off by default. Esc followed by Ctrl+D does not work: Ctrl+D then
+deletes forward. Windows Ctrl+Z also sends EOF;
 a plain Windows console uses Ctrl+Z followed by Enter. On Unix, editing-mode
 Ctrl+Z is undo, while the plain reader retains shell suspension. Ctrl+C
 terminates the process, including during BASIC execution; it does not return to a prompt. At an editing prompt it exits 130

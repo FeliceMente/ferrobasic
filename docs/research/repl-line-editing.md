@@ -59,7 +59,13 @@ return to the engine immediately; `:help` preserves pending BASIC input,
 `:cancel` discards it, and `:reset` clears language state while keeping recall.
 Ctrl+D retains delete-forward for nonempty input and EOF on an empty buffer.
 Ctrl+Alt+D explicitly sends EOF for incomplete editable input; Ctrl+Z does so on
-Windows. Explicit EOF finishes through Reedline's normal painter exit; this UI
+Windows. On Unix, terminals encode an Alt chord as Esc followed immediately by
+the key, and Crossterm reads it as Alt only when both bytes arrive together.
+Esc and Ctrl+D pressed separately are therefore a plain Esc and a
+delete-forward, not EOF. macOS terminals send Option as Alt only when
+configured to (Terminal.app "Use Option as Meta key", iTerm2 "Esc+"), which is
+off by default. Windows reports modifiers in console key events, so Ctrl+Alt+D
+needs no setting there; manual tests on macOS and Windows 10 confirmed this. Explicit EOF finishes through Reedline's normal painter exit; this UI
 finalization neither executes BASIC nor saves the editor buffer. The stream
 engine then handles the EOF input as usual. On Unix, Ctrl+Z retains Emacs undo
 in editing mode; plain input retains terminal job suspension. Ctrl+C at a prompt
