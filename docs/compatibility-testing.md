@@ -121,12 +121,18 @@ pending probes. The conformance gate is satisfied, and the first M1
 deviation tests keep their classification after recording. `[recording]`
 records provenance: `product`, `version`, `platform`, `java`, `locale`,
 `machine_locale`, optional `machine_locale_output` (`same` or `differs`) and
-`date`. For an already-negative test refused by B4J, it also has
-`rejected = true`. This is distinct from top-level `ferro_rejects`, which
-describes FerroBASIC acceptance. A pending probe that fails to build currently
-gets builder output in `report.md` but no metadata rewrite; a person must
-classify it using that evidence, as for
+`date`. For a test B4J refused to build, it also has `rejected = true`,
+followed by B4J's error and the line it names as comments when the builder
+output has them. This is distinct from top-level `ferro_rejects`, which
+describes FerroBASIC acceptance. A negative test keeps its status. A pending
+probe B4J refuses keeps `status = "pending-recording"` (and its
+`[provisional]` table), and `report.md` lists it as "refused by the original
+toolchain: decide whether it is negative": a refusal can also mean the probe
+is wrong, so a person classifies it, as for
 [`for_each_over_non_collection_object`](../tests/conformance/level0/for_each_over_non_collection_object.meta.toml).
+Until then it loads and counts as pending, like any other pending test. A
+build that fails without an error in a form the recorder reads is reported
+as "build failed", with the builder output and no metadata.
 
 ## Where test programs come from
 

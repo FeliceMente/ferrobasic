@@ -15,6 +15,10 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   linked with spare header space, and `ferro bundle` reports an error
   instead of writing such a binary (#131).
 
+### Testing and tools
+
+- `ferro-recorder` writes the `[recording]` table, with `rejected = true` and the builder's error and line as comments, for a pending probe the original toolchain refuses, and reports it as "refused by the original toolchain: decide whether it is negative"; its status stays `pending-recording`.
+
 ## 0.1.0 (pre-alpha)
 
 Milestones M0 and M1 are complete, so this release raises the minor

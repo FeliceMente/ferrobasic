@@ -84,6 +84,15 @@ seem to disagree, `AGENTS.md` wins.
     refusing, with B4J's message where the recording shows it, and make it
     a `negative` test (`status = "negative"`, no `ferro_rejects`), as
     `for_each_untyped_read_before` is.
+- The recorder writes that `[recording]` table for a refused pending probe
+  too, with B4J's error and line as comments under `rejected = true`, and
+  leaves it `pending-recording`; `report.md` lists it as "refused by the
+  original toolchain: decide whether it is negative". The refusal can also
+  mean the probe itself is wrong, so making it `negative` (or fixing the
+  probe for the next run) is the owner's call, part of the plan above.
+  A pending probe that fails without an error the recorder can read
+  (`tools/recorder/src/refusal.rs`) is still "build failed", with the
+  builder output in the report and no metadata.
 
   Present the plan (what each recording says, what changes) and wait for
   the owner's go-ahead before writing code.

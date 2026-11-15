@@ -11,6 +11,7 @@ pub mod java;
 pub mod meta;
 pub mod process;
 pub mod project;
+pub mod refusal;
 
 use std::fmt::Write as _;
 use std::fs;
@@ -22,6 +23,7 @@ use ferro_corpus::{Program, Status};
 use java::Machine;
 use meta::{Ending, Recording};
 pub use process::{Processes, Run, Runner};
+use refusal::Refusal;
 
 /// What to record, and with which tools.
 #[derive(Debug, Clone)]
@@ -61,6 +63,11 @@ pub enum Verdict {
     DeviationOutput,
     /// A negative test the original toolchain built: the test is wrong.
     NegativeAccepted,
+    /// A pending probe the original toolchain refused, with an error in a
+    /// known form ([`refusal`]): its `[recording]` table says
+    /// `rejected = true`, and whether it is `negative` is a person's call.
+    Refused,
+    /// Any other failed build.
     BuildFailed,
     NoJar,
     TimedOut,
@@ -81,6 +88,9 @@ impl Verdict {
             Verdict::Rejected => "rejected, as expected",
             Verdict::DeviationOutput => "output saved (deviation)",
             Verdict::NegativeAccepted => "**built, but the test expects a rejection**",
+            Verdict::Refused => {
+                "**refused by the original toolchain: decide whether it is negative**"
+            }
             Verdict::BuildFailed => "**build failed**",
             Verdict::NoJar => "**no jar after the build**",
             Verdict::TimedOut => "**timed out**",
@@ -110,6 +120,14 @@ impl Summary {
         self.entries
             .iter()
             .filter(|e| e.verdict.is_failure())
+            .count()
+    }
+
+    /// The pending probes the original toolchain refused, among the failures.
+    pub fn refused(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|e| e.verdict == Verdict::Refused)
             .count()
     }
 }
@@ -270,8 +288,11 @@ fn record_one(
             );
         } else {
             entry.verdict = Verdict::Rejected;
-            let rec = recording(config, machine, None, true);
-            write_meta(config, program, false, None, &rec)?;
+            let mut rec = recording(config, machine, None, true);
+            if let Some(refusal) = refusal::parse(&build_log) {
+                rec.comments = comments(&refusal, &program.source());
+            }
+            write_meta(config, program, false, false, None, &rec)?;
         }
         None
     } else if !built && program.status == Status::Deviation {
@@ -285,7 +306,11 @@ fn record_one(
         );
         None
     } else if !built {
-        entry.verdict = Verdict::BuildFailed;
+        let refusal = refusal::parse(&build_log);
+        match refusal.filter(|_| program.status == Status::PendingRecording) {
+            Some(refusal) => refused(config, machine, program, &refusal, &mut entry)?,
+            None => entry.verdict = Verdict::BuildFailed,
+        }
         note_block(&mut entry.notes, "Builder output:", &build_log);
         None
     } else {
@@ -335,6 +360,56 @@ fn record_one(
         fs::remove_dir_all(&work)?;
     }
     Ok(entry)
+}
+
+/// A pending probe the original toolchain refused: its `[recording]` table
+/// says so, its status stays as it is.
+fn refused(
+    config: &Config,
+    machine: &Machine,
+    program: &Program,
+    refusal: &Refusal,
+    entry: &mut Entry,
+) -> io::Result<()> {
+    entry.verdict = Verdict::Refused;
+    let comments = comments(refusal, &program.source());
+    let _ = writeln!(entry.notes, "The original toolchain refused to build it:\n");
+    code_block(&mut entry.notes, &comments.join("\n"));
+    let _ = writeln!(
+        entry.notes,
+        "Its `.meta.toml` now has `rejected = true` in its `[recording]` table and is still `pending-recording`: decide whether the test is `negative`, or whether the probe itself is wrong.\n"
+    );
+    if program.path.with_extension("provisional").exists() {
+        entry.disagrees = true;
+        let _ = writeln!(
+            entry.notes,
+            "**Its `.provisional` file expected it to build.**\n"
+        );
+    }
+    let mut rec = recording(config, machine, None, true);
+    rec.comments = comments;
+    write_meta(config, program, false, true, None, &rec)
+}
+
+/// The builder's error as comment lines for the `[recording]` table, with
+/// the line in the test's own numbering when it can be told.
+fn comments(refusal: &Refusal, code: &str) -> Vec<String> {
+    let mut out = vec![format!("Error: {}", refusal.message)];
+    if let Some(line) = refusal.line {
+        let place = match refusal
+            .code
+            .as_deref()
+            .and_then(|shown| project::test_line(code, line, shown))
+        {
+            Some(own) => format!("On line {own} of the test (the builder's line {line})"),
+            None => format!("On the builder's line {line}"),
+        };
+        out.push(match &refusal.code {
+            Some(shown) => format!("{place}: {shown}"),
+            None => place,
+        });
+    }
+    out
 }
 
 /// Runs the jar in the reference locale (`forced`) or the machine's;
@@ -489,7 +564,7 @@ fn save(
         )?;
     }
     let rec = recording(config, machine, same, false);
-    write_meta(config, program, true, ending, &rec)
+    write_meta(config, program, true, false, ending, &rec)
 }
 
 fn recording(config: &Config, machine: &Machine, same: Option<bool>, rejected: bool) -> Recording {
@@ -501,6 +576,7 @@ fn recording(config: &Config, machine: &Machine, same: Option<bool>, rejected: b
         machine_locale: machine.locale.clone(),
         machine_output_same: same,
         rejected,
+        comments: Vec::new(),
         date: config.date.clone(),
     }
 }
@@ -509,12 +585,13 @@ fn write_meta(
     config: &Config,
     program: &Program,
     recorded: bool,
+    keep_provisional: bool,
     ending: Option<&Ending>,
     rec: &Recording,
 ) -> io::Result<()> {
     let path = program.path.with_extension("meta.toml");
     let text = fs::read_to_string(&path)?;
-    let text = meta::rewrite(&text, recorded, ending, rec);
+    let text = meta::rewrite(&text, recorded, keep_provisional, ending, rec);
     write(
         &out_file(&conformance_out(config), &program.name, "meta.toml"),
         &text,
@@ -671,11 +748,16 @@ fn write_report(
     let _ = writeln!(r, "- Date: {}\n", config.date);
     let failures = summary.failures();
     let disagreements = summary.entries.iter().filter(|e| e.disagrees).count();
+    let refused = match summary.refused() {
+        0 => String::new(),
+        n => format!(" ({n} refused by the original toolchain: decide whether they are negative)"),
+    };
     let _ = writeln!(
         r,
-        "{}: {} failed, {} disagree with what the repository expected.\n",
+        "{}: {} failed{}, {} disagree with what the repository expected.\n",
         tests(summary.entries.len()),
         failures,
+        refused,
         disagreements
     );
     let _ = writeln!(r, "| Test | Result | Disagrees |\n| --- | --- | --- |");
@@ -697,7 +779,7 @@ fn write_report(
     let _ = writeln!(r, "## Files\n");
     let _ = writeln!(
         r,
-        "- `tests/conformance/`: the new `.expected` and `.meta.toml` files, at their place in the repository."
+        "- `tests/conformance/`: the new `.expected` and `.meta.toml` files, at their place in the repository (a refused pending probe's `.meta.toml` too)."
     );
     let _ = writeln!(
         r,
