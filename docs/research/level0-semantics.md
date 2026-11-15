@@ -229,6 +229,12 @@ tests):
   FerroBASIC uses the simple and full case mappings of
   [Unicode 14](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/Character.html),
   the recording JDK's version.
+  Final sigma also uses Unicode 14's Cased and Case_Ignorable properties.
+  To verify the generated Rust tables, download the three UCD files named
+  by the generator and pass their directory to
+  `python3 tools/unicode/generate_case_tables.py <ucd-dir> --check`.
+  Omit `--check` to regenerate them.
+  [Generator](../../tools/unicode/generate_case_tables.py)
 - **StringBuilder** wraps `java.lang.StringBuilder`
   ([`StringBuilderWrapper.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/StringBuilderWrapper.java)):
   `Append`, `Insert` and `Remove` return the wrapper, so calls chain;

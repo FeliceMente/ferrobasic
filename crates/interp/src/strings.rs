@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use crate::case_mapping::{lower, upper, upper_expansion};
+use crate::case_mapping::{is_case_ignorable, is_cased, lower, upper, upper_expansion};
 
 /// Text as UTF-16 code units, as a Rust string: an unpaired surrogate
 /// becomes `?`, as Java's encoders write it.
@@ -187,7 +187,6 @@ pub fn trim(s: &[u16]) -> &[u16] {
 pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>> {
     let mut out = Vec::new();
     out.try_reserve(s.len()).ok()?;
-    let mut context = SigmaContext::default();
     let mut i = 0;
     for c in char::decode_utf16(s.iter().copied()) {
         let width = c.as_ref().map_or(1, |c| c.len_utf16());
@@ -213,9 +212,7 @@ pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>>
                 Some(expansion) => expansion.chars().try_for_each(|c| push(&mut out, c))?,
                 None => push(&mut out, char::from_u32(upper(c as u32)).unwrap())?,
             },
-            // `str::to_lowercase`'s one context rule: a capital sigma that
-            // ends a word becomes the final form.
-            Ok('Σ') => push(&mut out, context.lower_sigma(s, i))?,
+            Ok('Σ') => push(&mut out, lower_sigma(s, i))?,
             Ok('\u{130}') => {
                 push(&mut out, 'i')?;
                 push(&mut out, '\u{307}')?;
@@ -227,53 +224,20 @@ pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>>
     Some(out)
 }
 
-/// Decides between `σ` and `ς` as `str::to_lowercase` does: final when the
-/// nearest character before that is not case-ignorable is cased, and the
-/// nearest one after is not. Rust does not expose those two Unicode
-/// properties, so they are read off `str::to_lowercase` itself (and cached).
-#[derive(Default)]
-struct SigmaContext {
-    /// Whether a character is case-ignorable, and whether it is cased.
-    known: std::collections::HashMap<char, (bool, bool)>,
+/// Use the final form when a cased character precedes sigma and none
+/// follows it, skipping case-ignorable characters in both directions.
+fn lower_sigma(s: &[u16], at: usize) -> char {
+    let before = chars_before(s, at);
+    let after = char::decode_utf16(s[at + 1..].iter().copied()).map_while(Result::ok);
+    if cased_beyond_ignorable(before) && !cased_beyond_ignorable(after) {
+        'ς'
+    } else {
+        'σ'
+    }
 }
 
-impl SigmaContext {
-    fn lower_sigma(&mut self, s: &[u16], at: usize) -> char {
-        let before = chars_before(s, at);
-        let after = char::decode_utf16(s[at + 1..].iter().copied()).map_while(Result::ok);
-        if self.cased_beyond_ignorable(before) && !self.cased_beyond_ignorable(after) {
-            'ς'
-        } else {
-            'σ'
-        }
-    }
-
-    /// Whether the first character that is not case-ignorable is cased.
-    fn cased_beyond_ignorable(&mut self, mut chars: impl Iterator<Item = char>) -> bool {
-        chars
-            .find_map(|c| {
-                let (ignorable, cased) = self.properties(c);
-                (!ignorable).then_some(cased)
-            })
-            .unwrap_or(false)
-    }
-
-    fn properties(&mut self, c: char) -> (bool, bool) {
-        if let Some(&known) = self.known.get(&c) {
-            return known;
-        }
-        let final_after = |text: String| text.to_lowercase().ends_with('ς');
-        // `cΣ` ends in `ς` when `c` is cased and not case-ignorable; `AcΣ`
-        // does when `c` is either (it is skipped, reaching `A`).
-        let cased_not_ignorable = final_after(format!("{c}Σ"));
-        let either = final_after(format!("A{c}Σ"));
-        let properties = (either && !cased_not_ignorable, cased_not_ignorable);
-        // The cache is only an optimisation: without room, skip it.
-        if self.known.try_reserve(1).is_ok() {
-            self.known.insert(c, properties);
-        }
-        properties
-    }
+fn cased_beyond_ignorable(mut chars: impl Iterator<Item = char>) -> bool {
+    chars.find(|&c| !is_case_ignorable(c)).is_some_and(is_cased)
 }
 
 /// The characters of `s` before `at`, backwards, up to an unpaired
@@ -445,6 +409,16 @@ mod tests {
             assert_eq!(to_upper(&lowercase), lowercase);
             assert_eq!(to_lower(&uppercase), uppercase);
         }
+    }
+
+    #[test]
+    fn final_sigma_uses_the_recording_jdks_unicode_properties() {
+        // U+1C8A (Unicode 16) does not count as cased in Unicode 14.
+        assert_eq!(to_lower(&u("AΣ\u{1C8A}")), u("aς\u{1C8A}"));
+        assert_eq!(to_lower(&u("\u{1C8A}Σ")), u("\u{1C8A}σ"));
+        // Skip a combining mark and continue to the cased letter.
+        assert_eq!(to_lower(&u("AΣ\u{301}B")), u("aσ\u{301}b"));
+        assert_eq!(to_lower(&u("A\u{301}Σ")), u("a\u{301}ς"));
     }
 
     /// For characters in both Unicode versions, exercise whole-run
