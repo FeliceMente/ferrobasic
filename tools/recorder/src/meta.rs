@@ -21,22 +21,30 @@ pub struct Recording {
     /// as in the reference locale (`None`: it is the reference locale).
     pub machine_locale: String,
     pub machine_output_same: Option<bool>,
-    /// A negative test the original toolchain refused to build.
+    /// The original toolchain refused to build the test.
     pub rejected: bool,
+    /// Comment lines written after `rejected`: the builder's error.
+    pub comments: Vec<String>,
     pub date: String,
 }
 
 /// `meta` with `status = "recorded"` (when `recorded`), `ending` replacing
-/// `exit_code` / `uncaught_error` (when given), no `[provisional]` table,
-/// and `rec` as its `[recording]` table, replacing the commented template
-/// or an earlier recording.
-pub fn rewrite(meta: &str, recorded: bool, ending: Option<&Ending>, rec: &Recording) -> String {
+/// `exit_code` / `uncaught_error` (when given), no `[provisional]` table
+/// (unless `keep_provisional`), and `rec` as its `[recording]` table,
+/// replacing the commented template or an earlier recording.
+pub fn rewrite(
+    meta: &str,
+    recorded: bool,
+    keep_provisional: bool,
+    ending: Option<&Ending>,
+    rec: &Recording,
+) -> String {
     let mut out: Vec<String> = Vec::new();
     let mut top = true;
     let mut lines = meta.lines().peekable();
     while let Some(line) = lines.next() {
         let trimmed = line.trim();
-        if trimmed == "[provisional]" || trimmed == "[recording]" {
+        if trimmed == "[recording]" || (trimmed == "[provisional]" && !keep_provisional) {
             // The comment right above the table is about the table.
             while out.last().is_some_and(|l| l.trim_start().starts_with('#')) {
                 out.pop();
@@ -104,6 +112,13 @@ pub fn rewrite(meta: &str, recorded: bool, ending: Option<&Ending>, rec: &Record
     }
     if rec.rejected {
         text.push_str("rejected = true   # the original toolchain refused to build it\n");
+    }
+    for comment in &rec.comments {
+        let comment: String = comment
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect();
+        text.push_str(&format!("# {}\n", comment.trim_end()));
     }
     text.push_str(&format!("date = {}\n", quote(&rec.date)));
     text
@@ -179,13 +194,14 @@ refs = [
             machine_locale: "it-IT".into(),
             machine_output_same: Some(true),
             rejected: false,
+            comments: Vec::new(),
             date: "2026-10-25".into(),
         }
     }
 
     #[test]
     fn records_and_drops_the_provisional_table() {
-        let text = rewrite(META, true, None, &recording());
+        let text = rewrite(META, true, false, None, &recording());
         assert_eq!(
             text,
             "# Conformance test metadata. See docs/compatibility-testing.md.
@@ -209,13 +225,14 @@ date = \"2026-10-25\"
 
     #[test]
     fn replaces_the_ending_and_an_earlier_recording() {
-        let first = rewrite(META, true, None, &recording());
+        let first = rewrite(META, true, false, None, &recording());
         let mut rec = recording();
         rec.machine_output_same = Some(false);
         rec.version = "10.50".into();
         let text = rewrite(
             &first,
             true,
+            false,
             Some(&Ending::Uncaught("java.lang.Error".into())),
             &rec,
         );
@@ -229,14 +246,14 @@ date = \"2026-10-25\"
         assert!(
             text.contains("machine_locale_output = \"differs\"   # see the .it-IT.expected file\n")
         );
-        let normal = rewrite(&first, true, Some(&Ending::Normal), &recording());
+        let normal = rewrite(&first, true, false, Some(&Ending::Normal), &recording());
         assert!(!normal.contains("exit_code") && !normal.contains("uncaught_error"));
     }
 
     #[test]
     fn drops_the_comment_above_a_removed_table() {
         let meta = "# About the test.\nstatus = \"negative\"\n\n# Basis for the expected rejection.\n# Second line.\n[provisional]\nbasis = \"docs\"\n";
-        let text = rewrite(meta, false, None, &recording());
+        let text = rewrite(meta, false, false, None, &recording());
         assert!(
             text.starts_with("# About the test.\nstatus = \"negative\"\n\n[recording]\n"),
             "{text}"
@@ -248,10 +265,48 @@ date = \"2026-10-25\"
         let mut rec = recording();
         rec.rejected = true;
         rec.machine_output_same = None;
-        let text = rewrite("status = \"negative\"\nlevel = 0\n", false, None, &rec);
+        let text = rewrite(
+            "status = \"negative\"\nlevel = 0\n",
+            false,
+            false,
+            None,
+            &rec,
+        );
         assert!(text.starts_with("status = \"negative\"\nlevel = 0\n\n[recording]\n"));
         assert!(text.contains("rejected = true"));
         assert!(!text.contains("machine_locale_output"));
+    }
+
+    #[test]
+    fn keeps_a_refused_probe_pending_with_its_error() {
+        let mut rec = recording();
+        rec.rejected = true;
+        rec.machine_output_same = None;
+        rec.comments = vec![
+            "Error: javac: incompatible types\r".into(),
+            "On line 10: For Each v In o".into(),
+        ];
+        let text = rewrite(META, false, true, None, &rec);
+        assert!(text.starts_with(
+            "# Conformance test metadata. See docs/compatibility-testing.md.\n\
+             status = \"pending-recording\"   # pending-recording | recorded | deviation | negative\n\
+             exit_code = 3"
+        ));
+        assert!(text.contains(
+            "\n\n# Hand-derived output, used until a recording exists. See docs/compatibility-testing.md.\n\
+             [provisional]\nbasis = \"source\""
+        ));
+        assert!(!text.contains("# Filled in by tools/recorder"));
+        assert!(text.ends_with(
+            "rejected = true   # the original toolchain refused to build it\n\
+             # Error: javac: incompatible types\n\
+             # On line 10: For Each v In o\n\
+             date = \"2026-10-25\"\n"
+        ));
+        // A later recording replaces the table, its comments included.
+        let again = rewrite(&text, true, false, None, &recording());
+        assert!(!again.contains("javac") && !again.contains("[provisional]"));
+        assert_eq!(again.matches("[recording]").count(), 1);
     }
 
     #[test]

@@ -36,9 +36,50 @@ pub fn project_file(code: &str) -> String {
     out
 }
 
+/// The line of the test's code `code` that is line `line` of the project
+/// file [`project_file`] makes from it, counted as the builder counts: from
+/// the first line after the project's `@EndOfDesignText@`. `None` when that
+/// line is not the test's code, or does not hold `expected` (the code the
+/// builder shows for it, trimmed): then the count is not the one assumed.
+pub fn test_line(code: &str, line: usize, expected: &str) -> Option<usize> {
+    let project = project_file(code);
+    let after_header = project
+        .lines()
+        .skip_while(|l| *l != "@EndOfDesignText@")
+        .skip(1);
+    // The project's own lines after the header, before the test's code.
+    let own = after_header.clone().take_while(|l| !l.is_empty()).count() + 1;
+    let shown = after_header.clone().nth(line.checked_sub(1)?)?;
+    if line <= own || shown.trim() != expected.trim() {
+        return None;
+    }
+    // A module header the project dropped still counts in the test's file.
+    let dropped = match code.split_once("@EndOfDesignText@") {
+        Some((head, _)) => head.lines().count() + 1,
+        None => 0,
+    };
+    Some(line - own + dropped)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maps_a_builder_line_to_the_test() {
+        // Recording run 21: the builder's line 15 is line 10 of the test.
+        let code = "Sub Process_Globals\nEnd Sub\n\nSub AppStart (Args() As String)\n\n\n\n    Dim o As Object = 5\n    Try\n        For Each v In o\n";
+        assert_eq!(test_line(code, 15, "For Each v In o"), Some(10));
+        // Not the code the builder showed, or not the test's code.
+        assert_eq!(test_line(code, 15, "Log(v)"), None);
+        assert_eq!(test_line(code, 2, "#CommandLineArgs:"), None);
+        assert_eq!(test_line(code, 99, ""), None);
+        assert_eq!(test_line(code, 0, ""), None);
+        // A dropped module header.
+        let code =
+            "Type=StaticCode\r\nVersion=10\r\n@EndOfDesignText@\r\nSub AppStart\r\nLog(x)\r\n";
+        assert_eq!(test_line(code, 7, "Log(x)"), Some(5));
+    }
 
     #[test]
     fn wraps_the_code_unchanged() {
