@@ -137,6 +137,8 @@ cargo test -p ferro-project --test projects -- --ignored
 - One topic per PR; describe what changed, why, and how it was tested.
 - How to drive a PR through review, CI, recording runs and releases:
   `.claude/skills/steward/SKILL.md` (it adds practice, never new rules).
+- How to write a pending probe when B4X semantics are unclear:
+  `.claude/skills/new-probe/SKILL.md` (it adds practice, never new rules).
 
 ## Branches and releases
 
