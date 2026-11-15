@@ -400,6 +400,17 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `"This " & (2 + 2) & ...` works
   ([forum](https://www.b4x.com/android/forum/threads/bug-concatenating-strings.8701/)),
   which does not determine the order. Needs a recorded test.
+- How `And` and `Or` rank against comparisons is not documented (**open**).
+  Corpus evidence, not a recording: `mteeval-buildlib`, `Codegen.bas` line
+  1826 ([MteEVAL-b4x-library](https://github.com/macthomasengineering/MteEVAL-b4x-library)
+  at `4a2a7ce`, BSD-3-Clause), has
+  `If ( nPeepIndex > 0 And gIsPcode.Get(nPeepIndex) = True ) Then`. If
+  `And` bound tighter, that would be the chain
+  `nPeepIndex > (0 And …) = True`, which B4J refuses; a published library
+  building with it suggests comparisons bind tighter, FerroBASIC's order.
+  The corpus's other such shapes are parenthesized. Pending:
+  `precedence_and_less`, `precedence_or_equal`,
+  `precedence_logical_equal`.
 - In a statement `x = a = b`, the first `=` is the assignment and the rest is
   one comparison (**generated**): `BluetoothState = NewState = Admin.STATE_ON`
   compiles to `_bluetoothstate = _newstate==_admin.STATE_ON;`. A real chain

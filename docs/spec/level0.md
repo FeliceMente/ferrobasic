@@ -267,8 +267,8 @@ From lowest to highest precedence. Levels marked *(open)* are provisional.
 | Level | Operators | Notes |
 | --- | --- | --- |
 | 1 | `Or` | short-circuit (recorded: `And` binds tighter) |
-| 2 | `And` | short-circuit |
-| 3 | `=` `<>` `<` `>` `<=` `>=` | non-chainable: `a < b < c` and `If a = b = c Then` are refused (recorded: `chained_comparison_less`, `chained_comparison_equal`) |
+| 2 | `And` | short-circuit. *(open)*: its rank, and `Or`'s, against comparisons (pending: `precedence_and_less`, `precedence_or_equal`, `precedence_logical_equal`) |
+| 3 | `=` `<>` `<` `>` `<=` `>=` | *(open)*: binding tighter than `And` and `Or` (see level 2); non-chainable: `a < b < c` and `If a = b = c Then` are refused (recorded: `chained_comparison_less`, `chained_comparison_equal`) |
 | 4 | `&` | binds tighter than comparisons; an operand holding an arithmetic operator (`+ - * / Mod`) or a negation needs parentheses (a syntax error otherwise, as in B4J) |
 | 5 | `+` `-` | |
 | 6 | `*` `/` `Mod` | |
