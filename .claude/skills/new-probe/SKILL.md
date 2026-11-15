@@ -22,7 +22,8 @@ Only when nothing settles the question yet. Look first in:
 - `docs/open-questions.md`: an open entry may already have a probe, or
   name the one to extend.
 
-If one of them settles it, implement that, with a test; no probe.
+If a recording or the research settles it, implement that, with a test;
+no probe.
 
 ## The `.bas`
 
@@ -99,7 +100,9 @@ refs = [
 ```
 
 Never for an open question, and never with `ferro_rejects`. The rules are
-in `docs/compatibility-testing.md`, "Provisional outputs".
+in `docs/compatibility-testing.md`, "Provisional outputs". Only Level 0 has
+a research document today, so a probe of a later level has no provisional
+output until its research settles the behaviour.
 
 ## The docs
 
@@ -124,5 +127,8 @@ in `docs/compatibility-testing.md`, "Provisional outputs".
 ## Handing it over
 
 The probe goes into the next recording run; the pull request names the
-run it waits for. The run's steps, and what to do with its answer, are in
+run it waits for. A probe that asks whether B4J builds a program may end
+as a build failure: the recorder then writes no metadata for it today, and a
+person classifies it from the report, as the steward skill's "Recording
+runs" says. The run's steps, and what to do with its answer, are in
 the [steward skill](../steward/SKILL.md#recording-runs), "Recording runs".
