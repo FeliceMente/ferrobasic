@@ -15,6 +15,7 @@ use std::io::Write;
 use ferro_mir::{Program, TextRange, Ty};
 
 mod builtins;
+mod case_mapping;
 mod convert;
 mod machine;
 mod number;

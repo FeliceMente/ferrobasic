@@ -20,14 +20,9 @@ related tests stay `pending-recording`.
 - [x] `And` binds tighter than `Or`: `True Or False And False` is `True`
       (recording: `level0/precedence_and_or`). Not stated in the official
       docs.
-- [ ] How `And` and `Or` rank against `=` `<>` `<` `>` `<=` `>=`.
-      FerroBASIC binds comparisons tighter, and keeps accepting
-      `a > 0 And b < 5` meanwhile. Corpus evidence, not a recording, agrees
-      ([research](research/level0-semantics.md#operators-and-precedence-docs-forum-open)).
-      Pending: `level0/precedence_and_less` and `level0/precedence_or_equal`
-      (build only if comparisons bind tighter),
-      `level0/precedence_logical_equal` (prints a different line for each
-      order).
+- [x] Comparisons bind tighter than `And` and `Or` (recording run 22,
+      `level0/precedence_and_less`, `level0/precedence_or_equal`,
+      `level0/precedence_logical_equal`).
 - [x] Whether `Case` accepts ranges: no ([docs](research/level0-semantics.md#statements)).
 - [x] `Select Case x` is accepted as a synonym of `Select x` (recording:
       `level0/select_case_synonym`).
@@ -60,28 +55,20 @@ related tests stay `pending-recording`.
       and recording: `level0/number_parsing`).
 - [x] A `String` holding `"null"` is not `Null` (`s = Null` is `False`);
       an unset `String` field is (recording: `level0/string_null_compare`).
-- [ ] Which keywords besides `In` are also accepted as names: `In` is
-      (recording: `level0/contextual_in`, as a parameter;
-      [generated](research/level0-semantics.md#keywords-used-as-names-generated-recorded)),
-      and so is `Each` (recording: `level0/keyword_name_each`, as a
-      local variable). `Step`, `To`, `Type` and `Until` are not
-      (recordings: `level0/keyword_name_step`, `_to`, `_type`,
-      `_until`). The other keywords are open, and so are the other
-      places where FerroBASIC takes `In` and `Each` as names
-      (declarations, parameters, Sub names, loop variables and the uses
-      of all of these; never type names): `In` as a local or module
-      variable, a Sub's name, a `For` counter, or the variable of a
-      typed or untyped `For Each`, and `Each` as a parameter, a module
-      variable, a Sub's name, a `For` counter, or the variable of a
-      typed or untyped `For Each` (probes:
-      `level0/keyword_name_in_local`, `_in_module`, `_in_sub`,
-      `_in_for`, `_in_for_each`, `_in_for_each_untyped`,
-      `keyword_name_each_parameter`, `_each_module`, `_each_sub`,
-      `_each_for`, `_each_for_each`, `_each_for_each_untyped`, for
-      recording run 22). FerroBASIC accepts all of them meanwhile except
-      `Each` as a `For` counter: its parser reads any `For Each` (`For
-      Each = …`, `For Each As Int = …`) as the start of a `For Each`
-      loop.
+- [x] B4J accepts `In` and `Each` as names for local or module variables,
+      parameters, Subs, and typed or untyped `For Each` variables. `In` can also be a counted `For` variable.
+      B4J refuses the `For Each = …` probe when its body reads an
+      undeclared `Each` (recordings `level0/contextual_in`, `level0/keyword_name_each`,
+      and run 22's `level0/keyword_name_in_*` and `level0/keyword_name_each_*`).
+- [ ] Which other keywords can be names. B4J refuses `Step`, `To`, `Type`
+      and `Until` in the recorded local-variable probes
+      (`level0/keyword_name_step`, `_to`, `_type`, `_until`).
+- [ ] Whether a counted loop can use `Each` with an explicit type or after
+      `Dim Each As Int`. Run 22's untyped loop reports an undeclared variable
+      at the read of `Each` in the body. The probes
+      `level0/keyword_name_each_for_typed` and
+      `level0/keyword_name_each_for_predeclared` await the next recording.
+      FerroBASIC parses both headers as the start of a collection loop.
 - [x] A line break inside parentheses does not continue the line: B4J
       says "Invalid number of parentheses." (recording:
       `level0/paren_line_break`).
@@ -89,7 +76,7 @@ related tests stay `pending-recording`.
       expected" and `If a = b = c Then` "'Then' expected" (recordings:
       `level0/chained_comparison_less`, `level0/chained_comparison_equal`).
       `x = a = b` as a statement assigns the comparison `a = b`
-      ([generated](research/level0-semantics.md#operators-and-precedence-docs-forum-open)).
+      ([generated](research/level0-semantics.md#operators-and-precedence-docs-forum-recorded)).
 - [x] A numeric literal stored as `Object` is an `Integer`, or a `Double`
       with a point, so `Int` 1 and `Double` 1.0 are different `Map` keys
       (recording: `level0/literal_boxed_type`).
@@ -671,21 +658,19 @@ evidence, while unchecked parts remain open:
       (B4J 10.70 builds 1100 levels: recorded);
       FerroBASIC stops at 1000 levels (`docs/deviations.md`). Fixture:
       `level0/deep_nesting`.
-- [ ] Case-insensitive comparison of characters outside the BMP
-      ([#115](https://github.com/FeliceMente/ferrobasic/issues/115)): whether
-      `EqualsIgnoreCase`, `SortCaseInsensitive` and `SortTypeCaseInsensitive`
-      match the case pairs of supplementary characters, such as Deseret
-      U+10400 and U+10428, and how an unpaired surrogate compares.
-      jCore's sorts call `compareToIgnoreCase`
-      ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L203-L249)).
-      OpenJDK 19.0.2, the recording JDK, compares by code point
-      ([`StringUTF16.compareToCIImpl`](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/StringUTF16.java#L325-L405),
-      since JDK 16: [JDK-8248655](https://bugs.openjdk.org/browse/JDK-8248655)).
-      No source shows that the compiler maps `EqualsIgnoreCase` to
-      `equalsIgnoreCase`: the core reference does not say so, and the
-      generated Java in Booklets.zip never calls it. FerroBASIC compares
-      UTF-16 code units one by one, so it misses these pairs. Probe:
-      `level0/case_insensitive_supplementary`, for recording run 22.
+- [x] `EqualsIgnoreCase`, `SortCaseInsensitive` and `SortTypeCaseInsensitive`
+      recognize supplementary case pairs such as Deseret U+10400/U+10428.
+      A lone surrogate compares as its own value
+      (recording run 22, `level0/case_insensitive_supplementary`).
+      [Research](research/level0-semantics.md#built-in-members-source-docs-recorded).
+- [ ] Which final-sigma context B4J's `ToLowerCase` uses. FerroBASIC
+      applies Unicode 14's `Cased` and `Case_Ignorable` properties. JDK 19
+      scans within a word boundary and uses its own test for cased
+      characters. FerroBASIC lowercases `A1Σ` to `a1σ`, and JDK 21 and 25
+      produce `a1ς`. The pending probe `level0/lowercase_final_sigma_context`
+      covers digits, underscore, punctuation and the feminine ordinal
+      indicator to establish B4J 10.70's behavior.
+      [OpenJDK 19 source](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/ConditionalSpecialCasing.java#L193-L221)
 
 ## Porting
 

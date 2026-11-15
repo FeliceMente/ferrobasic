@@ -4,7 +4,9 @@ End Sub
 
 ' Case-insensitive comparison of characters outside the BMP (issue #115).
 ' Deseret U+10400 and U+10428 are a case pair, written as surrogate pairs.
-' U+10401 is the next capital letter. Prints only booleans and indexes.
+' U+10401 is the next capital letter. B4J matches the case pair in
+' EqualsIgnoreCase and both stable sorts, and compares an unpaired
+' surrogate as its own value (recording run 22).
 Sub AppStart (Args() As String)
     Dim up As String = Chr(0xD801) & Chr(0xDC00)
     Dim low As String = Chr(0xD801) & Chr(0xDC28)
