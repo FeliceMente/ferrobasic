@@ -47,6 +47,9 @@ seem to disagree, `AGENTS.md` wins.
 
 ## Review threads
 
+- Findings from a review that are not inline comments (from a local review
+  tool, a chat, another agent) go on the pull request as one comment, so the
+  record stays on GitHub with the code it is about.
 - Reply on every thread before the push that addresses it: what the commit
   (not pushed yet, by its short hash) changes, or why it does not change
   anything. Then push, then resolve the threads you answered.
