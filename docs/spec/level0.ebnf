@@ -7,10 +7,13 @@
 (* " _" at end of line continues it: the "_" must follow a space or tab   *)
 (* and be followed only by spaces, then the line break or a comment and   *)
 (* the line break. "'" starts a comment up to end of line.                 *)
-(* "In" and "Each" are contextual: keywords in For Each, names elsewhere  *)
-(* (recorded: contextual_in, keyword_name_each). "Step", "To", "Type" and  *)
-(* "Until" are not names (recorded: keyword_name_step, _to, _type,        *)
-(* _until). Whether the other keywords are names is open.                 *)
+(* "In" and "Each" are contextual: keywords in For Each, names elsewhere, *)
+(* except that "For Each =" starts a For Each loop. Recorded: In as a     *)
+(* parameter (contextual_in), Each as a local (keyword_name_each); the    *)
+(* other positions are open (pending: keyword_name_in_*,                  *)
+(* keyword_name_each_*). "Step", "To", "Type" and "Until" are not names   *)
+(* (recorded: keyword_name_step, _to, _type, _until). Whether the other   *)
+(* keywords are names is open.                                            *)
 (* Whitespace, comments and continuations are trivia kept in the CST.       *)
 
 module        = [ BOM ] , [ header ] , program ;
