@@ -129,10 +129,14 @@ output until its research settles the behaviour.
 The probe goes into the next recording run; the pull request names the
 run it waits for. When B4J refuses a pending probe with an error the recorder
 can read, the recorder writes a `[recording]` table with `rejected = true`
-and B4J's error and line as comments. It keeps `status = "pending-recording"`;
+and B4J's error (and the line, when the builder names one) as comments.
+It keeps `status = "pending-recording"`;
 the report says "refused by the original toolchain: decide whether it is
-negative". Making it `negative` (or fixing the probe for the next run) is
-the owner's decision. A build failure without a readable error still gets
-no metadata, with the builder output in the report. The run's steps, and
-what to do with its answer, are in
+negative". The run's steps and the owner's classification decision are in
 the [steward skill](../steward/SKILL.md#recording-runs), "Recording runs".
+
+If the owner chooses `negative`, remove `ferro_rejects`, any `exit_code` or
+`uncaught_error`, and any `.provisional` file and `[provisional]` table.
+A refused probe with provisional output is a disagreement to settle with
+the recording. A pending probe's build failure without a readable error
+still gets no metadata, with the builder output in the report.
