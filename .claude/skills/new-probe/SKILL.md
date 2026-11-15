@@ -127,8 +127,12 @@ output until its research settles the behaviour.
 ## Handing it over
 
 The probe goes into the next recording run; the pull request names the
-run it waits for. A probe that asks whether B4J builds a program may end
-as a build failure: the recorder then writes no metadata for it today, and a
-person classifies it from the report, as the steward skill's "Recording
-runs" says. The run's steps, and what to do with its answer, are in
+run it waits for. When B4J refuses a pending probe with an error the recorder
+can read, the recorder writes a `[recording]` table with `rejected = true`
+and B4J's error and line as comments. It keeps `status = "pending-recording"`;
+the report says "refused by the original toolchain: decide whether it is
+negative". Making it `negative` (or fixing the probe for the next run) is
+the owner's decision. A build failure without a readable error still gets
+no metadata, with the builder output in the report. The run's steps, and
+what to do with its answer, are in
 the [steward skill](../steward/SKILL.md#recording-runs), "Recording runs".
