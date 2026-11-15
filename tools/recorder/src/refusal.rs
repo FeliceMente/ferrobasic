@@ -56,23 +56,18 @@ pub fn parse(log: &str) -> Option<Refusal> {
             code,
         });
     }
-    let marker = lines.iter().position(|l| l.contains("B4J line:"));
-    let from = marker.unwrap_or(0);
-    let javac = lines[from..]
+    // A Java compiler error counts only with the line of the program the
+    // builder ties it to: without it, it can be the environment's (a
+    // missing library on the class path), not the program's.
+    let marker = lines.iter().position(|l| l.contains("B4J line:"))?;
+    let javac = lines[marker..]
         .iter()
         .find_map(|l| l.split_once(": error: ").map(|(_, m)| m.trim()))
         .filter(|m| !m.is_empty())?;
-    let (line, code) = match marker {
-        Some(i) => (
-            number(after(lines[i], "B4J line:").as_deref()),
-            code(lines.get(i + 1)).filter(|c| !c.contains(": error: ")),
-        ),
-        None => (None, None),
-    };
     Some(Refusal {
         message: format!("javac: {javac}"),
-        line,
-        code,
+        line: number(after(lines[marker], "B4J line:").as_deref()),
+        code: code(lines.get(marker + 1)).filter(|c| !c.contains(": error: ")),
     })
 }
 
@@ -152,5 +147,15 @@ mod tests {
         assert_eq!(parse("Error compiling program.\r\n"), None);
         assert_eq!(parse(""), None);
         assert_eq!(parse("Error description:\n"), None);
+        // A Java compiler error the builder ties to no line of the program:
+        // here a missing library, the environment's failure.
+        assert_eq!(
+            parse(
+                "Compiling generated Java code.\r\n\
+                 src\\b4j\\example\\main.java:3: error: package anywheresoftware.b4a does not exist\r\n\
+                 1 error\r\n"
+            ),
+            None
+        );
     }
 }

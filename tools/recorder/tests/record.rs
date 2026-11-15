@@ -4,7 +4,8 @@
 //! The fake tools read instructions from the test's code, in comments:
 //! `' OUT: text` prints a line in every locale, `' OUT-EN:` / `' OUT-IT:`
 //! only in the reference locale / the machine's, `' THROW: kind` ends with
-//! an uncaught error, `' HANG` never ends, `' NO BUILD` fails the build, and
+//! an uncaught error, `' HANG` never ends, `' NO BUILD` fails the build,
+//! `' NO LIBRARY` fails it with a Java compiler error about the class path, and
 //! `' REFUSE` fails it as the Java compiler did in recording run 21, naming
 //! the line that holds `For Each`.
 
@@ -43,6 +44,16 @@ impl Runner for Fake {
                 return Ok(Run {
                     code: Some(1),
                     stdout: format!("Compiling generated Java code.\r\nSystem.Exception: {error}\r\n   in h8.a(a A_0)\r\n{error}").into_bytes(),
+                    ..Run::default()
+                });
+            }
+            if text.contains("' NO LIBRARY") {
+                return Ok(Run {
+                    code: Some(1),
+                    stdout: b"Compiling generated Java code.\r\n\
+                        src\\b4j\\example\\main.java:3: error: package anywheresoftware.b4a does not exist\r\n\
+                        1 error\r\n"
+                        .to_vec(),
                     ..Run::default()
                 });
             }
@@ -380,6 +391,8 @@ fn records_the_refusal_of_a_pending_probe() {
             ),
             // An error in no known form is not read as a refusal.
             ("broken", "' NO BUILD\n", PENDING, None),
+            // Nor is a Java compiler error tied to no line of the program.
+            ("no_library", "' NO LIBRARY\n", PENDING, None),
         ],
     );
     let summary = record(&config(&root), &fake(&root)).unwrap();
@@ -392,13 +405,14 @@ fn records_the_refusal_of_a_pending_probe() {
         verdicts,
         [
             ("level0/broken", Verdict::BuildFailed, false),
+            ("level0/no_library", Verdict::BuildFailed, false),
             ("level0/refused", Verdict::Refused, true),
             ("level0/refused_negative", Verdict::Rejected, false),
             ("level0/refused_rejects", Verdict::Refused, false),
         ]
     );
     // A refusal is a decision to make, not a pass.
-    assert_eq!((summary.failures(), summary.refused()), (3, 2));
+    assert_eq!((summary.failures(), summary.refused()), (4, 2));
 
     let out = root.join("out");
     let conf = out.join("tests/conformance/level0");
@@ -424,16 +438,19 @@ fn records_the_refusal_of_a_pending_probe() {
     // A negative test's refusal gets the error too.
     assert!(read(conf.join("refused_negative.meta.toml")).ends_with(error));
     assert!(!conf.join("broken.meta.toml").exists());
+    assert!(!conf.join("no_library.meta.toml").exists());
     assert!(!conf.join("refused.expected").exists());
     // The `.provisional` file stays until a person decides.
     assert_eq!(read(out.join("remove.txt")), "");
 
     let report = read(out.join("report.md"));
-    assert!(report.contains("4 tests: 3 failed (2 refused by the original toolchain: decide whether they are negative), 1 disagree"));
+    assert!(report.contains("5 tests: 4 failed (2 refused by the original toolchain: decide whether they are negative), 1 disagree"));
     assert!(report.contains(
         "| `level0/refused` | **refused by the original toolchain: decide whether it is negative** | **yes** |"
     ));
     assert!(report.contains("| `level0/broken` | **build failed** |  |"));
+    assert!(report.contains("| `level0/no_library` | **build failed** |  |"));
+    assert!(report.contains("package anywheresoftware.b4a does not exist"));
     assert!(report.contains("still `pending-recording`: decide whether the test is `negative`"));
     assert!(report.contains("**Its `.provisional` file expected it to build.**"));
     assert!(report.contains("main.java:46: error"));
