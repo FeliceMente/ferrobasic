@@ -1,7 +1,7 @@
 # Deviations from B4X
 
-The table lists known, accepted differences between FerroBASIC and the
-original B4X toolchain. Each row needs a conformance test with `status = "deviation"`.
+Every known, accepted difference between FerroBASIC and the original B4X
+toolchain. Each entry needs a conformance test with `status = "deviation"`.
 
 | ID | Area | Target(s) | Original behaviour | FerroBASIC behaviour | Reason | Test |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -12,13 +12,3 @@ original B4X toolchain. Each row needs a conformance test with `status = "deviat
 | D5 | Runtime | all | A `Sort`, `SortCaseInsensitive`, `SortType` or `SortTypeCaseInsensitive` that raises leaves the list partly sorted: `TimSort` sorts it in place and stops at the first comparison that fails, so `[1, 3, 2, "x"]` is `[1, 2, 3, x]` after `Sort` raises `ClassCastException` | The list is left as it was: `[1, 3, 2, x]` | FerroBASIC checks every item before it sorts; reproducing the partial state would mean reproducing `TimSort`'s comparison order. Only a program that catches the error and then reads the list sees the difference | `tests/conformance/level0/sort_partial_d5` (its reference output is recorded from B4J 10.70) |
 | D6 | Runtime | all | A `Type` record prints through jCore's `BA.TypeToString`, which returns `""` once the Java stack is 150 frames deep, a check it makes every 50 calls with a global counter: a record whose List holds the record prints 49 levels deep, then `[]`, and records nested more deeply in Lists print empty from about the same depth | Records print in full, to the printing limit of D2 (7000 levels); a record that holds itself raises `java.lang.StackOverflowError` | Reproducing it would mean reproducing the JVM's stack frame count at each level; only data nested about 49 records deep, or holding itself, prints differently | `tests/conformance/level0/self_printing_record` |
 | D7 | Runtime | B4J | `SortType` / `SortTypeCaseInsensitive` look the field up on the first item's Java class (`getDeclaredField`, then `setAccessible(true)`), so a list of plain values has every field their JDK class declares. A public one is read: `"MAX_VALUE"` on a list of `Int`s, a static field, the same for every item, sorts without error. A private one cannot be opened: on the recording machine (OpenJDK 19), `"value"` on a list of `Int`s raises `InaccessibleObjectException` (from `setAccessible`; JDK 8 would sort by it) | Only records have fields (their declared ones and `IsInitialized`, as in B4J): every other value raises `NoSuchFieldException`, as B4J does for a name its class does not declare | Reproducing it would mean a table of the declared fields of every JDK class a value can have, and the answer changes with the JDK version; only a program that sorts plain values by the name of a field their JDK class declares sees the difference: B4J sorts or raises another error where FerroBASIC raises `NoSuchFieldException`. Other products are not described: their runtimes have other classes, or none | `tests/conformance/level0/list_sort_type_class_fields` (its reference output is recorded from B4J 10.70); the lines it matches are also `list_sort_type_initialized` |
-
-## Java behavior awaiting a B4J recording
-
-FerroBASIC's `ToLowerCase` uses Unicode 14's final-sigma context. JDK 19's
-implementation scans within a Java word boundary and uses a narrower test
-for cased characters. In JDK 21 and 25, `A1Σ` lowercases to `a1ς`, while
-FerroBASIC gives `a1σ`. The pending probe `level0/lowercase_final_sigma_context`
-covers digits, underscore, punctuation and the feminine ordinal indicator
-to confirm how B4J 10.70 behaves.
-[OpenJDK 19 source](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/ConditionalSpecialCasing.java#L193-L221)

@@ -232,7 +232,7 @@ tests):
   FerroBASIC also uses Unicode 14's `Cased` and `Case_Ignorable`
   properties for final sigma. Java uses its word boundaries for this rule.
   The B4J outcome is open (probe `lowercase_final_sigma_context`).
-  [Java comparison](../deviations.md#java-behavior-awaiting-a-b4j-recording)
+  [Open question and Java comparison](../open-questions.md#language)
   To verify the generated Rust tables, download the three UCD files named
   by the generator and pass their directory to
   `python3 tools/unicode/generate_case_tables.py <ucd-dir> --check`.
