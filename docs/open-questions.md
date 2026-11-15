@@ -18,9 +18,16 @@ related tests stay `pending-recording`.
       than `&` (`"a" & "b" = "ab"` is `True`). Recorded: `level0/concat_*`;
       FerroBASIC gives a precise error.
 - [x] `And` binds tighter than `Or`: `True Or False And False` is `True`
-      (recording: `level0/precedence_and_or`). Against comparisons it is
-      still open.
-      Not stated in the official docs.
+      (recording: `level0/precedence_and_or`). Not stated in the official
+      docs.
+- [ ] How `And` and `Or` rank against `=` `<>` `<` `>` `<=` `>=`.
+      FerroBASIC binds comparisons tighter, and keeps accepting
+      `a > 0 And b < 5` meanwhile. Corpus evidence, not a recording, agrees
+      ([research](research/level0-semantics.md#operators-and-precedence-docs-forum-open)).
+      Pending: `level0/precedence_and_less` and `level0/precedence_or_equal`
+      (build only if comparisons bind tighter),
+      `level0/precedence_logical_equal` (prints a different line for each
+      order).
 - [x] Whether `Case` accepts ranges: no ([docs](research/level0-semantics.md#statements)).
 - [x] `Select Case x` is accepted as a synonym of `Select x` (recording:
       `level0/select_case_synonym`).
