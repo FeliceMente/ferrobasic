@@ -402,7 +402,13 @@ is embedded with `libsui` instead (see below).
   uses (MIT):
   - **Apple Silicon**: the package goes in a new Mach-O section
     (`__SUI,__ferro`) before `__LINKEDIT`, and `libsui` signs the result ad
-    hoc itself.
+    hoc itself. Its load command (152 bytes) needs spare room after the
+    existing ones, so `ferro` is linked with `-Wl,-headerpad,0x1000`
+    (`crates/cli/build.rs`). `ferro bundle` also checks that the load
+    commands still end before the first section's bytes, and reports an error
+    otherwise. Without that room the new command overwrote the start of
+    `__text`, and the binary crashed at start-up with an illegal instruction
+    ([#131](https://github.com/FeliceMente/ferrobasic/issues/131)).
   - **Intel**: `libsui` appends the package after its own marker and extends
     `__LINKEDIT` to cover it. `ferro bundle` then signs ad hoc with
     `codesign --force --sign -`, and reports an error if that fails.

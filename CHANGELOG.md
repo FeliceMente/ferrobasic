@@ -7,6 +7,14 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+### Tools
+
+- On macOS, `ferro bundle` no longer writes a binary that crashes at
+  start-up ("illegal hardware instruction") when the `ferro` executable has
+  little Mach-O header space, as debug builds on macOS 27 do. `ferro` is
+  linked with spare header space, and `ferro bundle` reports an error
+  instead of writing such a binary (#131).
+
 ### Testing and tools
 
 - `ferro-recorder` writes the `[recording]` table, with `rejected = true` and the builder's error and line as comments, for a pending probe the original toolchain refuses, and reports it as "refused by the original toolchain: decide whether it is negative"; its status stays `pending-recording`.

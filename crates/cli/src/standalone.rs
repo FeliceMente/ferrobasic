@@ -199,7 +199,69 @@ pub fn standalone_bytes(exe: &Path, entries: &[Entry]) -> io::Result<Vec<u8>> {
     macho.build_and_sign(&mut bytes).map_err(sui)?;
     #[cfg(not(target_arch = "aarch64"))]
     macho.build(&mut bytes).map_err(sui)?;
+    macho_header_fits(&bytes).map_err(io::Error::other)?;
     Ok(bytes)
+}
+
+/// `MH_MAGIC_64`: a thin 64-bit Mach-O file.
+const MH_MAGIC_64: u32 = 0xfeed_facf;
+/// Length of a 64-bit Mach-O header.
+const MACH_HEADER_64_LEN: usize = 32;
+/// `LC_SEGMENT_64`, and the lengths of its command and of one section.
+const LC_SEGMENT_64: u32 = 0x19;
+const SEGMENT_COMMAND_64_LEN: usize = 72;
+const SECTION_64_LEN: usize = 80;
+
+/// Checks that the load commands of the 64-bit Mach-O file `bytes` end
+/// before the first byte of any section. `libsui` adds a load command
+/// without checking for room: when the executable has too little header
+/// padding, the new command overwrites the start of `__text`, and the
+/// binary crashes at start-up (issue #131).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn macho_header_fits(bytes: &[u8]) -> Result<(), String> {
+    let u32_at = |at: usize| -> Result<u32, String> {
+        bytes
+            .get(at..at + 4)
+            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            .ok_or_else(|| "the Mach-O header is truncated".to_owned())
+    };
+    if u32_at(0)? != MH_MAGIC_64 {
+        return Err("not a 64-bit Mach-O executable".into());
+    }
+    let ncmds = u32_at(16)? as usize;
+    let commands_end = MACH_HEADER_64_LEN + u32_at(20)? as usize;
+    let mut first_section = usize::MAX;
+    let mut at = MACH_HEADER_64_LEN;
+    for _ in 0..ncmds {
+        let (cmd, size) = (u32_at(at)?, u32_at(at + 4)? as usize);
+        if size == 0 || at + size > commands_end {
+            return Err("the Mach-O load commands are malformed".into());
+        }
+        if cmd == LC_SEGMENT_64 {
+            let nsects = u32_at(at + 64)? as usize;
+            for s in 0..nsects {
+                let section = at + SEGMENT_COMMAND_64_LEN + s * SECTION_64_LEN;
+                if section + SECTION_64_LEN > at + size {
+                    return Err("the Mach-O load commands are malformed".into());
+                }
+                // Zero-fill sections have no bytes in the file (offset 0).
+                let offset = u32_at(section + 48)? as usize;
+                if offset != 0 {
+                    first_section = first_section.min(offset);
+                }
+            }
+        }
+        at += size;
+    }
+    if commands_end > first_section {
+        return Err(format!(
+            "the embedded program does not fit: the Mach-O load commands would end at \
+             byte {commands_end}, past the first section at byte {first_section}; this \
+             `ferro` was linked with too little header space (rebuild it with \
+             `-Wl,-headerpad,0x1000`)"
+        ));
+    }
+    Ok(())
 }
 
 /// On Intel, `libsui` 0.16.4 copies the executable to
@@ -419,6 +481,59 @@ mod tests {
             parse_trailer(&future, 100),
             Err(PayloadError::UnknownVersion(7))
         );
+    }
+
+    /// A 64-bit Mach-O header with one `LC_SEGMENT_64` holding sections at
+    /// `offsets`, then zeros up to `len` bytes.
+    fn macho(offsets: &[u32], len: usize) -> Vec<u8> {
+        let cmdsize = SEGMENT_COMMAND_64_LEN + offsets.len() * SECTION_64_LEN;
+        let mut b = vec![0u8; len.max(MACH_HEADER_64_LEN + cmdsize)];
+        let put =
+            |b: &mut Vec<u8>, at: usize, v: u32| b[at..at + 4].copy_from_slice(&v.to_le_bytes());
+        put(&mut b, 0, MH_MAGIC_64);
+        put(&mut b, 16, 1);
+        put(&mut b, 20, cmdsize as u32);
+        put(&mut b, 32, LC_SEGMENT_64);
+        put(&mut b, 36, cmdsize as u32);
+        put(&mut b, 32 + 64, offsets.len() as u32);
+        for (i, offset) in offsets.iter().enumerate() {
+            put(
+                &mut b,
+                32 + SEGMENT_COMMAND_64_LEN + i * SECTION_64_LEN + 48,
+                *offset,
+            );
+        }
+        b
+    }
+
+    #[test]
+    fn load_commands_must_end_before_the_first_section() {
+        // One segment with two sections: the commands end at 32 + 72 + 160.
+        assert_eq!(macho_header_fits(&macho(&[264, 4096], 4096)), Ok(()));
+        assert_eq!(macho_header_fits(&macho(&[4096, 2368], 4096)), Ok(()));
+        // Issue #131: the first section starts 80 bytes too early.
+        let overlap = macho_header_fits(&macho(&[184, 4096], 4096)).unwrap_err();
+        assert!(
+            overlap.contains("byte 264, past the first section at byte 184"),
+            "{overlap}"
+        );
+        // A zero-fill section has no bytes in the file.
+        assert_eq!(macho_header_fits(&macho(&[0, 4096], 4096)), Ok(()));
+        // No section at all: nothing to overlap.
+        assert_eq!(macho_header_fits(&macho(&[], 512)), Ok(()));
+    }
+
+    #[test]
+    fn malformed_mach_o_headers_are_errors() {
+        assert!(macho_header_fits(b"\x7fELF").is_err());
+        assert!(macho_header_fits(&MH_MAGIC_64.to_le_bytes()).is_err());
+        let mut zero_size = macho(&[4096], 4096);
+        zero_size[36..40].copy_from_slice(&0u32.to_le_bytes());
+        assert!(macho_header_fits(&zero_size).is_err());
+        // More sections than the command holds.
+        let mut too_many = macho(&[4096], 4096);
+        too_many[32 + 64..32 + 68].copy_from_slice(&2u32.to_le_bytes());
+        assert!(macho_header_fits(&too_many).is_err());
     }
 
     #[test]
