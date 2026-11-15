@@ -7,6 +7,20 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+### Runtime, as in B4J
+
+- `EqualsIgnoreCase`, `SortCaseInsensitive` and `SortTypeCaseInsensitive`
+  recognize supplementary Unicode case pairs, including Deseret. Lone
+  surrogates compare as themselves (#115).
+
+### Recorded from B4J
+
+- [Recording run 22](docs/research/recording-run-22.md) confirms that
+  comparisons bind tighter than `And` and `Or` (#127). It confirms the
+  tested name positions for `In` and `Each`, including B4J's refusal of
+  `For Each = …` as a counted loop (#137). The corpus has 303 conformance
+  tests, with 297 passing, 6 deviations and zero pending on both targets.
+
 ### Tools
 
 - On macOS, `ferro bundle` no longer writes a binary that crashes at

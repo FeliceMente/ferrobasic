@@ -14,4 +14,6 @@ java = "19.0.2 (Oracle Corporation)"
 locale = "en-US"   # forced: the reference locale
 machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
-date = "2026-11-08"
+# Error: Syntax error.
+# On line 6 of the test (the builder's line 11): Dim r As String = "x" & 7 Mod 2
+date = "2026-11-15"

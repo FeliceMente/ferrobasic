@@ -120,6 +120,17 @@ End Sub
   construct no level adds yet says so: type tests (`x Is T`). Each gets one
   error, without follow-on errors.
 
+### Keywords as names
+
+`In` and `Each` are contextual keywords. Both can name local and module
+variables, parameters, Subs, and typed or untyped `For Each` variables
+(recordings `contextual_in`, `keyword_name_each`, and run 22's
+`keyword_name_in_*` and `keyword_name_each_*`). A counted loop
+`For In = …` builds, and B4J refuses the tested counted loop
+`For Each = …` (recordings `keyword_name_in_for` and
+`keyword_name_each_for`). FerroBASIC parses `For Each` as a collection-loop
+header. B4J's handling of `For Each As Int = …` is *(open)*.
+
 ## Types
 
 | Type | Representation | Default value | JVM | LLVM |
@@ -262,13 +273,13 @@ This is observable behaviour and must match exactly:
 
 ## Operators
 
-From lowest to highest precedence. Levels marked *(open)* are provisional.
+From lowest to highest precedence.
 
 | Level | Operators | Notes |
 | --- | --- | --- |
 | 1 | `Or` | short-circuit (recorded: `And` binds tighter) |
-| 2 | `And` | short-circuit. *(open)*: its rank, and `Or`'s, against comparisons (pending: `precedence_and_less`, `precedence_or_equal`, `precedence_logical_equal`) |
-| 3 | `=` `<>` `<` `>` `<=` `>=` | *(open)*: binding tighter than `And` and `Or` (see level 2); non-chainable: `a < b < c` and `If a = b = c Then` are refused (recorded: `chained_comparison_less`, `chained_comparison_equal`) |
+| 2 | `And` | short-circuit |
+| 3 | `=` `<>` `<` `>` `<=` `>=` | bind tighter than `And` and `Or` (recordings `precedence_and_less`, `precedence_or_equal`, `precedence_logical_equal`). B4J refuses chains such as `a < b < c` and `If a = b = c Then` (recordings `chained_comparison_less`, `chained_comparison_equal`). |
 | 4 | `&` | binds tighter than comparisons; an operand holding an arithmetic operator (`+ - * / Mod`) or a negation needs parentheses (a syntax error otherwise, as in B4J) |
 | 5 | `+` `-` | |
 | 6 | `*` `/` `Mod` | |

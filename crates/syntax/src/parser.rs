@@ -206,15 +206,12 @@ const PREFIX_BINDING_POWER: u8 = 13;
 /// a 900-term `&` chain still parses.
 const MAX_NESTING: u32 = 1000;
 
-/// Keywords that B4X also accepts as names. `In` is recorded as a parameter
-/// (`contextual_in`) and evidenced by a B4X library that compiles with a
-/// parameter named `In`; `Each` is recorded as a local variable
-/// (`keyword_name_each`). Both are names wherever the parser checks
-/// `is_name_token` (declarations, parameters, Sub names, loop variables and
-/// their uses, but not type names), which no recording settles yet (pending
-/// probes `keyword_name_in_*` and `keyword_name_each_*`). `Each` is not a
-/// `For` counter: any `For Each` starts a `For Each` loop. `Step`, `To`, `Type` and `Until` are recorded as
-/// refused, and the other keywords are open (see `docs/open-questions.md`).
+/// Contextual keywords accepted as names in declarations, parameters,
+/// Sub names and loop variables (recordings `contextual_in`,
+/// `keyword_name_each`, and run 22's `keyword_name_in_*` and
+/// `keyword_name_each_*`). The parser treats `For Each` as the start of
+/// a collection loop. B4J refuses the tested counted form `For Each = …`.
+/// The typed counted form `For Each As Int = …` is open.
 const CONTEXTUAL_KEYWORDS: &[SyntaxKind] = &[IN_KW, EACH_KW];
 
 fn is_name_token(kind: SyntaxKind) -> bool {

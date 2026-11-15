@@ -15,4 +15,6 @@ java = "19.0.2 (Oracle Corporation)"
 locale = "en-US"   # forced: the reference locale
 machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
-date = "2026-11-08"
+# Error: Parameter name cannot hide global variable name.
+# On line 11 of the test (the builder's line 16): Sub Show (Count As Int)
+date = "2026-11-15"

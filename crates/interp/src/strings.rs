@@ -24,50 +24,100 @@ pub fn compare_to(a: &[u16], b: &[u16]) -> i32 {
     a.len() as i32 - b.len() as i32
 }
 
-/// `Character.toUpperCase(char)`: the simple (one to one) mapping of
+/// `Character.toUpperCase(int)`: the simple (one to one) mapping of
 /// UnicodeData. Rust only offers the full mapping, which equals the simple
-/// one except for the characters it expands; of those, only the Greek
+/// one except for the characters it expands. Of those, only the Greek
 /// letters with ypogegrammeni have a simple uppercase (their titlecase
-/// form), the others (`ß`, `ŉ`, ligatures, …) map to themselves.
-fn upper(c: u16) -> u16 {
+/// form). The others (`ß`, `ŉ`, ligatures, …) map to themselves.
+fn upper(c: u32) -> u32 {
     match c {
         0x1F80..=0x1F87 | 0x1F90..=0x1F97 | 0x1FA0..=0x1FA7 => c + 8,
         0x1FB3 | 0x1FC3 | 0x1FF3 => c + 9,
-        _ => simple_map(c, |ch| ch.to_uppercase().collect()),
+        _ => simple_map(c, char::to_uppercase),
     }
 }
 
-/// `Character.toLowerCase(char)`. The only full lowercase mapping that
+/// `Character.toLowerCase(int)`. The only full lowercase mapping that
 /// expands is U+0130 (`İ` → `i̇`), whose simple lowercase is `i`.
-fn lower(c: u16) -> u16 {
+fn lower(c: u32) -> u32 {
     match c {
         0x0130 => 0x0069,
-        _ => simple_map(c, |ch| ch.to_lowercase().collect()),
+        _ => simple_map(c, char::to_lowercase),
     }
 }
 
-fn simple_map(c: u16, f: impl Fn(char) -> Vec<char>) -> u16 {
-    let Some(ch) = char::from_u32(c as u32) else {
+fn simple_map<I: Iterator<Item = char>>(c: u32, map: impl FnOnce(char) -> I) -> u32 {
+    // The reference JDK 19 uses Unicode 14. Limit supplementary case
+    // mapping to its cased scripts even when Rust ships newer mappings.
+    if c >= 0x10000
+        && !matches!(
+            c,
+            0x10400..=0x1044F // Deseret
+                | 0x104B0..=0x104FB // Osage
+                | 0x10570..=0x105BC // Vithkuqi
+                | 0x10C80..=0x10CF2 // Old Hungarian
+                | 0x118A0..=0x118DF // Warang Citi
+                | 0x16E40..=0x16E7F // Medefaidrin
+                | 0x1E900..=0x1E943 // Adlam
+        )
+    {
+        return c;
+    }
+    let Some(ch) = char::from_u32(c) else {
         return c;
     };
-    match f(ch).as_slice() {
-        [m] if (*m as u32) <= 0xFFFF => *m as u32 as u16,
+    let mut mapped = map(ch);
+    match (mapped.next(), mapped.next()) {
+        (Some(ch), None) => u32::from(ch),
         _ => c,
     }
 }
 
-/// `String.compareToIgnoreCase`.
+fn case_insensitive_difference(a: u32, b: u32) -> i32 {
+    let (a, b) = (upper(a), upper(b));
+    if a == b {
+        return 0;
+    }
+    lower(a) as i32 - lower(b) as i32
+}
+
+/// Resolve a mismatched code unit to its code point. The high surrogate
+/// may have matched on the previous iteration. A lone surrogate keeps
+/// its code-unit value.
+fn code_point_including(text: &[u16], index: &mut usize) -> u32 {
+    let unit = text[*index];
+    let (high, low) = match unit {
+        0xD800..=0xDBFF => match text.get(*index + 1).copied() {
+            Some(low @ 0xDC00..=0xDFFF) => {
+                *index += 1;
+                (unit, low)
+            }
+            _ => return u32::from(unit),
+        },
+        0xDC00..=0xDFFF if *index > 0 => match text[*index - 1] {
+            high @ 0xD800..=0xDBFF => (high, unit),
+            _ => return u32::from(unit),
+        },
+        _ => return u32::from(unit),
+    };
+    0x10000 + (u32::from(high - 0xD800) << 10) + u32::from(low - 0xDC00)
+}
+
+/// `String.compareToIgnoreCase`. Like the JDK's UTF-16 comparison, skip
+/// matching code units and compare the containing code points on a mismatch.
 pub fn compare_ignore_case(a: &[u16], b: &[u16]) -> i32 {
-    for (&x, &y) in a.iter().zip(b) {
+    let (mut i, mut j) = (0, 0);
+    while let (Some(&x), Some(&y)) = (a.get(i), b.get(j)) {
         if x != y {
-            let (ux, uy) = (upper(x), upper(y));
-            if ux != uy {
-                let (lx, ly) = (lower(ux), lower(uy));
-                if lx != ly {
-                    return lx as i32 - ly as i32;
-                }
+            let x = code_point_including(a, &mut i);
+            let y = code_point_including(b, &mut j);
+            let difference = case_insensitive_difference(x, y);
+            if difference != 0 {
+                return difference;
             }
         }
+        i += 1;
+        j += 1;
     }
     a.len() as i32 - b.len() as i32
 }
@@ -78,10 +128,7 @@ pub fn ordering(c: i32) -> Ordering {
 
 /// `String.equalsIgnoreCase`.
 pub fn equals_ignore_case(a: &[u16], b: &[u16]) -> bool {
-    a.len() == b.len()
-        && a.iter()
-            .zip(b)
-            .all(|(&x, &y)| x == y || upper(x) == upper(y) || lower(upper(x)) == lower(upper(y)))
+    a.len() == b.len() && compare_ignore_case(a, b) == 0
 }
 
 /// `String.indexOf(str, fromIndex)`.
