@@ -27,8 +27,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
   run. Recording run 21 is imported: 287 conformance tests, 281 passing,
-  6 deviations, none pending or provisional. Since then, 14 probes wait for
-  the next run (301 tests). See `docs/roadmap.md`.
+  6 deviations, none pending or provisional. Since then, 16 probes wait for
+  the next run (303 tests). See `docs/roadmap.md`.
 
 ## Read before working
 

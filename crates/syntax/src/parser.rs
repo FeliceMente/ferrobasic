@@ -209,9 +209,11 @@ const MAX_NESTING: u32 = 1000;
 /// Keywords that B4X also accepts as names. `In` is recorded as a parameter
 /// (`contextual_in`) and evidenced by a B4X library that compiles with a
 /// parameter named `In`; `Each` is recorded as a local variable
-/// (`keyword_name_each`). Both are names in every other position too, which
-/// no recording settles yet (pending probes `keyword_name_in_*` and
-/// `keyword_name_each_*`). `Step`, `To`, `Type` and `Until` are recorded as
+/// (`keyword_name_each`). Both are names wherever the parser checks
+/// `is_name_token` (declarations, parameters, Sub names, loop variables and
+/// their uses, but not type names), which no recording settles yet (pending
+/// probes `keyword_name_in_*` and `keyword_name_each_*`). `Each` is not a
+/// `For` counter: any `For Each` starts a `For Each` loop. `Step`, `To`, `Type` and `Until` are recorded as
 /// refused, and the other keywords are open (see `docs/open-questions.md`).
 const CONTEXTUAL_KEYWORDS: &[SyntaxKind] = &[IN_KW, EACH_KW];
 

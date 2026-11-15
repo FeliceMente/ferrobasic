@@ -113,9 +113,9 @@ At `dev` commit `6275b26` (2026-11-08), both conformance targets report
 as expected. No `.provisional`
 files remain. [Run 21](research/recording-run-21.md), imported in
 [PR #102](https://github.com/FeliceMente/ferrobasic/pull/102), settled the last
-pending probes. Since then, 14 probes are pending for the next run: how
+pending probes. Since then, 16 probes are pending for the next run: how
 `And` and `Or` rank against comparisons (3), supplementary case pairs (1),
-and `In` and `Each` as names in other positions (10); 301 tests. The conformance gate is satisfied, and the first M1
+and `In` and `Each` as names in other positions (12); 303 tests. The conformance gate is satisfied, and the first M1
 [Language Server diagnostics](language-server.md) are implemented
 ([roadmap](roadmap.md#m1-task-breakdown-second-part-complete)).
 
