@@ -21,8 +21,9 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   tested name positions for `In` and `Each` (#137). B4J reports an
   undeclared variable when the untyped counted-loop probe reads `Each`
   in its body. Probes for predeclared and explicitly typed counters await
-  the next recording. The corpus has 305 conformance tests, with 297
-  passing, 6 deviations and 2 pending on both targets.
+  the next recording, along with a probe for B4J's final-sigma context.
+  The corpus has 306 conformance tests, with 297 passing, 6 deviations
+  and 3 pending on both targets.
 
 ### Tools
 

@@ -63,7 +63,7 @@ Strings are immutable; every member returns a new value.
 | `Length As Int` | number of UTF-16 code units |
 | `Replace(Target, Replacement) As String` | replaces all occurrences, literally (not a regex) |
 | `SubString(BeginIndex)`, `SubString2(BeginIndex, EndIndex)` | end exclusive; out of range → `StringIndexOutOfBoundsException` |
-| `ToLowerCase`, `ToUpperCase` | Java's no-argument versions, which use the JVM default locale. FerroBASIC uses the Unicode 14 default (root-locale) mapping, which equals Java for every locale except Turkish, Azeri and Lithuanian (`"I"` → `ı` in Turkish); *(open)* which locale the reference recordings use. |
+| `ToLowerCase`, `ToUpperCase` | Java's no-argument versions, which use the JVM default locale. FerroBASIC uses Unicode 14 default (root-locale) casing. Java has locale-specific mappings for Turkish, Azeri and Lithuanian (`"I"` → `ı` in Turkish). FerroBASIC applies Unicode's final-sigma context. Java uses word boundaries for this decision, and B4J's result is *(open)* (probe `lowercase_final_sigma_context`). |
 | `Trim As String` | Java `trim`: removes code units ≤ U+0020 at both ends |
 
 `GetBytes(Charset)` returns `Byte()` and is Level 0 only for `"UTF8"`/`"UTF-8"`.

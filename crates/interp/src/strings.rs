@@ -226,6 +226,7 @@ pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>>
 
 /// Use the final form when a cased character precedes sigma and none
 /// follows it, skipping case-ignorable characters in both directions.
+/// Java's word-boundary rule is tracked by `lowercase_final_sigma_context`.
 fn lower_sigma(s: &[u16], at: usize) -> char {
     let before = chars_before(s, at);
     let after = char::decode_utf16(s[at + 1..].iter().copied()).map_while(Result::ok);

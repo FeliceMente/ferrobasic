@@ -48,3 +48,36 @@ fn has_property(c: char, ranges: &[(u32, u32)]) -> bool {
     let i = ranges.partition_point(|&(_, end)| end < c);
     ranges.get(i).is_some_and(|&(start, _)| start <= c)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_sorted_disjoint(ranges: impl Iterator<Item = (u32, u32)>) {
+        let mut last_end = None;
+        for (start, end) in ranges {
+            assert!(start <= end && end <= 0x10FFFF);
+            assert!(last_end.is_none_or(|previous| previous < start));
+            last_end = Some(end);
+        }
+    }
+
+    #[test]
+    fn generated_case_tables_support_binary_search() {
+        for table in [UPPER, LOWER] {
+            assert_sorted_disjoint(table.iter().map(|&(start, end, _, _)| (start, end)));
+            for &(start, end, stride, _) in table {
+                assert!((1..=2).contains(&stride));
+                assert_eq!((end - start) % stride, 0);
+            }
+        }
+        for table in [CASED, CASE_IGNORABLE] {
+            assert_sorted_disjoint(table.iter().copied());
+        }
+        assert!(
+            UPPER_EXPANSIONS
+                .windows(2)
+                .all(|pair| pair[0].0 < pair[1].0)
+        );
+    }
+}

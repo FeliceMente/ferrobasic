@@ -664,6 +664,13 @@ evidence, while unchecked parts remain open:
       (recording run 22, `level0/case_insensitive_supplementary`).
       [Research](research/level0-semantics.md#built-in-members-source-docs-recorded).
 
+- [ ] Which final-sigma context B4J's `ToLowerCase` uses (pending:
+      `level0/lowercase_final_sigma_context`). FerroBASIC applies the
+      Unicode 14 `Cased` and `Case_Ignorable` properties. Java uses word
+      boundaries and its own definition of a cased character. For example,
+      FerroBASIC lowercases `A1Σ` to `a1σ`, and JDK 21 and 25 produce `a1ς`.
+      [Java comparison](deviations.md#java-behavior-awaiting-a-b4j-recording)
+
 ## Porting
 
 - [ ] Collect a corpus of real projects per product and document the project-file format from it.

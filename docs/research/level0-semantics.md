@@ -217,8 +217,8 @@ tests):
   units, or of the lengths; `Replace` is literal, left to right; `Trim`
   removes code units up to U+0020 only; an index out of range raises
   `StringIndexOutOfBoundsException`. Case mapping is the open question on
-  locales; outside Turkish, Azeri and Lithuanian it is the Unicode default
-  (`"Straße".ToUpperCase` is `STRASSE`).
+  locales. FerroBASIC uses Unicode default casing (`"Straße".ToUpperCase`
+  is `STRASSE`).
 - `EqualsIgnoreCase`, `SortCaseInsensitive` and `SortTypeCaseInsensitive`
   recognize the Deseret case pair U+10400/U+10428, also in strings with a
   lone surrogate. A lone surrogate keeps its own value in comparisons, and
@@ -229,7 +229,10 @@ tests):
   FerroBASIC uses the simple and full case mappings of
   [Unicode 14](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/Character.html),
   the recording JDK's version.
-  Final sigma also uses Unicode 14's Cased and Case_Ignorable properties.
+  FerroBASIC also uses Unicode 14's `Cased` and `Case_Ignorable`
+  properties for final sigma. Java uses its word boundaries for this rule.
+  The B4J outcome is open (probe `lowercase_final_sigma_context`).
+  [Java comparison](../deviations.md#java-behavior-awaiting-a-b4j-recording)
   To verify the generated Rust tables, download the three UCD files named
   by the generator and pass their directory to
   `python3 tools/unicode/generate_case_tables.py <ucd-dir> --check`.

@@ -28,7 +28,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   machine by `tools/recorder`; new pending tests go into the next recording
   run. Recording run 22 is imported with 303 conformance tests, 297
   passing, 6 deviations, and none pending or provisional from that run.
-  Two new counted-loop probes await recording (305 tests total). See
+  Three new probes for counted loops and final sigma await recording
+  (306 tests total). See
   `docs/roadmap.md`.
 
 ## Read before working
