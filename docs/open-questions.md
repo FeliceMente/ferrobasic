@@ -63,9 +63,25 @@ related tests stay `pending-recording`.
 - [ ] Which keywords besides `In` are also accepted as names: `In` is
       (recording: `level0/contextual_in`, as a parameter;
       [generated](research/level0-semantics.md#keywords-used-as-names-generated-recorded)),
-      and so is `Each` (recording: `level0/keyword_name_each`). `Step`, `To`, `Type` and `Until`
-      are not (recordings: `level0/keyword_name_step`, `_to`, `_type`,
-      `_until`). The other keywords are open.
+      and so is `Each` (recording: `level0/keyword_name_each`, as a
+      local variable). `Step`, `To`, `Type` and `Until` are not
+      (recordings: `level0/keyword_name_step`, `_to`, `_type`,
+      `_until`). The other keywords are open, and so are the other
+      places where FerroBASIC takes `In` and `Each` as names
+      (declarations, parameters, Sub names, loop variables and the uses
+      of all of these; never type names): `In` as a local or module
+      variable, a Sub's name, a `For` counter, or the variable of a
+      typed or untyped `For Each`, and `Each` as a parameter, a module
+      variable, a Sub's name, a `For` counter, or the variable of a
+      typed or untyped `For Each` (probes:
+      `level0/keyword_name_in_local`, `_in_module`, `_in_sub`,
+      `_in_for`, `_in_for_each`, `_in_for_each_untyped`,
+      `keyword_name_each_parameter`, `_each_module`, `_each_sub`,
+      `_each_for`, `_each_for_each`, `_each_for_each_untyped`, for
+      recording run 22). FerroBASIC accepts all of them meanwhile except
+      `Each` as a `For` counter: its parser reads any `For Each` (`For
+      Each = …`, `For Each As Int = …`) as the start of a `For Each`
+      loop.
 - [x] A line break inside parentheses does not continue the line: B4J
       says "Invalid number of parentheses." (recording:
       `level0/paren_line_break`).
