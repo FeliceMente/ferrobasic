@@ -4,13 +4,17 @@
 //! The fake tools read instructions from the test's code, in comments:
 //! `' OUT: text` prints a line in every locale, `' OUT-EN:` / `' OUT-IT:`
 //! only in the reference locale / the machine's, `' THROW: kind` ends with
-//! an uncaught error, `' HANG` never ends, and `' NO BUILD` fails the build.
+//! an uncaught error, `' HANG` never ends, `' NO BUILD` fails the build,
+//! `' NO LIBRARY` fails it with a Java compiler error about the class path, and
+//! `' REFUSE` fails it as the Java compiler did in recording run 21, naming
+//! the line that holds `For Each`.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use ferro_corpus::Status;
 use ferro_recorder::{Config, Run, Runner, Verdict, record, select};
 
 struct Fake {
@@ -23,6 +27,36 @@ impl Runner for Fake {
             assert_eq!(args[0], "-Task=Build");
             let project = args.last().unwrap().strip_prefix("-Project=").unwrap();
             let text = fs::read_to_string(dir.join(project))?;
+            if text.contains("' REFUSE") {
+                // The builder counts lines from the one after the header.
+                let code = text.split_once("@EndOfDesignText@").unwrap().1;
+                let line = code
+                    .lines()
+                    .skip(1)
+                    .position(|l| l.contains("For Each"))
+                    .unwrap()
+                    + 1;
+                let error = format!(
+                    "Error: B4J line: {line}\r\nFor Each v In o\r\n\
+                     src\\b4j\\example\\main.java:46: error: incompatible types: Object cannot be converted to IterableList\r\n\
+                     final anywheresoftware.b4a.BA.IterableList group3 = _o;\r\n1 error\r\n"
+                );
+                return Ok(Run {
+                    code: Some(1),
+                    stdout: format!("Compiling generated Java code.\r\nSystem.Exception: {error}\r\n   in h8.a(a A_0)\r\n{error}").into_bytes(),
+                    ..Run::default()
+                });
+            }
+            if text.contains("' NO LIBRARY") {
+                return Ok(Run {
+                    code: Some(1),
+                    stdout: b"Compiling generated Java code.\r\n\
+                        src\\b4j\\example\\main.java:3: error: package anywheresoftware.b4a does not exist\r\n\
+                        1 error\r\n"
+                        .to_vec(),
+                    ..Run::default()
+                });
+            }
             if text.contains("' NO BUILD") {
                 return Ok(Run {
                     code: Some(1),
@@ -338,6 +372,109 @@ fn reports_builds_that_fail_or_hang() {
     let project = read(out.join("work/level0-broken/broken.b4j"));
     assert!(project.starts_with("AppType=StandardJava\n"));
     assert!(project.ends_with("#End Region\n\n' NO BUILD\n"));
+}
+
+#[test]
+fn records_the_refusal_of_a_pending_probe() {
+    const REFUSED: &str = "Sub AppStart (Args() As String)\n    ' REFUSE\n    Dim o As Object = 5\n    For Each v In o\n    Next\nEnd Sub\n";
+    let rejects = PENDING.replace("level = 0\n", "level = 0\nferro_rejects = true\n");
+    let root = repo(
+        "refused",
+        &[
+            ("refused", REFUSED, PENDING, Some("5\n")),
+            ("refused_rejects", REFUSED, &rejects, None),
+            (
+                "refused_negative",
+                REFUSED,
+                "status = \"negative\"\nlevel = 0\n",
+                None,
+            ),
+            // An error in no known form is not read as a refusal.
+            ("broken", "' NO BUILD\n", PENDING, None),
+            // Nor is a Java compiler error tied to no line of the program.
+            ("no_library", "' NO LIBRARY\n", PENDING, None),
+        ],
+    );
+    let summary = record(&config(&root), &fake(&root)).unwrap();
+    let verdicts: Vec<_> = summary
+        .entries
+        .iter()
+        .map(|e| (e.name.as_str(), e.verdict, e.disagrees))
+        .collect();
+    assert_eq!(
+        verdicts,
+        [
+            ("level0/broken", Verdict::BuildFailed, false),
+            ("level0/no_library", Verdict::BuildFailed, false),
+            ("level0/refused", Verdict::Refused, true),
+            ("level0/refused_negative", Verdict::Rejected, false),
+            ("level0/refused_rejects", Verdict::Refused, false),
+        ]
+    );
+    // A refusal is a decision to make, not a pass.
+    assert_eq!((summary.failures(), summary.refused()), (4, 2));
+
+    let out = root.join("out");
+    let conf = out.join("tests/conformance/level0");
+    let error = "rejected = true   # the original toolchain refused to build it\n\
+        # Error: javac: incompatible types: Object cannot be converted to IterableList\n\
+        # On line 4 of the test (the builder's line 9): For Each v In o\n\
+        date = \"2026-10-25\"\n";
+    let meta = read(conf.join("refused.meta.toml"));
+    // The status, and the hand-derived output's table, stay.
+    assert!(meta.starts_with("status = \"pending-recording\""), "{meta}");
+    assert!(
+        meta.contains("[provisional]\nbasis = \"source\"\n"),
+        "{meta}"
+    );
+    assert!(meta.contains("\n[recording]\nproduct = \"B4J\"\nversion = \"10.30\"\n"));
+    assert!(
+        meta.contains("platform = \"Windows 10 10.0\"\njava = \"19.0.2 (Oracle Corporation)\"\n")
+    );
+    assert!(meta.contains("machine_locale = \"it-IT\"\nrejected = true"));
+    assert!(meta.ends_with(error), "{meta}");
+    let meta = read(conf.join("refused_rejects.meta.toml"));
+    assert!(meta.contains("ferro_rejects = true\n") && meta.ends_with(error));
+    // A negative test's refusal gets the error too.
+    assert!(read(conf.join("refused_negative.meta.toml")).ends_with(error));
+    assert!(!conf.join("broken.meta.toml").exists());
+    assert!(!conf.join("no_library.meta.toml").exists());
+    assert!(!conf.join("refused.expected").exists());
+    // The `.provisional` file stays until a person decides.
+    assert_eq!(read(out.join("remove.txt")), "");
+
+    let report = read(out.join("report.md"));
+    assert!(report.contains("5 tests: 4 failed (2 refused by the original toolchain: decide whether they are negative), 1 disagree"));
+    assert!(report.contains(
+        "| `level0/refused` | **refused by the original toolchain: decide whether it is negative** | **yes** |"
+    ));
+    assert!(report.contains("| `level0/broken` | **build failed** |  |"));
+    assert!(report.contains("| `level0/no_library` | **build failed** |  |"));
+    assert!(report.contains("package anywheresoftware.b4a does not exist"));
+    assert!(report.contains("still `pending-recording`: decide whether the test is `negative`"));
+    assert!(report.contains("**Its `.provisional` file expected it to build.**"));
+    assert!(report.contains("main.java:46: error"));
+
+    // Applied to the repository, the probes still load as pending.
+    for name in ["refused", "refused_rejects"] {
+        let meta = format!("{name}.meta.toml");
+        fs::copy(
+            conf.join(&meta),
+            root.join("tests/conformance/level0").join(&meta),
+        )
+        .unwrap();
+    }
+    fs::remove_file(root.join("tests/conformance/level0/refused.provisional")).unwrap();
+    let programs = ferro_corpus::programs_in(&root.join("tests/conformance"));
+    let loaded = |name: &str| {
+        let p = programs
+            .iter()
+            .find(|p| p.name == format!("level0/{name}"))
+            .unwrap();
+        (p.status, p.rejected)
+    };
+    assert_eq!(loaded("refused"), (Status::PendingRecording, false));
+    assert_eq!(loaded("refused_rejects"), (Status::PendingRecording, true));
 }
 
 #[test]
