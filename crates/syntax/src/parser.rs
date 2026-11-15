@@ -206,9 +206,10 @@ const PREFIX_BINDING_POWER: u8 = 13;
 /// a 900-term `&` chain still parses.
 const MAX_NESTING: u32 = 1000;
 
-/// Keywords that B4X also accepts as names. `In` is evidenced by a B4X
-/// library that compiles with a parameter named `In`, and `Each` is
-/// recorded (`keyword_name_each`); `Step`, `To`, `Type` and `Until` are
+/// Keywords that B4X also accepts as names. `In` is recorded as a parameter
+/// (`contextual_in`) and evidenced by a B4X library that compiles with a
+/// parameter named `In`; `Each` is recorded (`keyword_name_each`).
+/// `Step`, `To`, `Type` and `Until` are
 /// recorded as refused, and the other keywords are open (see
 /// `docs/open-questions.md`).
 const CONTEXTUAL_KEYWORDS: &[SyntaxKind] = &[IN_KW, EACH_KW];
