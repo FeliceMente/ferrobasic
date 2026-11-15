@@ -647,6 +647,21 @@ evidence, while unchecked parts remain open:
       (B4J 10.70 builds 1100 levels: recorded);
       FerroBASIC stops at 1000 levels (`docs/deviations.md`). Fixture:
       `level0/deep_nesting`.
+- [ ] Case-insensitive comparison of characters outside the BMP
+      ([#115](https://github.com/FeliceMente/ferrobasic/issues/115)): whether
+      `EqualsIgnoreCase`, `SortCaseInsensitive` and `SortTypeCaseInsensitive`
+      match the case pairs of supplementary characters, such as Deseret
+      U+10400 and U+10428, and how an unpaired surrogate compares.
+      jCore's sorts call `compareToIgnoreCase`
+      ([`List.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/objects/collections/List.java#L203-L249)).
+      OpenJDK 19.0.2, the recording JDK, compares by code point
+      ([`StringUTF16.compareToCIImpl`](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/StringUTF16.java#L325-L405),
+      since JDK 16: [JDK-8248655](https://bugs.openjdk.org/browse/JDK-8248655)).
+      No source shows that the compiler maps `EqualsIgnoreCase` to
+      `equalsIgnoreCase`: the core reference does not say so, and the
+      generated Java in Booklets.zip never calls it. FerroBASIC compares
+      UTF-16 code units one by one, so it misses these pairs. Probe:
+      `level0/case_insensitive_supplementary`, for recording run 22.
 
 ## Porting
 
