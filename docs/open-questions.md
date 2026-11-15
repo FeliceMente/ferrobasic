@@ -54,7 +54,7 @@ related tests stay `pending-recording`.
 - [x] A `String` holding `"null"` is not `Null` (`s = Null` is `False`);
       an unset `String` field is (recording: `level0/string_null_compare`).
 - [ ] Which keywords besides `In` are also accepted as names: `In` is
-      ([generated](research/level0-semantics.md#keywords-used-as-names-generated)),
+      ([generated](research/level0-semantics.md#keywords-used-as-names-generated-recorded)),
       and so is `Each` (recording: `level0/keyword_name_each`). `Step`, `To`, `Type` and `Until`
       are not (recordings: `level0/keyword_name_step`, `_to`, `_type`,
       `_until`). The other keywords are open.

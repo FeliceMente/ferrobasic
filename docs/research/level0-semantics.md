@@ -765,12 +765,22 @@ Implemented as recorded with B4J 10.70 (run 12,
   and assigning it in `Process_Globals`, with new pending probes to be added for
   the next recording when those shapes are investigated ([open-questions.md](../open-questions.md)).
 
-### Keywords used as names (generated)
+### Keywords used as names (generated, recorded)
 
-`In` is accepted as a name: B4X's `AsyncStreamsText` class declares a
-parameter `In As InputStream` and calls `astreams.Initialize(In, out, ...)`,
-compiled to `_in` in the generated Java. Which other keywords are contextual
-in the same way is **open**.
+- `In` is accepted as a name: B4X's `AsyncStreamsText` class declares a
+  parameter `In As InputStream` and calls `astreams.Initialize(In, out, ...)`,
+  compiled to `_in` in the generated Java (**generated**). A Sub with a
+  parameter `In As Int` builds and runs (**recorded**: `contextual_in`).
+- `Each` is accepted as a variable's name: `Dim Each As Int = 4` then
+  `Log(Each + 1)` prints `5` (**recorded**: `keyword_name_each`).
+- `Step`, `To`, `Type` and `Until` are not: the same program with one of
+  them in place of `Each` does not build (**recorded**: `keyword_name_step`,
+  `keyword_name_to`, `keyword_name_type`, `keyword_name_until`, negative
+  tests). For `Step` and `To`, B4J says "Missing parameter." at the `Log`
+  line; its message for each is in the test's `.meta.toml`.
+- **open**: which keywords besides `In` are also accepted as names, for
+  the other keywords, which no recording covers
+  ([open-questions.md](../open-questions.md#language)).
 
 ### Types (docs)
 
