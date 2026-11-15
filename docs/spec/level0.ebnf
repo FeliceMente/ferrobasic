@@ -95,10 +95,11 @@ try_stmt      = "Try" , SEP , block , "Catch" , SEP , block ,
 expr          = or_expr ;
 or_expr       = and_expr , { "Or" , and_expr } ;
 and_expr      = cmp_expr , { "And" , cmp_expr } ;
-(* Chains such as a < b < c and a = b = c are B4J errors (recorded:      *)
-(* chained_comparison_less, chained_comparison_equal). The grammar still  *)
-(* accepts them, left-associatively, so the lossless CST keeps them and   *)
-(* the checker refuses them with a precise error.                         *)
+(* Chains such as a < b < c and If a = b = c Then are B4J errors          *)
+(* (recorded: chained_comparison_less, chained_comparison_equal). The     *)
+(* grammar still accepts them, left-associatively, so the lossless CST    *)
+(* keeps them and the checker refuses them with a precise error. As a     *)
+(* statement, x = a = b is no chain: it assigns the comparison a = b.     *)
 (* "x Is T", a type test, binds like a comparison; it is recognised only  *)
 (* to be reported (not supported yet). "Is" is a name, not a keyword.     *)
 cmp_expr      = concat_expr ,
