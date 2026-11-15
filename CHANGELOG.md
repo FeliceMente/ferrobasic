@@ -5,6 +5,16 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+### Tools
+
+- On macOS, `ferro bundle` no longer writes a binary that crashes at
+  start-up ("illegal hardware instruction") when the `ferro` executable has
+  little Mach-O header space, as debug builds on macOS 27 do. `ferro` is
+  linked with spare header space, and `ferro bundle` reports an error
+  instead of writing such a binary (#131).
+
 ## 0.1.0 (pre-alpha)
 
 Milestones M0 and M1 are complete, so this release raises the minor
