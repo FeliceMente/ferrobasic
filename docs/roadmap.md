@@ -90,7 +90,8 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       binaries. [Recording run 22](research/recording-run-22.md) (2026-11-15)
       brought the corpus to 303 tests, with 297 passing, 6 documented
       deviations, and zero failures, pending tests or provisional passes
-      on either target.
+      on either target. Two more probes for predeclared and typed `Each`
+      counters await recording (305 tests total).
 
 The conformance gate and the M1 tooling items above are implemented.
 REPL history and line editing are implemented with bounded in-memory multiline

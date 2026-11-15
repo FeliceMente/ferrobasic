@@ -1,0 +1,5 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "pending-recording"   # pending-recording | recorded | deviation | negative
+ferro_rejects = true
+level = 0
+features = ["keywords-as-names"]

@@ -226,7 +226,7 @@ tests):
   (**recorded**, run 22: `case_insensitive_supplementary`). This matches
   [JDK 19's case-insensitive comparison](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/String.html#compareToIgnoreCase(java.lang.String)),
   which uses the simple uppercase and lowercase mappings of code points.
-  FerroBASIC uses the supplementary case mappings of
+  FerroBASIC uses the simple and full case mappings of
   [Unicode 14](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/Character.html),
   the recording JDK's version.
 - **StringBuilder** wraps `java.lang.StringBuilder`
@@ -790,8 +790,8 @@ Implemented as recorded with B4J 10.70 (run 12,
 - `For In = 1 To 2` builds as a counted loop. B4J refuses the corresponding
   `For Each = 1 To 2` probe and reports that `each` is undeclared when read
   inside the body (**recorded**, run 22: `keyword_name_in_for` and
-  `keyword_name_each_for`). The typed counted form `For Each As Int = …`
-  is open.
+  `keyword_name_each_for`). Predeclared and explicitly typed `Each`
+  counters are open.
 - `Step`, `To`, `Type` and `Until` are not: the same program with one of
   them in place of `Each` does not build (**recorded**: `keyword_name_step`,
   `keyword_name_to`, `keyword_name_type`, `keyword_name_until`, negative

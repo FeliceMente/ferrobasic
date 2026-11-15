@@ -2,6 +2,8 @@
 
 use std::cmp::Ordering;
 
+use crate::case_mapping::{lower, upper, upper_expansion};
+
 /// Text as UTF-16 code units, as a Rust string: an unpaired surrogate
 /// becomes `?`, as Java's encoders write it.
 pub fn to_rust(s: &[u16]) -> String {
@@ -22,55 +24,6 @@ pub fn compare_to(a: &[u16], b: &[u16]) -> i32 {
         }
     }
     a.len() as i32 - b.len() as i32
-}
-
-/// `Character.toUpperCase(int)`: the simple (one to one) mapping of
-/// UnicodeData. Rust only offers the full mapping, which equals the simple
-/// one except for the characters it expands. Of those, only the Greek
-/// letters with ypogegrammeni have a simple uppercase (their titlecase
-/// form). The others (`ß`, `ŉ`, ligatures, …) map to themselves.
-fn upper(c: u32) -> u32 {
-    match c {
-        0x1F80..=0x1F87 | 0x1F90..=0x1F97 | 0x1FA0..=0x1FA7 => c + 8,
-        0x1FB3 | 0x1FC3 | 0x1FF3 => c + 9,
-        _ => simple_map(c, char::to_uppercase),
-    }
-}
-
-/// `Character.toLowerCase(int)`. The only full lowercase mapping that
-/// expands is U+0130 (`İ` → `i̇`), whose simple lowercase is `i`.
-fn lower(c: u32) -> u32 {
-    match c {
-        0x0130 => 0x0069,
-        _ => simple_map(c, char::to_lowercase),
-    }
-}
-
-fn simple_map<I: Iterator<Item = char>>(c: u32, map: impl FnOnce(char) -> I) -> u32 {
-    // The reference JDK 19 uses Unicode 14. Limit supplementary case
-    // mapping to its cased scripts even when Rust ships newer mappings.
-    if c >= 0x10000
-        && !matches!(
-            c,
-            0x10400..=0x1044F // Deseret
-                | 0x104B0..=0x104FB // Osage
-                | 0x10570..=0x105BC // Vithkuqi
-                | 0x10C80..=0x10CF2 // Old Hungarian
-                | 0x118A0..=0x118DF // Warang Citi
-                | 0x16E40..=0x16E7F // Medefaidrin
-                | 0x1E900..=0x1E943 // Adlam
-        )
-    {
-        return c;
-    }
-    let Some(ch) = char::from_u32(c) else {
-        return c;
-    };
-    let mut mapped = map(ch);
-    match (mapped.next(), mapped.next()) {
-        (Some(ch), None) => u32::from(ch),
-        _ => c,
-    }
 }
 
 fn case_insensitive_difference(a: u32, b: u32) -> i32 {
@@ -227,12 +180,11 @@ pub fn trim(s: &[u16]) -> &[u16] {
 }
 
 /// `String.toUpperCase()` / `String.toLowerCase()` with the root-locale
-/// (Unicode default) mapping, exactly as Rust's `str::to_uppercase` /
-/// `str::to_lowercase` map each run between unpaired surrogates (which are
-/// kept). The text is mapped one character at a time into a buffer that
+/// (Unicode 14 default) mapping. Unpaired surrogates are kept.
+/// The text is mapped one character at a time into a buffer that
 /// grows fallibly: `None` if memory runs out, or if the result (which can be
 /// longer, `ß` → `SS`) would pass `limit` code units.
-pub fn change_case(s: &[u16], upper: bool, limit: usize) -> Option<Vec<u16>> {
+pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>> {
     let mut out = Vec::new();
     out.try_reserve(s.len()).ok()?;
     let mut context = SigmaContext::default();
@@ -257,11 +209,18 @@ pub fn change_case(s: &[u16], upper: bool, limit: usize) -> Option<Vec<u16>> {
                 out.try_reserve(1).ok()?;
                 out.push(e.unpaired_surrogate());
             }
-            Ok(c) if upper => c.to_uppercase().try_for_each(|c| push(&mut out, c))?,
+            Ok(c) if uppercase => match upper_expansion(c) {
+                Some(expansion) => expansion.chars().try_for_each(|c| push(&mut out, c))?,
+                None => push(&mut out, char::from_u32(upper(c as u32)).unwrap())?,
+            },
             // `str::to_lowercase`'s one context rule: a capital sigma that
             // ends a word becomes the final form.
             Ok('Σ') => push(&mut out, context.lower_sigma(s, i))?,
-            Ok(c) => c.to_lowercase().try_for_each(|c| push(&mut out, c))?,
+            Ok('\u{130}') => {
+                push(&mut out, 'i')?;
+                push(&mut out, '\u{307}')?;
+            }
+            Ok(c) => push(&mut out, char::from_u32(lower(c as u32)).unwrap())?,
         }
         i += width;
     }
@@ -450,8 +409,46 @@ mod tests {
         assert!(equals_ignore_case(&u("\u{1fb3}"), &u("\u{1fbc}")));
     }
 
-    /// Case mapping one character at a time gives exactly what Rust's `str`
-    /// functions give on whole runs, final sigma included.
+    #[test]
+    fn case_insensitive_comparison_preserves_surrogates() {
+        // Matching high surrogates require looking back from different lows.
+        assert!(equals_ignore_case(&[0xD801, 0xDC00], &[0xD801, 0xDC28]));
+        assert!(compare_ignore_case(&[0xD801, 0xDC00], &[0xD801]) > 0);
+        assert!(compare_ignore_case(&[0xD801, 0xDC00], &[0xD800]) > 0);
+        assert!(equals_ignore_case(&[0x61, 0xD801], &[0x41, 0xD801]));
+        assert!(compare_ignore_case(&[0x41, 0xD801], &[0x61, 0xD802]) < 0);
+    }
+
+    #[test]
+    fn case_mapping_uses_the_recording_jdks_unicode_version() {
+        for (uppercase, lowercase) in [
+            ("\u{10400}", "\u{10428}"), // Deseret
+            ("\u{104B0}", "\u{104D8}"), // Osage
+            ("\u{10570}", "\u{10597}"), // Vithkuqi
+            ("\u{10C80}", "\u{10CC0}"), // Old Hungarian
+            ("\u{118A0}", "\u{118C0}"), // Warang Citi
+            ("\u{16E40}", "\u{16E60}"), // Medefaidrin
+            ("\u{1E900}", "\u{1E922}"), // Adlam
+        ] {
+            let (uppercase, lowercase) = (u(uppercase), u(lowercase));
+            assert!(equals_ignore_case(&uppercase, &lowercase));
+            assert_eq!(to_upper(&lowercase), uppercase);
+            assert_eq!(to_lower(&uppercase), lowercase);
+        }
+        for (uppercase, lowercase) in [
+            ("\u{1C89}", "\u{1C8A}"),
+            ("\u{A7CB}", "\u{0264}"),
+            ("\u{10D50}", "\u{10D70}"), // Garay
+        ] {
+            let (uppercase, lowercase) = (u(uppercase), u(lowercase));
+            assert!(!equals_ignore_case(&uppercase, &lowercase));
+            assert_eq!(to_upper(&lowercase), lowercase);
+            assert_eq!(to_lower(&uppercase), uppercase);
+        }
+    }
+
+    /// For characters in both Unicode versions, exercise whole-run
+    /// mapping and the final sigma rule.
     #[test]
     fn change_case_matches_whole_run_mapping() {
         let pool: Vec<Vec<u16>> = [

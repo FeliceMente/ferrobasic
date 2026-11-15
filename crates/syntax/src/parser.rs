@@ -210,8 +210,9 @@ const MAX_NESTING: u32 = 1000;
 /// Sub names and loop variables (recordings `contextual_in`,
 /// `keyword_name_each`, and run 22's `keyword_name_in_*` and
 /// `keyword_name_each_*`). The parser treats `For Each` as the start of
-/// a collection loop. B4J refuses the tested counted form `For Each = …`.
-/// The typed counted form `For Each As Int = …` is open.
+/// a collection loop. In the untyped counted-loop probe B4J reports that
+/// reading an undeclared `Each` in the body is an error. A predeclared or
+/// explicitly typed `Each` counter is open.
 const CONTEXTUAL_KEYWORDS: &[SyntaxKind] = &[IN_KW, EACH_KW];
 
 fn is_name_token(kind: SyntaxKind) -> bool {
