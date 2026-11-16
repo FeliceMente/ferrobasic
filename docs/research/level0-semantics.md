@@ -799,8 +799,13 @@ Implemented as recorded with B4J 10.70 (run 12,
 - `For In = 1 To 2` builds as a counted loop. B4J refuses the corresponding
   `For Each = 1 To 2` probe and reports that `each` is undeclared when read
   inside the body (**recorded**, run 22: `keyword_name_in_for` and
-  `keyword_name_each_for`). Predeclared and explicitly typed `Each`
-  counters are open.
+  `keyword_name_each_for`). Declaring `Each` first does not help: B4J
+  reports a syntax error at the `=` of `For Each = 1 To 2` after
+  `Dim Each As Int = 9`. With an explicit type, `For Each As Int = 1 To 2`
+  gets past the header, and B4J again reports `each` as undeclared at the
+  read in the body (**recorded**, run 23:
+  `keyword_name_each_for_predeclared` and `keyword_name_each_for_typed`,
+  negative tests).
 - `Step`, `To`, `Type` and `Until` are not: the same program with one of
   them in place of `Each` does not build (**recorded**: `keyword_name_step`,
   `keyword_name_to`, `keyword_name_type`, `keyword_name_until`, negative

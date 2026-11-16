@@ -16,4 +16,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: Syntax error.
 # On line 6 of the test (the builder's line 11): Dim r As String = "x" & 6 / 2
-date = "2026-11-15"
+date = "2026-11-16"

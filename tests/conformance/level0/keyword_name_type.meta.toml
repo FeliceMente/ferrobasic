@@ -20,4 +20,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: Riferimento a un oggetto non impostato su un'istanza di oggetto.
 # On line 8 of the test (the builder's line 13): Log(Type + 1)
-date = "2026-11-15"
+date = "2026-11-16"

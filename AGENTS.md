@@ -26,10 +26,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   The REPL walkthrough is in `docs/tutorial.md`, section 9.
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
-  run. Recording run 22 is imported with 303 conformance tests, 297
-  passing, 6 deviations, and none pending or provisional from that run.
-  Three new probes for counted loops and final sigma await recording
-  (306 tests total). See
+  run. Recording run 23 is imported: 306 conformance tests, 299 passing,
+  6 deviations, 1 pending (final sigma: B4J recorded Java's word-boundary
+  rule, imported with the fix that matches it), none provisional. See
   `docs/roadmap.md`.
 
 ## Read before working

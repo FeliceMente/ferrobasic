@@ -2,11 +2,11 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' Run 22 refused keyword_name_each_for at Log(Each), where Each
-    ' had no declaration. Does declaring Each first let this build?
-    ' The loop body would print 1 and 2 if Each is its counter.
-    ' The final Log also shows what happened to the declared variable.
-    ' FerroBASIC currently rejects the header (docs/open-questions.md).
+    ' Recording run 23 confirms that declaring Each first does not help:
+    ' B4J refuses the header with a syntax error at the = sign.
+    ' The exact diagnostic is in the recording metadata.
+    ' FerroBASIC rejects the header because it parses For Each as
+    ' the start of a collection loop.
     Dim Each As Int = 9
     For Each = 1 To 2
         Log(Each)

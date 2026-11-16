@@ -128,9 +128,13 @@ variables, parameters, Subs, and typed or untyped `For Each` variables
 `keyword_name_in_*` and `keyword_name_each_*`). A counted loop
 `For In = …` builds (recording `keyword_name_in_for`). In the untyped
 `For Each = …` probe, B4J reports `Each` as undeclared when the body reads
-it (recording `keyword_name_each_for`). B4J's behavior with a predeclared
-`Each` or an explicit type is *(open)*. FerroBASIC parses `For Each` as a
-collection-loop header.
+it (recording `keyword_name_each_for`). Recording run 23 shows that B4J
+also refuses `For Each = …` after `Dim Each As Int`, with a syntax error at
+`=` (`keyword_name_each_for_predeclared`), and `For Each As Int = …`, where
+the body's read of `Each` is reported as undeclared
+(`keyword_name_each_for_typed`). `Each` is never a counted-loop variable.
+FerroBASIC parses `For Each` as a collection-loop header and refuses all
+three with syntax errors.
 
 ## Types
 
