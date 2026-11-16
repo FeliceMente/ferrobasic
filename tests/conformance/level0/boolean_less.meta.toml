@@ -19,4 +19,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: Cannot cast type: {Type=Boolean,Rank=0, RemoteObject=True} to: number.
 # On line 6 of the test (the builder's line 11): Log(False < True)
-date = "2026-11-15"
+date = "2026-11-16"

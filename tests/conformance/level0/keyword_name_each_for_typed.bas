@@ -2,10 +2,11 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' Does B4J build a counted loop with Each and an explicit type?
-    ' The loop body would print 1 and 2 if Each is its counter.
-    ' The final Log checks whether the header declares Each.
-    ' FerroBASIC currently rejects the header (docs/open-questions.md).
+    ' Recording run 23 confirms that B4J refuses this typed counted loop.
+    ' At Log(Each) in the body it reports that each was used before it
+    ' was assigned a value. The exact diagnostic is in the recording
+    ' metadata. FerroBASIC rejects the header because it parses For Each
+    ' as the start of a collection loop.
     For Each As Int = 1 To 2
         Log(Each)
     Next

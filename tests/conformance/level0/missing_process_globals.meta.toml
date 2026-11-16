@@ -17,4 +17,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: Sub process_globals is missing.
 # On the builder's line 1: #Region Project Attributes
-date = "2026-11-15"
+date = "2026-11-16"

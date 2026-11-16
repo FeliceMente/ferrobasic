@@ -24,10 +24,15 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   comparisons bind tighter than `And` and `Or` (#127). It confirms the
   tested name positions for `In` and `Each` (#137). B4J reports an
   undeclared variable when the untyped counted-loop probe reads `Each`
-  in its body. Probes for predeclared and explicitly typed counters await
-  the next recording, along with a probe for B4J's final-sigma context.
-  The corpus has 306 conformance tests, with 297 passing, 6 deviations
-  and 3 pending on both targets.
+  in its body.
+- [Recording run 23](docs/research/recording-run-23.md) confirms that
+  `Each` cannot be a counted-loop variable even when declared first or
+  given a type (#137): B4J refuses both probes, which are now negative
+  tests. FerroBASIC refuses them with syntax errors rather than B4J's
+  messages. The run also records B4J's final-sigma context (#140), which
+  follows Java's word boundaries; its recording lands with the matching
+  interpreter change. The corpus has 306 conformance tests, with 299
+  passing, 6 deviations and 1 pending on both targets.
 
 ### Tools
 
