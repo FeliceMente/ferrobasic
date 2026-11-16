@@ -13,6 +13,10 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   recognize supplementary Unicode case pairs, including Deseret. Lone
   surrogates compare as themselves. Case-insensitive comparison and root-locale
   case conversion use Unicode 14 mappings, as in the recording JDK (#115).
+- `ToLowerCase` chooses the final sigma `ς` as JDK 19 does, by the word
+  boundaries of Java's legacy word `BreakIterator` and Java's own test for
+  cased characters, instead of Unicode's context: `"A1Σ"` lowercases to
+  `a1ς` and `"A:Σ"` to `a:σ` (#140, recording run 23).
 
 ### Recorded from B4J
 

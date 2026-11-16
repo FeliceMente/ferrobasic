@@ -229,11 +229,25 @@ tests):
   FerroBASIC uses the simple and full case mappings of
   [Unicode 14](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/Character.html),
   the recording JDK's version.
-  FerroBASIC also uses Unicode 14's `Cased` and `Case_Ignorable`
-  properties for final sigma. Java uses its word boundaries for this rule.
-  The B4J outcome is open (probe `lowercase_final_sigma_context`).
-  [Open question and Java comparison](../open-questions.md#language)
-  To verify the generated Rust tables, download the three UCD files named
+  `ToLowerCase` chooses final sigma as JDK 19's
+  `ConditionalSpecialCasing.isFinalCased` does, not by Unicode's
+  `Cased` and `Case_Ignorable` context (**recorded**, run 23:
+  `lowercase_final_sigma_context` prints `962, 962, 963, 963, 963`).
+  `Σ` becomes `ς` when, between the word boundaries of Java's legacy word
+  `BreakIterator` (the `WordBreakRules` of
+  `sun.text.resources.BreakIteratorRules`), a cased character precedes it
+  and none follows. Java counts as cased the categories `Lu`, `Ll` and
+  `Lt` plus a fixed list of ranges, so `ª` is not cased. Those words keep
+  letters and digits together, join letters across `- _ ' . "` but not
+  `:`, and treat each format character but the soft hyphen as invisible.
+  `isBoundary` also reports a boundary at every position after a
+  surrogate pair, unless the pair starts the text. FerroBASIC ports these
+  rules (`crates/interp/src/java_words.rs`) and was checked against a
+  JDK on 800,000 random strings (JDK 21: its word rules, break iterator
+  and casing code are JDK 19's).
+  [JDK 19 `isFinalCased`](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/ConditionalSpecialCasing.java#L193-L221),
+  [word rules](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/sun/text/resources/BreakIteratorRules.java)
+  To verify the generated Rust tables, download the two UCD files named
   by the generator and pass their directory to
   `python3 tools/unicode/generate_case_tables.py <ucd-dir> --check`.
   Omit `--check` to regenerate them.

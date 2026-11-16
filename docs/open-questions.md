@@ -663,13 +663,12 @@ evidence, while unchecked parts remain open:
       A lone surrogate compares as its own value
       (recording run 22, `level0/case_insensitive_supplementary`).
       [Research](research/level0-semantics.md#built-in-members-source-docs-recorded).
-- [ ] Which final-sigma context B4J's `ToLowerCase` uses. FerroBASIC
-      applies Unicode 14's `Cased` and `Case_Ignorable` properties. JDK 19
-      scans within a word boundary and uses its own test for cased
-      characters. FerroBASIC lowercases `A1Σ` to `a1σ`, and JDK 21 and 25
-      produce `a1ς`. The pending probe `level0/lowercase_final_sigma_context`
-      covers digits, underscore, punctuation and the feminine ordinal
-      indicator to establish B4J 10.70's behavior.
+- [x] B4J's `ToLowerCase` chooses final sigma as JDK 19 does: within
+      the word boundaries of Java's legacy word `BreakIterator`, with
+      Java's own test for cased characters. `A1Σ` becomes `a1ς`
+      (recording run 23, `level0/lowercase_final_sigma_context`:
+      `962, 962, 963, 963, 963`).
+      [Research](research/level0-semantics.md#built-in-members-source-docs-recorded).
       [OpenJDK 19 source](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/ConditionalSpecialCasing.java#L193-L221)
 
 ## Porting

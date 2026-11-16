@@ -99,7 +99,8 @@ How the code gets there:
 - Today the interpreter implements the B4J profile alone. Keep what is
   Java-specific gathered where it can be split by profile later: exception
   kinds and their names (`crates/interp/src/value.rs`), number formatting
-  (`number.rs`), and JDK message texts.
+  (`number.rs`), Java's final-sigma rule and word boundaries
+  (`java_words.rs`), and JDK message texts.
 - The profile abstraction comes with the second profile's recordings, not
   before: its shape is decided by observed behaviour. Then the interpreter
   takes the project's profile, exceptions get a FerroBASIC-side identity
