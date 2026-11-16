@@ -63,12 +63,13 @@ related tests stay `pending-recording`.
 - [ ] Which other keywords can be names. B4J refuses `Step`, `To`, `Type`
       and `Until` in the recorded local-variable probes
       (`level0/keyword_name_step`, `_to`, `_type`, `_until`).
-- [ ] Whether a counted loop can use `Each` with an explicit type or after
-      `Dim Each As Int`. Run 22's untyped loop reports an undeclared variable
-      at the read of `Each` in the body. The probes
-      `level0/keyword_name_each_for_typed` and
-      `level0/keyword_name_each_for_predeclared` await the next recording.
-      FerroBASIC parses both headers as the start of a collection loop.
+- [x] A counted loop cannot use `Each`, with an explicit type or after
+      `Dim Each As Int`. B4J reports a syntax error at `=` in
+      `For Each = 1 To 2` after `Dim Each As Int = 9`, and an undeclared
+      `each` at the body's read for `For Each As Int = 1 To 2` (recording
+      run 23, negative tests `level0/keyword_name_each_for_predeclared` and
+      `level0/keyword_name_each_for_typed`). FerroBASIC refuses both with
+      syntax errors, as it parses `For Each` as the start of a collection loop.
 - [x] A line break inside parentheses does not continue the line: B4J
       says "Invalid number of parentheses." (recording:
       `level0/paren_line_break`).
