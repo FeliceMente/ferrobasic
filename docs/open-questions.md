@@ -18,9 +18,11 @@ related tests stay `pending-recording`.
       than `&` (`"a" & "b" = "ab"` is `True`). Recorded: `level0/concat_*`;
       FerroBASIC gives a precise error.
 - [x] `And` binds tighter than `Or`: `True Or False And False` is `True`
-      (recording: `level0/precedence_and_or`). Against comparisons it is
-      still open.
-      Not stated in the official docs.
+      (recording: `level0/precedence_and_or`). Not stated in the official
+      docs.
+- [x] Comparisons bind tighter than `And` and `Or` (recording run 22,
+      `level0/precedence_and_less`, `level0/precedence_or_equal`,
+      `level0/precedence_logical_equal`).
 - [x] Whether `Case` accepts ranges: no ([docs](research/level0-semantics.md#statements)).
 - [x] `Select Case x` is accepted as a synonym of `Select x` (recording:
       `level0/select_case_synonym`).
@@ -53,11 +55,21 @@ related tests stay `pending-recording`.
       and recording: `level0/number_parsing`).
 - [x] A `String` holding `"null"` is not `Null` (`s = Null` is `False`);
       an unset `String` field is (recording: `level0/string_null_compare`).
-- [ ] Which keywords besides `In` are also accepted as names: `In` is
-      ([generated](research/level0-semantics.md#keywords-used-as-names-generated)),
-      and so is `Each` (recording: `level0/keyword_name_each`). `Step`, `To`, `Type` and `Until`
-      are not (recordings: `level0/keyword_name_step`, `_to`, `_type`,
-      `_until`). The other keywords are open.
+- [x] B4J accepts `In` and `Each` as names for local or module variables,
+      parameters, Subs, and typed or untyped `For Each` variables. `In` can also be a counted `For` variable.
+      B4J refuses the `For Each = …` probe when its body reads an
+      undeclared `Each` (recordings `level0/contextual_in`, `level0/keyword_name_each`,
+      and run 22's `level0/keyword_name_in_*` and `level0/keyword_name_each_*`).
+- [ ] Which other keywords can be names. B4J refuses `Step`, `To`, `Type`
+      and `Until` in the recorded local-variable probes
+      (`level0/keyword_name_step`, `_to`, `_type`, `_until`).
+- [x] A counted loop cannot use `Each`, with an explicit type or after
+      `Dim Each As Int`. B4J reports a syntax error at `=` in
+      `For Each = 1 To 2` after `Dim Each As Int = 9`, and an undeclared
+      `each` at the body's read for `For Each As Int = 1 To 2` (recording
+      run 23, negative tests `level0/keyword_name_each_for_predeclared` and
+      `level0/keyword_name_each_for_typed`). FerroBASIC refuses both with
+      syntax errors, as it parses `For Each` as the start of a collection loop.
 - [x] A line break inside parentheses does not continue the line: B4J
       says "Invalid number of parentheses." (recording:
       `level0/paren_line_break`).
@@ -65,7 +77,7 @@ related tests stay `pending-recording`.
       expected" and `If a = b = c Then` "'Then' expected" (recordings:
       `level0/chained_comparison_less`, `level0/chained_comparison_equal`).
       `x = a = b` as a statement assigns the comparison `a = b`
-      ([generated](research/level0-semantics.md#operators-and-precedence-docs-forum-open)).
+      ([generated](research/level0-semantics.md#operators-and-precedence-docs-forum-recorded)).
 - [x] A numeric literal stored as `Object` is an `Integer`, or a `Double`
       with a point, so `Int` 1 and `Double` 1.0 are different `Map` keys
       (recording: `level0/literal_boxed_type`).
@@ -647,6 +659,18 @@ evidence, while unchecked parts remain open:
       (B4J 10.70 builds 1100 levels: recorded);
       FerroBASIC stops at 1000 levels (`docs/deviations.md`). Fixture:
       `level0/deep_nesting`.
+- [x] `EqualsIgnoreCase`, `SortCaseInsensitive` and `SortTypeCaseInsensitive`
+      recognize supplementary case pairs such as Deseret U+10400/U+10428.
+      A lone surrogate compares as its own value
+      (recording run 22, `level0/case_insensitive_supplementary`).
+      [Research](research/level0-semantics.md#built-in-members-source-docs-recorded).
+- [x] B4J's `ToLowerCase` chooses final sigma as JDK 19 does: within
+      the word boundaries of Java's legacy word `BreakIterator`, with
+      Java's own test for cased characters. `A1Σ` becomes `a1ς`
+      (recording run 23, `level0/lowercase_final_sigma_context`:
+      `962, 962, 963, 963, 963`).
+      [Research](research/level0-semantics.md#built-in-members-source-docs-recorded).
+      [OpenJDK 19 source](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/ConditionalSpecialCasing.java#L193-L221)
 
 ## Porting
 

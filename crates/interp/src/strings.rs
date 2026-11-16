@@ -2,6 +2,9 @@
 
 use std::cmp::Ordering;
 
+use crate::case_mapping::{lower, upper, upper_expansion};
+use crate::java_words::{is_final_cased, word_boundaries};
+
 /// Text as UTF-16 code units, as a Rust string: an unpaired surrogate
 /// becomes `?`, as Java's encoders write it.
 pub fn to_rust(s: &[u16]) -> String {
@@ -24,50 +27,51 @@ pub fn compare_to(a: &[u16], b: &[u16]) -> i32 {
     a.len() as i32 - b.len() as i32
 }
 
-/// `Character.toUpperCase(char)`: the simple (one to one) mapping of
-/// UnicodeData. Rust only offers the full mapping, which equals the simple
-/// one except for the characters it expands; of those, only the Greek
-/// letters with ypogegrammeni have a simple uppercase (their titlecase
-/// form), the others (`ß`, `ŉ`, ligatures, …) map to themselves.
-fn upper(c: u16) -> u16 {
-    match c {
-        0x1F80..=0x1F87 | 0x1F90..=0x1F97 | 0x1FA0..=0x1FA7 => c + 8,
-        0x1FB3 | 0x1FC3 | 0x1FF3 => c + 9,
-        _ => simple_map(c, |ch| ch.to_uppercase().collect()),
+fn case_insensitive_difference(a: u32, b: u32) -> i32 {
+    let (a, b) = (upper(a), upper(b));
+    if a == b {
+        return 0;
     }
+    lower(a) as i32 - lower(b) as i32
 }
 
-/// `Character.toLowerCase(char)`. The only full lowercase mapping that
-/// expands is U+0130 (`İ` → `i̇`), whose simple lowercase is `i`.
-fn lower(c: u16) -> u16 {
-    match c {
-        0x0130 => 0x0069,
-        _ => simple_map(c, |ch| ch.to_lowercase().collect()),
-    }
-}
-
-fn simple_map(c: u16, f: impl Fn(char) -> Vec<char>) -> u16 {
-    let Some(ch) = char::from_u32(c as u32) else {
-        return c;
+/// Resolve a mismatched code unit to its code point. The high surrogate
+/// may have matched on the previous iteration. A lone surrogate keeps
+/// its code-unit value.
+fn code_point_including(text: &[u16], index: &mut usize) -> u32 {
+    let unit = text[*index];
+    let (high, low) = match unit {
+        0xD800..=0xDBFF => match text.get(*index + 1).copied() {
+            Some(low @ 0xDC00..=0xDFFF) => {
+                *index += 1;
+                (unit, low)
+            }
+            _ => return u32::from(unit),
+        },
+        0xDC00..=0xDFFF if *index > 0 => match text[*index - 1] {
+            high @ 0xD800..=0xDBFF => (high, unit),
+            _ => return u32::from(unit),
+        },
+        _ => return u32::from(unit),
     };
-    match f(ch).as_slice() {
-        [m] if (*m as u32) <= 0xFFFF => *m as u32 as u16,
-        _ => c,
-    }
+    0x10000 + (u32::from(high - 0xD800) << 10) + u32::from(low - 0xDC00)
 }
 
-/// `String.compareToIgnoreCase`.
+/// `String.compareToIgnoreCase`. Like the JDK's UTF-16 comparison, skip
+/// matching code units and compare the containing code points on a mismatch.
 pub fn compare_ignore_case(a: &[u16], b: &[u16]) -> i32 {
-    for (&x, &y) in a.iter().zip(b) {
+    let (mut i, mut j) = (0, 0);
+    while let (Some(&x), Some(&y)) = (a.get(i), b.get(j)) {
         if x != y {
-            let (ux, uy) = (upper(x), upper(y));
-            if ux != uy {
-                let (lx, ly) = (lower(ux), lower(uy));
-                if lx != ly {
-                    return lx as i32 - ly as i32;
-                }
+            let x = code_point_including(a, &mut i);
+            let y = code_point_including(b, &mut j);
+            let difference = case_insensitive_difference(x, y);
+            if difference != 0 {
+                return difference;
             }
         }
+        i += 1;
+        j += 1;
     }
     a.len() as i32 - b.len() as i32
 }
@@ -78,10 +82,7 @@ pub fn ordering(c: i32) -> Ordering {
 
 /// `String.equalsIgnoreCase`.
 pub fn equals_ignore_case(a: &[u16], b: &[u16]) -> bool {
-    a.len() == b.len()
-        && a.iter()
-            .zip(b)
-            .all(|(&x, &y)| x == y || upper(x) == upper(y) || lower(upper(x)) == lower(upper(y)))
+    a.len() == b.len() && compare_ignore_case(a, b) == 0
 }
 
 /// `String.indexOf(str, fromIndex)`.
@@ -180,16 +181,15 @@ pub fn trim(s: &[u16]) -> &[u16] {
 }
 
 /// `String.toUpperCase()` / `String.toLowerCase()` with the root-locale
-/// (Unicode default) mapping, exactly as Rust's `str::to_uppercase` /
-/// `str::to_lowercase` map each run between unpaired surrogates (which are
-/// kept). The text is mapped one character at a time into a buffer that
+/// (Unicode 14 default) mapping. Unpaired surrogates are kept.
+/// The text is mapped one character at a time into a buffer that
 /// grows fallibly: `None` if memory runs out, or if the result (which can be
 /// longer, `ß` → `SS`) would pass `limit` code units.
-pub fn change_case(s: &[u16], upper: bool, limit: usize) -> Option<Vec<u16>> {
+pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>> {
     let mut out = Vec::new();
     out.try_reserve(s.len()).ok()?;
-    let mut context = SigmaContext::default();
     let mut i = 0;
+    let mut words = None;
     for c in char::decode_utf16(s.iter().copied()) {
         let width = c.as_ref().map_or(1, |c| c.len_utf16());
         let mut units = [0u16; 2];
@@ -210,79 +210,31 @@ pub fn change_case(s: &[u16], upper: bool, limit: usize) -> Option<Vec<u16>> {
                 out.try_reserve(1).ok()?;
                 out.push(e.unpaired_surrogate());
             }
-            Ok(c) if upper => c.to_uppercase().try_for_each(|c| push(&mut out, c))?,
-            // `str::to_lowercase`'s one context rule: a capital sigma that
-            // ends a word becomes the final form.
-            Ok('Σ') => push(&mut out, context.lower_sigma(s, i))?,
-            Ok(c) => c.to_lowercase().try_for_each(|c| push(&mut out, c))?,
+            Ok(c) if uppercase => match upper_expansion(c) {
+                Some(expansion) => expansion.chars().try_for_each(|c| push(&mut out, c))?,
+                None => push(&mut out, char::from_u32(upper(c as u32)).unwrap())?,
+            },
+            Ok('Σ') => {
+                if words.is_none() {
+                    words = Some(word_boundaries(s)?);
+                }
+                let words = words.as_deref().unwrap_or_default();
+                let sigma = if is_final_cased(s, i, words) {
+                    'ς'
+                } else {
+                    'σ'
+                };
+                push(&mut out, sigma)?;
+            }
+            Ok('\u{130}') => {
+                push(&mut out, 'i')?;
+                push(&mut out, '\u{307}')?;
+            }
+            Ok(c) => push(&mut out, char::from_u32(lower(c as u32)).unwrap())?,
         }
         i += width;
     }
     Some(out)
-}
-
-/// Decides between `σ` and `ς` as `str::to_lowercase` does: final when the
-/// nearest character before that is not case-ignorable is cased, and the
-/// nearest one after is not. Rust does not expose those two Unicode
-/// properties, so they are read off `str::to_lowercase` itself (and cached).
-#[derive(Default)]
-struct SigmaContext {
-    /// Whether a character is case-ignorable, and whether it is cased.
-    known: std::collections::HashMap<char, (bool, bool)>,
-}
-
-impl SigmaContext {
-    fn lower_sigma(&mut self, s: &[u16], at: usize) -> char {
-        let before = chars_before(s, at);
-        let after = char::decode_utf16(s[at + 1..].iter().copied()).map_while(Result::ok);
-        if self.cased_beyond_ignorable(before) && !self.cased_beyond_ignorable(after) {
-            'ς'
-        } else {
-            'σ'
-        }
-    }
-
-    /// Whether the first character that is not case-ignorable is cased.
-    fn cased_beyond_ignorable(&mut self, mut chars: impl Iterator<Item = char>) -> bool {
-        chars
-            .find_map(|c| {
-                let (ignorable, cased) = self.properties(c);
-                (!ignorable).then_some(cased)
-            })
-            .unwrap_or(false)
-    }
-
-    fn properties(&mut self, c: char) -> (bool, bool) {
-        if let Some(&known) = self.known.get(&c) {
-            return known;
-        }
-        let final_after = |text: String| text.to_lowercase().ends_with('ς');
-        // `cΣ` ends in `ς` when `c` is cased and not case-ignorable; `AcΣ`
-        // does when `c` is either (it is skipped, reaching `A`).
-        let cased_not_ignorable = final_after(format!("{c}Σ"));
-        let either = final_after(format!("A{c}Σ"));
-        let properties = (either && !cased_not_ignorable, cased_not_ignorable);
-        // The cache is only an optimisation: without room, skip it.
-        if self.known.try_reserve(1).is_ok() {
-            self.known.insert(c, properties);
-        }
-        properties
-    }
-}
-
-/// The characters of `s` before `at`, backwards, up to an unpaired
-/// surrogate (where the run ends).
-fn chars_before(s: &[u16], mut at: usize) -> impl Iterator<Item = char> + '_ {
-    std::iter::from_fn(move || {
-        let unit = *s.get(at.checked_sub(1)?)?;
-        if (0xDC00..0xE000).contains(&unit) && at >= 2 && (0xD800..0xDC00).contains(&s[at - 2]) {
-            at -= 2;
-            char::decode_utf16([s[at], unit]).next()?.ok()
-        } else {
-            at -= 1;
-            char::from_u32(unit as u32)
-        }
-    })
 }
 
 /// The previous implementation, kept as the reference for the tests.
@@ -403,8 +355,57 @@ mod tests {
         assert!(equals_ignore_case(&u("\u{1fb3}"), &u("\u{1fbc}")));
     }
 
-    /// Case mapping one character at a time gives exactly what Rust's `str`
-    /// functions give on whole runs, final sigma included.
+    #[test]
+    fn case_insensitive_comparison_preserves_surrogates() {
+        // Matching high surrogates require looking back from different lows.
+        assert!(equals_ignore_case(&[0xD801, 0xDC00], &[0xD801, 0xDC28]));
+        assert!(compare_ignore_case(&[0xD801, 0xDC00], &[0xD801]) > 0);
+        assert!(compare_ignore_case(&[0xD801, 0xDC00], &[0xD800]) > 0);
+        assert!(equals_ignore_case(&[0x61, 0xD801], &[0x41, 0xD801]));
+        assert!(compare_ignore_case(&[0x41, 0xD801], &[0x61, 0xD802]) < 0);
+    }
+
+    #[test]
+    fn case_mapping_uses_the_recording_jdks_unicode_version() {
+        for (uppercase, lowercase) in [
+            ("\u{10400}", "\u{10428}"), // Deseret
+            ("\u{104B0}", "\u{104D8}"), // Osage
+            ("\u{10570}", "\u{10597}"), // Vithkuqi
+            ("\u{10C80}", "\u{10CC0}"), // Old Hungarian
+            ("\u{118A0}", "\u{118C0}"), // Warang Citi
+            ("\u{16E40}", "\u{16E60}"), // Medefaidrin
+            ("\u{1E900}", "\u{1E922}"), // Adlam
+        ] {
+            let (uppercase, lowercase) = (u(uppercase), u(lowercase));
+            assert!(equals_ignore_case(&uppercase, &lowercase));
+            assert_eq!(to_upper(&lowercase), uppercase);
+            assert_eq!(to_lower(&uppercase), lowercase);
+        }
+        for (uppercase, lowercase) in [
+            ("\u{1C89}", "\u{1C8A}"),
+            ("\u{A7CB}", "\u{0264}"),
+            ("\u{10D50}", "\u{10D70}"), // Garay
+        ] {
+            let (uppercase, lowercase) = (u(uppercase), u(lowercase));
+            assert!(!equals_ignore_case(&uppercase, &lowercase));
+            assert_eq!(to_upper(&lowercase), lowercase);
+            assert_eq!(to_lower(&uppercase), uppercase);
+        }
+    }
+
+    #[test]
+    fn final_sigma_uses_the_recording_jdks_categories() {
+        // U+1C8A (Unicode 16) does not count as cased in Unicode 14.
+        assert_eq!(to_lower(&u("AΣ\u{1C8A}")), u("aς\u{1C8A}"));
+        assert_eq!(to_lower(&u("\u{1C8A}Σ")), u("\u{1C8A}σ"));
+        // Skip a combining mark and continue to the cased letter.
+        assert_eq!(to_lower(&u("AΣ\u{301}B")), u("aσ\u{301}b"));
+        assert_eq!(to_lower(&u("A\u{301}Σ")), u("a\u{301}ς"));
+    }
+
+    /// For characters in both Unicode versions, exercise whole-run
+    /// mapping. Rust chooses final sigma by Unicode's rule, not Java's
+    /// (`java_words`), so the sigma forms are compared as one.
     #[test]
     fn change_case_matches_whole_run_mapping() {
         let pool: Vec<Vec<u16>> = [
@@ -442,9 +443,14 @@ mod tests {
                     .wrapping_add(1442695040888963407);
                 text.extend(&pool[(seed >> 33) as usize % pool.len()]);
             }
+            let same_sigma = |s: Vec<u16>| -> Vec<u16> {
+                s.into_iter()
+                    .map(|c| if c == 0x3C2 { 0x3C3 } else { c })
+                    .collect()
+            };
             assert_eq!(
-                to_lower(&text),
-                map_text(&text, str::to_lowercase),
+                same_sigma(to_lower(&text)),
+                same_sigma(map_text(&text, str::to_lowercase)),
                 "{text:x?}"
             );
             assert_eq!(

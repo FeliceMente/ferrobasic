@@ -17,4 +17,6 @@ java = "19.0.2 (Oracle Corporation)"
 locale = "en-US"   # forced: the reference locale
 machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
-date = "2026-11-08"
+# Error: Const variable must be set in the declaration line.
+# On line 5 of the test (the builder's line 10): Private Const Size As Int
+date = "2026-11-16"

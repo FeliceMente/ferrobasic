@@ -107,26 +107,33 @@ file: its expected stdout, derived by hand from the sources in
 
 ### Current recording status
 
-At `dev` commit `6275b26` (2026-11-08), both conformance targets report
-**287 tests: 281 pass, 6 documented deviations, 0 failures, 0 pending and
-0 passes against provisional output**. Passes include negative tests rejected
-as expected. No `.provisional`
-files remain. [Run 21](research/recording-run-21.md), imported in
-[PR #102](https://github.com/FeliceMente/ferrobasic/pull/102), settled the last
-pending probes. The conformance gate is satisfied, and the first M1
-[Language Server diagnostics](language-server.md) are implemented
+[Run 23](research/recording-run-23.md) (2026-11-16) brings both conformance
+targets to **306 tests, 300 passing, 6 documented deviations, 0 failures,
+0 pending and 0 passes against provisional output**. Passes include negative
+tests rejected as expected. The run confirmed two refusals: `Each` cannot be
+a counted-loop variable, predeclared or typed. It also recorded the
+final-sigma probe: `ToLowerCase` follows Java's word boundaries. No
+`.provisional` files remain. The conformance gate is
+satisfied, and the first M1 [Language Server diagnostics](language-server.md)
+are implemented
 ([roadmap](roadmap.md#m1-task-breakdown-second-part-complete)).
 
 `status` is the test classification, not a recording timestamp. Negative and
 deviation tests keep their classification after recording. `[recording]`
 records provenance: `product`, `version`, `platform`, `java`, `locale`,
 `machine_locale`, optional `machine_locale_output` (`same` or `differs`) and
-`date`. For an already-negative test refused by B4J, it also has
-`rejected = true`. This is distinct from top-level `ferro_rejects`, which
-describes FerroBASIC acceptance. A pending probe that fails to build currently
-gets builder output in `report.md` but no metadata rewrite; a person must
-classify it using that evidence, as for
+`date`. For a test B4J refused to build, it also has `rejected = true`,
+followed by B4J's error and the line it names as comments when the builder
+output has them. This is distinct from top-level `ferro_rejects`, which
+describes FerroBASIC acceptance. A negative test keeps its status. A pending
+probe B4J refuses keeps `status = "pending-recording"` (and its
+`[provisional]` table), and `report.md` lists it as "refused by the original
+toolchain: decide whether it is negative": a refusal can also mean the probe
+is wrong, so a person classifies it, as for
 [`for_each_over_non_collection_object`](../tests/conformance/level0/for_each_over_non_collection_object.meta.toml).
+Until then it loads and counts as pending, like any other pending test. A
+build that fails without an error in a form the recorder reads is reported
+as "build failed", with the builder output and no metadata.
 
 ## Where test programs come from
 

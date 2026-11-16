@@ -402,7 +402,13 @@ is embedded with `libsui` instead (see below).
   uses (MIT):
   - **Apple Silicon**: the package goes in a new Mach-O section
     (`__SUI,__ferro`) before `__LINKEDIT`, and `libsui` signs the result ad
-    hoc itself.
+    hoc itself. Its load command (152 bytes) needs spare room after the
+    existing ones, so `ferro` is linked with `-Wl,-headerpad,0x1000`
+    (`crates/cli/build.rs`). `ferro bundle` also checks that the load
+    commands still end before the first section's bytes, and reports an error
+    otherwise. Without that room the new command overwrote the start of
+    `__text`, and the binary crashed at start-up with an illegal instruction
+    ([#131](https://github.com/FeliceMente/ferrobasic/issues/131)).
   - **Intel**: `libsui` appends the package after its own marker and extends
     `__LINKEDIT` to cover it. `ferro bundle` then signs ad hoc with
     `codesign --force --sign -`, and reports an error if that fails.
@@ -442,8 +448,8 @@ The first implementation is done when, on Linux x86_64 and in CI:
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
    Pending tests with neither file have no stdout expectation; their acceptance
    and ending are checked. Deviation tests follow their documented contract
-   instead of comparing reference stdout. Currently no tests are pending or
-   provisional; `precedence_and_or` has a recording.
+   instead of comparing reference stdout. No test is pending, and there
+   are no provisional outputs.
 5. For every test in point 4, `ferro bundle` produces a binary whose stdout and
    exit code are identical to `ferro run`'s. The binary must also keep working
    after the build tree and `ferro` itself are removed.

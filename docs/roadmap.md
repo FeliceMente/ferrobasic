@@ -87,9 +87,10 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       checking open buffers as the user types. [Setup and limits](language-server.md).
       Multi-module linking remains Level 1; it is not supplied by the server.
 - [x] Conformance gate: the conformance tests pass in the interpreter and as standalone
-      binaries. Recording run 21 (2026-11-08) settles the remaining probes:
-      287 tests, 281 pass, 6 documented deviations, none pending or passing
-      against provisional output, and none failing on either target.
+      binaries. [Recording run 23](research/recording-run-23.md) (2026-11-16)
+      brings the corpus to 306 tests, with 300 passing, 6 documented
+      deviations, and zero failures, pending tests or provisional passes
+      on either target.
 
 The conformance gate and the M1 tooling items above are implemented.
 REPL history and line editing are implemented with bounded in-memory multiline

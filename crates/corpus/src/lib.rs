@@ -316,6 +316,25 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_probe_stays_pending() {
+        // The recorder writes this for a pending probe the original
+        // toolchain refused: the `[recording]` table's `rejected` is not
+        // `ferro_rejects`, and the status is still a person's call.
+        let recording = "\n[recording]\nproduct = \"B4J\"\n\
+            rejected = true   # the original toolchain refused to build it\n\
+            # Error: javac: incompatible types\ndate = \"2026-11-15\"\n";
+        let p = meta(&format!("status = \"pending-recording\"\n{recording}")).unwrap();
+        assert_eq!(p.status, Status::PendingRecording);
+        assert!(!p.rejected);
+        let p = meta(&format!(
+            "status = \"pending-recording\"\nferro_rejects = true\n{recording}"
+        ))
+        .unwrap();
+        assert_eq!(p.status, Status::PendingRecording);
+        assert!(p.rejected);
+    }
+
+    #[test]
     fn rejects_unreadable_metadata() {
         for bad in [
             "",

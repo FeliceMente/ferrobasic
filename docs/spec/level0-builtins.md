@@ -58,12 +58,12 @@ Strings are immutable; every member returns a new value.
 | `CompareTo(Other As String) As Int` | `compareTo` (UTF-16 order; upper case before lower case) |
 | `Contains(SearchFor As String) As Boolean` | `contains` |
 | `StartsWith(Prefix)`, `EndsWith(Suffix)` | |
-| `EqualsIgnoreCase(Other As String) As Boolean` | |
+| `EqualsIgnoreCase(Other As String) As Boolean` | recognizes simple case pairs, including supplementary characters. Lone surrogates compare as themselves (test `case_insensitive_supplementary`). |
 | `IndexOf(SearchFor)`, `IndexOf2(SearchFor, Index)`, `LastIndexOf(SearchFor)`, `LastIndexOf2(SearchFor, Index)` | -1 if not found |
 | `Length As Int` | number of UTF-16 code units |
 | `Replace(Target, Replacement) As String` | replaces all occurrences, literally (not a regex) |
 | `SubString(BeginIndex)`, `SubString2(BeginIndex, EndIndex)` | end exclusive; out of range → `StringIndexOutOfBoundsException` |
-| `ToLowerCase`, `ToUpperCase` | Java's no-argument versions, which use the JVM default locale. FerroBASIC uses the Unicode default (root-locale) mapping, which equals Java for every locale except Turkish, Azeri and Lithuanian (`"I"` → `ı` in Turkish); *(open)* which locale the reference recordings use. |
+| `ToLowerCase`, `ToUpperCase` | Java's no-argument versions, which use the JVM default locale. FerroBASIC uses Unicode 14 default (root-locale) casing. Java has locale-specific mappings for Turkish, Azeri and Lithuanian (`"I"` → `ı` in Turkish). The behavior in the recording machine’s default JVM locale remains *(open)*. Final sigma follows JDK 19: `Σ` becomes `ς` when, within the word boundaries of Java's legacy word `BreakIterator`, a cased character precedes it and none follows (recording `lowercase_final_sigma_context`). |
 | `Trim As String` | Java `trim`: removes code units ≤ U+0020 at both ends |
 
 `GetBytes(Charset)` returns `Byte()` and is Level 0 only for `"UTF8"`/`"UTF-8"`.
@@ -91,7 +91,7 @@ Wraps a Java `ArrayList`. Every member except `Initialize`, `Initialize2` and
 | `IndexOf(Item) As Int` | `equals` comparison, so boxed types matter |
 | `SubList(BeginIndex, EndIndex) As List` | a read-only view backed by the list (`Collections.unmodifiableList(subList(...))`, class `java.util.Collections$UnmodifiableRandomAccessList`): `Set` on the parent shows through; after a structural change of the parent (`Add`, `RemoveAt`, `InsertAt`, `Clear`, `AddAll`, `Sort`…) reading through the view (`Get`, `Size`, `IndexOf`, `SubList`, printing it, `SortType`) raises `java.util.ConcurrentModificationException`; changes through the view (`Add`, `AddAll`, `InsertAt`, `RemoveAt`, `Set`, `Clear`, `Sort`, `SortCaseInsensitive`) raise `java.lang.UnsupportedOperationException`, whether or not the parent changed. `SortType` on a non-empty view first looks up the field on its first item ([research](../research/level0-semantics.md#list-source)) |
 | `Sort(Ascending As Boolean)` | Java `Comparable` order, stable. Items must all have the same boxed type: all `String`s, or all numbers of one type. Mixing types, e.g. `Int` and `Double`, raises `ClassCastException`. |
-| `SortCaseInsensitive(Ascending As Boolean)` | compares the items' `toString()` with `compareToIgnoreCase`, stable. Numbers are therefore sorted as text: `2, 10` → `10, 2`, and a boxed Double `1` compares as `"1.0"`. |
+| `SortCaseInsensitive(Ascending As Boolean)` | compares the items' `toString()` with `compareToIgnoreCase`, stable. Supplementary case pairs compare equal and lone surrogates keep their own values (test `case_insensitive_supplementary`). Numbers are therefore sorted as text: `2, 10` → `10, 2`, and a boxed Double `1` compares as `"1.0"`. |
 
 `SortType(FieldName, Ascending)` and `SortTypeCaseInsensitive(FieldName, Ascending)`
 apply the same two rules to the named field of `Type` records (the field name

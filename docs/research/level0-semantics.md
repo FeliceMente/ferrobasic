@@ -203,7 +203,7 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   `NoSuchFieldException` for a missing field) before the view refuses to
   sort.
 
-### Built-in members (source, docs)
+### Built-in members (source, docs, recorded)
 
 The members a program calls on a value are thin wrappers over Java, so
 their behaviour is Java's. Checked by running the same calls on OpenJDK 21
@@ -217,8 +217,41 @@ tests):
   units, or of the lengths; `Replace` is literal, left to right; `Trim`
   removes code units up to U+0020 only; an index out of range raises
   `StringIndexOutOfBoundsException`. Case mapping is the open question on
-  locales; outside Turkish, Azeri and Lithuanian it is the Unicode default
-  (`"Straße".ToUpperCase` is `STRASSE`).
+  locales. FerroBASIC uses Unicode default casing (`"Straße".ToUpperCase`
+  is `STRASSE`).
+- `EqualsIgnoreCase`, `SortCaseInsensitive` and `SortTypeCaseInsensitive`
+  recognize the Deseret case pair U+10400/U+10428, also in strings with a
+  lone surrogate. A lone surrogate keeps its own value in comparisons, and
+  both sorts preserve the order of equal items in either direction
+  (**recorded**, run 22: `case_insensitive_supplementary`). This matches
+  [JDK 19's case-insensitive comparison](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/String.html#compareToIgnoreCase(java.lang.String)),
+  which uses the simple uppercase and lowercase mappings of code points.
+  FerroBASIC uses the simple and full case mappings of
+  [Unicode 14](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/Character.html),
+  the recording JDK's version.
+  `ToLowerCase` chooses final sigma as JDK 19's
+  `ConditionalSpecialCasing.isFinalCased` does, not by Unicode's
+  `Cased` and `Case_Ignorable` context (**recorded**, run 23:
+  `lowercase_final_sigma_context` prints `962, 962, 963, 963, 963`).
+  `Σ` becomes `ς` when, between the word boundaries of Java's legacy word
+  `BreakIterator` (the `WordBreakRules` of
+  `sun.text.resources.BreakIteratorRules`), a cased character precedes it
+  and none follows. Java counts as cased the categories `Lu`, `Ll` and
+  `Lt` plus a fixed list of ranges, so `ª` is not cased. Those words keep
+  letters and digits together, join letters across `- _ ' . "` but not
+  `:`, and treat each format character but the soft hyphen as invisible.
+  `isBoundary` also reports a boundary at every position after a
+  surrogate pair, unless the pair starts the text. FerroBASIC ports these
+  rules (`crates/interp/src/java_words.rs`) and was checked against a
+  JDK on 800,000 random strings (JDK 21: its word rules, break iterator
+  and casing code are JDK 19's).
+  [JDK 19 `isFinalCased`](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/ConditionalSpecialCasing.java#L193-L221),
+  [word rules](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/sun/text/resources/BreakIteratorRules.java)
+  To verify the generated Rust tables, download the two UCD files named
+  by the generator and pass their directory to
+  `python3 tools/unicode/generate_case_tables.py <ucd-dir> --check`.
+  Omit `--check` to regenerate them.
+  [Generator](../../tools/unicode/generate_case_tables.py)
 - **StringBuilder** wraps `java.lang.StringBuilder`
   ([`StringBuilderWrapper.java`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/StringBuilderWrapper.java)):
   `Append`, `Insert` and `Remove` return the wrapper, so calls chain;
@@ -381,7 +414,7 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   A program that logs it puts that text on stdout. Messages that come from the
   JDK itself (index errors, parse errors) depend on the JDK version: **open**.
 
-### Operators and precedence (docs, forum, open)
+### Operators and precedence (docs, forum, recorded)
 
 - Arithmetic: `*`, `/`, `Mod` bind tighter than `+`, `-` (**docs**, booklet §4.1.1).
   There is no power operator: `Power(x, y)` is a function.
@@ -400,6 +433,12 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `"This " & (2 + 2) & ...` works
   ([forum](https://www.b4x.com/android/forum/threads/bug-concatenating-strings.8701/)),
   which does not determine the order. Needs a recorded test.
+- Comparisons bind tighter than `And` and `Or`. `1 < 2 And 3 < 4` and
+  `1 = 1 Or 2 = 3` both print `true`. The Boolean equality probe
+  distinguishes this order from a shared, left-associative level
+  (**recorded**, run 22: `precedence_and_less`, `precedence_or_equal`,
+  `precedence_logical_equal`). `And` binds tighter than `Or`
+  (**recorded**: `precedence_and_or`).
 - In a statement `x = a = b`, the first `=` is the assignment and the rest is
   one comparison (**generated**): `BluetoothState = NewState = Admin.STATE_ON`
   compiles to `_bluetoothstate = _newstate==_admin.STATE_ON;`. A real chain
@@ -432,9 +471,6 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `Byte` (**recorded**: `number_types_eq_null`), and `<` between a String and an `Object` parses both
   (`"10" < o` with `o = "5"` is `False`, **recorded**:
   `string_less_object`).
-- The relative precedence of `And` versus `Or`, and of both versus comparisons,
-  is not stated in official docs (**open**). The user table above
-  contradicts common practice and is not reliable.
 
 ### Division (forum, Erel)
 
@@ -765,12 +801,32 @@ Implemented as recorded with B4J 10.70 (run 12,
   and assigning it in `Process_Globals`, with new pending probes to be added for
   the next recording when those shapes are investigated ([open-questions.md](../open-questions.md)).
 
-### Keywords used as names (generated)
+### Keywords used as names (generated, recorded)
 
-`In` is accepted as a name: B4X's `AsyncStreamsText` class declares a
-parameter `In As InputStream` and calls `astreams.Initialize(In, out, ...)`,
-compiled to `_in` in the generated Java. Which other keywords are contextual
-in the same way is **open**.
+- B4X's `AsyncStreamsText` class declares a parameter `In As InputStream`
+  and calls `astreams.Initialize(In, out, ...)`, compiled to `_in` in the
+  generated Java (**generated**).
+- B4J accepts `In` and `Each` as locals, module variables, parameters, Sub
+  names and variables of typed or untyped `For Each` loops (**recorded**:
+  `contextual_in`, `keyword_name_each`, and run 22's `keyword_name_in_*`
+  and `keyword_name_each_*`).
+- `For In = 1 To 2` builds as a counted loop. B4J refuses the corresponding
+  `For Each = 1 To 2` probe and reports that `each` is undeclared when read
+  inside the body (**recorded**, run 22: `keyword_name_in_for` and
+  `keyword_name_each_for`). Declaring `Each` first does not help: B4J
+  reports a syntax error at the `=` of `For Each = 1 To 2` after
+  `Dim Each As Int = 9`. With an explicit type, `For Each As Int = 1 To 2`
+  gets past the header, and B4J again reports `each` as undeclared at the
+  read in the body (**recorded**, run 23:
+  `keyword_name_each_for_predeclared` and `keyword_name_each_for_typed`,
+  negative tests).
+- `Step`, `To`, `Type` and `Until` are not: the same program with one of
+  them in place of `Each` does not build (**recorded**: `keyword_name_step`,
+  `keyword_name_to`, `keyword_name_type`, `keyword_name_until`, negative
+  tests). For `Step` and `To`, B4J says "Missing parameter." at the `Log`
+  line; its message for each is in the test's `.meta.toml`.
+- **open**: which of the remaining keywords are accepted as names
+  ([open-questions.md](../open-questions.md#language)).
 
 ### Types (docs)
 

@@ -26,8 +26,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   The REPL walkthrough is in `docs/tutorial.md`, section 9.
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
-  run. Recording run 21 is imported: 287 conformance tests, 281 passing,
-  6 deviations, none pending or provisional. See `docs/roadmap.md`.
+  run. Recording run 23 is imported: 306 conformance tests, 300 passing,
+  6 deviations, none pending or provisional. See
+  `docs/roadmap.md`.
 
 ## Read before working
 
@@ -81,7 +82,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - Behaviour follows the project's product (B4J, B4A, B4i, B4R), never the
   backend. The interpreter implements only the B4J profile for now: keep its
   Java-specific parts gathered (exception kinds in `value.rs`, number
-  formatting in `number.rs`), and see `docs/architecture.md`, "Target profiles".
+  formatting in `number.rs`, final sigma in `java_words.rs`), and see `docs/architecture.md`, "Target profiles".
 - `crates/runtime` (planned, M4) must stay `no_std`-compatible.
 - No `unsafe` outside crates that explicitly opt in and document why.
 - Keep external dependencies few and justified in the PR description. After
@@ -137,6 +138,8 @@ cargo test -p ferro-project --test projects -- --ignored
 - One topic per PR; describe what changed, why, and how it was tested.
 - How to drive a PR through review, CI, recording runs and releases:
   `.claude/skills/steward/SKILL.md` (it adds practice, never new rules).
+- How to write a pending probe when B4X semantics are unclear:
+  `.claude/skills/new-probe/SKILL.md` (it adds practice, never new rules).
 
 ## Branches and releases
 
