@@ -30,9 +30,8 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   given a type (#137): B4J refuses both probes, which are now negative
   tests. FerroBASIC refuses them with syntax errors rather than B4J's
   messages. The run also records B4J's final-sigma context (#140), which
-  follows Java's word boundaries; its recording lands with the matching
-  interpreter change. The corpus has 306 conformance tests, with 299
-  passing, 6 deviations and 1 pending on both targets.
+  follows Java's word boundaries. The corpus has 306 conformance tests,
+  with 300 passing, 6 deviations and none pending on both targets.
 
 ### Tools
 
