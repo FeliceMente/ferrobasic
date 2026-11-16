@@ -108,13 +108,12 @@ file: its expected stdout, derived by hand from the sources in
 ### Current recording status
 
 [Run 23](research/recording-run-23.md) (2026-11-16) brings both conformance
-targets to **306 tests, 299 passing, 6 documented deviations, 0 failures,
-1 pending and 0 passes against provisional output**. Passes include negative
+targets to **306 tests, 300 passing, 6 documented deviations, 0 failures,
+0 pending and 0 passes against provisional output**. Passes include negative
 tests rejected as expected. The run confirmed two refusals: `Each` cannot be
 a counted-loop variable, predeclared or typed. It also recorded the
-final-sigma probe; that recording is imported with the interpreter change
-that matches it, so the probe stays pending until then. No `.provisional`
-files remain. The conformance gate is
+final-sigma probe: `ToLowerCase` follows Java's word boundaries. No
+`.provisional` files remain. The conformance gate is
 satisfied, and the first M1 [Language Server diagnostics](language-server.md)
 are implemented
 ([roadmap](roadmap.md#m1-task-breakdown-second-part-complete)).

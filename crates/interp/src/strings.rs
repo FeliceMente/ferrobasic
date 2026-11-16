@@ -2,7 +2,8 @@
 
 use std::cmp::Ordering;
 
-use crate::case_mapping::{is_case_ignorable, is_cased, lower, upper, upper_expansion};
+use crate::case_mapping::{lower, upper, upper_expansion};
+use crate::java_words::{is_final_cased, word_boundaries};
 
 /// Text as UTF-16 code units, as a Rust string: an unpaired surrogate
 /// becomes `?`, as Java's encoders write it.
@@ -188,6 +189,7 @@ pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>>
     let mut out = Vec::new();
     out.try_reserve(s.len()).ok()?;
     let mut i = 0;
+    let mut words = None;
     for c in char::decode_utf16(s.iter().copied()) {
         let width = c.as_ref().map_or(1, |c| c.len_utf16());
         let mut units = [0u16; 2];
@@ -212,7 +214,18 @@ pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>>
                 Some(expansion) => expansion.chars().try_for_each(|c| push(&mut out, c))?,
                 None => push(&mut out, char::from_u32(upper(c as u32)).unwrap())?,
             },
-            Ok('Σ') => push(&mut out, lower_sigma(s, i))?,
+            Ok('Σ') => {
+                if words.is_none() {
+                    words = Some(word_boundaries(s)?);
+                }
+                let words = words.as_deref().unwrap_or_default();
+                let sigma = if is_final_cased(s, i, words) {
+                    'ς'
+                } else {
+                    'σ'
+                };
+                push(&mut out, sigma)?;
+            }
             Ok('\u{130}') => {
                 push(&mut out, 'i')?;
                 push(&mut out, '\u{307}')?;
@@ -222,38 +235,6 @@ pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>>
         i += width;
     }
     Some(out)
-}
-
-/// Use the final form when a cased character precedes sigma and none
-/// follows it, skipping case-ignorable characters in both directions.
-/// Java's word-boundary rule is tracked by `lowercase_final_sigma_context`.
-fn lower_sigma(s: &[u16], at: usize) -> char {
-    let before = chars_before(s, at);
-    let after = char::decode_utf16(s[at + 1..].iter().copied()).map_while(Result::ok);
-    if cased_beyond_ignorable(before) && !cased_beyond_ignorable(after) {
-        'ς'
-    } else {
-        'σ'
-    }
-}
-
-fn cased_beyond_ignorable(mut chars: impl Iterator<Item = char>) -> bool {
-    chars.find(|&c| !is_case_ignorable(c)).is_some_and(is_cased)
-}
-
-/// The characters of `s` before `at`, backwards, up to an unpaired
-/// surrogate (where the run ends).
-fn chars_before(s: &[u16], mut at: usize) -> impl Iterator<Item = char> + '_ {
-    std::iter::from_fn(move || {
-        let unit = *s.get(at.checked_sub(1)?)?;
-        if (0xDC00..0xE000).contains(&unit) && at >= 2 && (0xD800..0xDC00).contains(&s[at - 2]) {
-            at -= 2;
-            char::decode_utf16([s[at], unit]).next()?.ok()
-        } else {
-            at -= 1;
-            char::from_u32(unit as u32)
-        }
-    })
 }
 
 /// The previous implementation, kept as the reference for the tests.
@@ -413,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn final_sigma_uses_the_recording_jdks_unicode_properties() {
+    fn final_sigma_uses_the_recording_jdks_categories() {
         // U+1C8A (Unicode 16) does not count as cased in Unicode 14.
         assert_eq!(to_lower(&u("AΣ\u{1C8A}")), u("aς\u{1C8A}"));
         assert_eq!(to_lower(&u("\u{1C8A}Σ")), u("\u{1C8A}σ"));
@@ -423,7 +404,8 @@ mod tests {
     }
 
     /// For characters in both Unicode versions, exercise whole-run
-    /// mapping and the final sigma rule.
+    /// mapping. Rust chooses final sigma by Unicode's rule, not Java's
+    /// (`java_words`), so the sigma forms are compared as one.
     #[test]
     fn change_case_matches_whole_run_mapping() {
         let pool: Vec<Vec<u16>> = [
@@ -461,9 +443,14 @@ mod tests {
                     .wrapping_add(1442695040888963407);
                 text.extend(&pool[(seed >> 33) as usize % pool.len()]);
             }
+            let same_sigma = |s: Vec<u16>| -> Vec<u16> {
+                s.into_iter()
+                    .map(|c| if c == 0x3C2 { 0x3C3 } else { c })
+                    .collect()
+            };
             assert_eq!(
-                to_lower(&text),
-                map_text(&text, str::to_lowercase),
+                same_sigma(to_lower(&text)),
+                same_sigma(map_text(&text, str::to_lowercase)),
                 "{text:x?}"
             );
             assert_eq!(

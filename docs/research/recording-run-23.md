@@ -255,6 +255,5 @@ false
 - `keyword_name_each_for_predeclared` and `keyword_name_each_for_typed`
   are classified `negative` (#137). FerroBASIC keeps its syntax errors.
 - `lowercase_final_sigma_context` (#140) recorded `962, 962, 963, 963, 963`,
-  Java's word-boundary rule. Its `.expected` and `.meta.toml` are imported
-  with the interpreter change that matches them, in a separate pull
-  request; until then the probe stays pending.
+  Java's word-boundary rule. Its `.expected` and `.meta.toml` were
+  imported with the interpreter change that matches them (#142).

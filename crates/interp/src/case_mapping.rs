@@ -3,7 +3,7 @@
 #[path = "case_tables.rs"]
 mod case_tables;
 
-use case_tables::{CASE_IGNORABLE, CASED, LOWER, UPPER, UPPER_EXPANSIONS};
+use case_tables::{GENERAL_CATEGORIES, LOWER, UPPER, UPPER_EXPANSIONS};
 
 /// A range of mapped code points, with a stride and an offset to the result.
 /// The ranges are sorted and do not overlap. A stride of two skips the
@@ -35,18 +35,48 @@ pub(super) fn upper_expansion(c: char) -> Option<&'static str> {
     Some(UPPER_EXPANSIONS[i].1)
 }
 
-pub(super) fn is_cased(c: char) -> bool {
-    has_property(c, CASED)
+/// A Unicode general category, as `Character.getType` reports it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Gc {
+    Lu,
+    Ll,
+    Lt,
+    Lm,
+    Lo,
+    Mn,
+    Mc,
+    Me,
+    Nd,
+    Nl,
+    No,
+    Pc,
+    Pd,
+    Ps,
+    Pe,
+    Pi,
+    Pf,
+    Po,
+    Sm,
+    Sc,
+    Sk,
+    So,
+    Zs,
+    Zl,
+    Zp,
+    Cc,
+    Cf,
+    Cs,
+    Co,
+    Cn,
 }
 
-pub(super) fn is_case_ignorable(c: char) -> bool {
-    has_property(c, CASE_IGNORABLE)
-}
-
-fn has_property(c: char, ranges: &[(u32, u32)]) -> bool {
-    let c = u32::from(c);
-    let i = ranges.partition_point(|&(_, end)| end < c);
-    ranges.get(i).is_some_and(|&(start, _)| start <= c)
+/// The general category of a code point, or of a lone surrogate (`Cs`).
+pub(super) fn general_category(c: u32) -> Gc {
+    let i = GENERAL_CATEGORIES.partition_point(|&(_, end, _)| end < c);
+    match GENERAL_CATEGORIES.get(i) {
+        Some(&(start, _, category)) if start <= c => category,
+        _ => Gc::Cn,
+    }
 }
 
 #[cfg(test)]
@@ -71,13 +101,29 @@ mod tests {
                 assert_eq!((end - start) % stride, 0);
             }
         }
-        for table in [CASED, CASE_IGNORABLE] {
-            assert_sorted_disjoint(table.iter().copied());
-        }
+        assert_sorted_disjoint(
+            GENERAL_CATEGORIES
+                .iter()
+                .map(|&(start, end, _)| (start, end)),
+        );
         assert!(
             UPPER_EXPANSIONS
                 .windows(2)
                 .all(|pair| pair[0].0 < pair[1].0)
         );
+    }
+
+    #[test]
+    fn general_categories() {
+        assert_eq!(general_category('A' as u32), Gc::Lu);
+        assert_eq!(general_category(0x3A3), Gc::Lu);
+        assert_eq!(general_category(0xAA), Gc::Lo);
+        assert_eq!(general_category(0x4E00), Gc::Lo);
+        assert_eq!(general_category(0x9FFF), Gc::Lo);
+        assert_eq!(general_category(0xD800), Gc::Cs);
+        assert_eq!(general_category(0x0378), Gc::Cn);
+        assert_eq!(general_category(0x10FFFF), Gc::Cn);
+        // U+1C8A is new in Unicode 16.
+        assert_eq!(general_category(0x1C8A), Gc::Cn);
     }
 }

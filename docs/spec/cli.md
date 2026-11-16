@@ -448,8 +448,8 @@ The first implementation is done when, on Linux x86_64 and in CI:
    (see [../compatibility-testing.md](../compatibility-testing.md#test-file-layout)).
    Pending tests with neither file have no stdout expectation; their acceptance
    and ending are checked. Deviation tests follow their documented contract
-   instead of comparing reference stdout. The final-sigma probe is
-   pending. There are no provisional outputs.
+   instead of comparing reference stdout. No test is pending, and there
+   are no provisional outputs.
 5. For every test in point 4, `ferro bundle` produces a binary whose stdout and
    exit code are identical to `ferro run`'s. The binary must also keep working
    after the build tree and `ferro` itself are removed.

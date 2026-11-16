@@ -17,6 +17,7 @@ use ferro_mir::{Program, TextRange, Ty};
 mod builtins;
 mod case_mapping;
 mod convert;
+mod java_words;
 mod machine;
 mod number;
 mod strings;
