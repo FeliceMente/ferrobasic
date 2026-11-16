@@ -215,7 +215,10 @@ pub fn change_case(s: &[u16], uppercase: bool, limit: usize) -> Option<Vec<u16>>
                 None => push(&mut out, char::from_u32(upper(c as u32)).unwrap())?,
             },
             Ok('Σ') => {
-                let words = words.get_or_insert_with(|| word_boundaries(s));
+                if words.is_none() {
+                    words = Some(word_boundaries(s)?);
+                }
+                let words = words.as_deref().unwrap_or_default();
                 let sigma = if is_final_cased(s, i, words) {
                     'ς'
                 } else {

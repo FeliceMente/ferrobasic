@@ -66,26 +66,20 @@ fn is_cased(c: u32) -> bool {
 }
 
 /// For each UTF-16 offset of `s` (and its end), whether a word boundary
-/// falls there.
-pub(crate) fn word_boundaries(s: &[u16]) -> Vec<bool> {
-    let mut points = Vec::with_capacity(s.len());
-    let mut i = 0;
-    while i < s.len() {
-        let (c, width) = code_point_at(s, i);
-        points.push((c, i));
-        i += width;
-    }
-    let mut boundaries = vec![false; s.len() + 1];
+/// falls there; `None` if the table cannot be allocated, which the caller
+/// reports as Java's `OutOfMemoryError`.
+pub(crate) fn word_boundaries(s: &[u16]) -> Option<Vec<bool>> {
+    let mut boundaries = Vec::new();
+    boundaries.try_reserve_exact(s.len() + 1).ok()?;
+    boundaries.resize(s.len() + 1, false);
     boundaries[0] = true;
-    boundaries[s.len()] = true;
     let nfa = rules();
     let mut start = 0;
-    while start < points.len() {
-        let end = nfa.segment(&points, start);
-        boundaries[points.get(end).map_or(s.len(), |&(_, at)| at)] = true;
-        start = end;
+    while start < s.len() {
+        start = nfa.segment(s, start);
+        boundaries[start] = true;
     }
-    boundaries
+    Some(boundaries)
 }
 
 /// `String.codePointAt`: a lone surrogate is its own code point.
@@ -343,14 +337,17 @@ impl Nfa {
         }
     }
 
-    /// The end, as an index into `points`, of the segment that starts at
+    /// The end, as a UTF-16 offset into `s`, of the segment that starts at
     /// `start`: `handleNext`, without lookahead (the word rules have none).
-    fn segment(&self, points: &[(u32, usize)], start: usize) -> usize {
+    fn segment(&self, s: &[u16], start: usize) -> usize {
         let mut seen = vec![false; self.states.len()];
         let mut set = Vec::new();
         self.close(self.start, &mut set, &mut seen);
-        let mut end = start + 1;
-        for (i, &(c, _)) in points.iter().enumerate().skip(start) {
+        let mut end = start + code_point_at(s, start).1;
+        let mut i = start;
+        while i < s.len() {
+            let (c, width) = code_point_at(s, i);
+            i += width;
             if !ignore(c) {
                 seen.fill(false);
                 let mut next = Vec::new();
@@ -367,7 +364,7 @@ impl Nfa {
                 set = next;
             }
             if set.contains(&MATCH) {
-                end = end.max(i + 1);
+                end = end.max(i);
             }
         }
         end
@@ -383,7 +380,7 @@ mod tests {
     }
 
     fn breaks(s: &str) -> Vec<usize> {
-        let b = word_boundaries(&u(s));
+        let b = word_boundaries(&u(s)).unwrap();
         (0..b.len()).filter(|&i| b[i]).collect()
     }
 
@@ -410,7 +407,7 @@ mod tests {
     fn lower_sigma(text: &str) -> char {
         let s = u(text);
         let at = s.iter().position(|&c| c == 0x3A3).unwrap();
-        if is_final_cased(&s, at, &word_boundaries(&s)) {
+        if is_final_cased(&s, at, &word_boundaries(&s).unwrap()) {
             'ς'
         } else {
             'σ'
@@ -452,7 +449,11 @@ mod tests {
             ("ªΣ", 1, false),
         ] {
             let s = u(text);
-            assert_eq!(is_final_cased(&s, at, &word_boundaries(&s)), last, "{text}");
+            assert_eq!(
+                is_final_cased(&s, at, &word_boundaries(&s).unwrap()),
+                last,
+                "{text}"
+            );
         }
     }
 }
