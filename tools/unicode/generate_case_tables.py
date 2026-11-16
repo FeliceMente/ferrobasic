@@ -1,7 +1,7 @@
 """Generate or check the case tables from the Unicode 14.0.0 UCD.
 
-Pass a directory containing UnicodeData.txt, SpecialCasing.txt and
-DerivedCoreProperties.txt from https://www.unicode.org/Public/14.0.0/ucd/.
+Pass a directory containing UnicodeData.txt and SpecialCasing.txt from
+https://www.unicode.org/Public/14.0.0/ucd/.
 Run with --check to compare the committed tables with the generated text.
 """
 
@@ -13,7 +13,6 @@ VERSION = "14.0.0"
 UCD_SHA256 = {
     "UnicodeData.txt": "36018e68657fdcb3485f636630ffe8c8532e01c977703d2803f5b89d6c5feafb",
     "SpecialCasing.txt": "c667b45908fd269af25fd55d2fc5bbc157fb1b77675936e25c513ce32e080334",
-    "DerivedCoreProperties.txt": "e3eddd7d469cd1b0feed7528defad1a1cc7c6a9ceb0ae4446a6d10921ed2e7bc",
 }
 OUTPUT = Path(__file__).resolve().parents[2] / "crates/interp/src/case_tables.rs"
 
@@ -43,22 +42,23 @@ def mapping_ranges(mapping):
         yield start, end, stride, offset
 
 
-def property_ranges(records, property_name):
+def category_ranges(path):
+    """General categories of assigned code points, with First/Last pairs
+    expanded and adjacent code points of one category merged."""
     ranges = []
-    for span, name in records:
-        if name == property_name:
-            start, _, end = span.partition("..")
-            ranges.append((int(start, 16), int(end or start, 16)))
-    if not ranges:
-        raise ValueError(f"Missing Unicode property {property_name}")
-    merged = []
-    for start, end in sorted(ranges):
-        if merged and start <= merged[-1][1] + 1:
-            previous_start, previous_end = merged[-1]
-            merged[-1] = previous_start, max(previous_end, end)
+    first = None
+    for code, name, category, *_ in records(path):
+        code = int(code, 16)
+        if name.endswith(", First>"):
+            first = code
+            continue
+        start = first if name.endswith(", Last>") else code
+        first = None
+        if ranges and ranges[-1][2] == category and ranges[-1][1] + 1 == start:
+            ranges[-1][1] = code
         else:
-            merged.append((start, end))
-    return merged
+            ranges.append([start, code, category])
+    return ranges
 
 
 def render(ucd):
@@ -93,7 +93,7 @@ def render(ucd):
         f"//! Source: https://www.unicode.org/Public/{VERSION}/ucd/.",
         "//! Copyright © 1991-2022 Unicode, Inc. See THIRD-PARTY-NOTICES.txt.",
         "",
-        "use super::Range;",
+        "use super::{Gc, Range};",
         "",
     ]
     for name, mapping in (("UPPER", upper), ("LOWER", lower)):
@@ -109,12 +109,11 @@ def render(ucd):
         lines.append(f"    ('{key}', \"{value}\"),")
     lines.extend(("];", ""))
 
-    properties = list(records(ucd / "DerivedCoreProperties.txt"))
-    for name, constant in (("Cased", "CASED"), ("Case_Ignorable", "CASE_IGNORABLE")):
-        lines.append(f"pub(super) const {constant}: &[(u32, u32)] = &[")
-        for start, end in property_ranges(properties, name):
-            lines.append(f"    (0x{start:04X}, 0x{end:04X}),")
-        lines.extend(("];", ""))
+    lines.append("/// Unassigned code points (`Cn`) are left out.")
+    lines.append("pub(super) const GENERAL_CATEGORIES: &[(u32, u32, Gc)] = &[")
+    for start, end, category in category_ranges(ucd / "UnicodeData.txt"):
+        lines.append(f"    (0x{start:04X}, 0x{end:04X}, Gc::{category}),")
+    lines.extend(("];", ""))
     return "\n".join(lines)
 
 
