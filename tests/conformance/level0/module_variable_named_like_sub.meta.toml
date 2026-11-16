@@ -17,4 +17,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: Variable name cannot be the same as a sub name (bump).
 # On line 2 of the test (the builder's line 7): Dim Bump As Int = 4
-date = "2026-11-15"
+date = "2026-11-16"
