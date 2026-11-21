@@ -272,6 +272,16 @@ impl Lowerer {
             "`Bit` is used through its functions, e.g. `Bit.And(a, b)`".to_string()
         } else if self.records.contains_key(&key(&name)) || builtin_type(&name).is_some() {
             format!("`{name}` is a type, not a value")
+        } else if args.is_none() && !self.assigned_or_looped(node, &name) {
+            // B4J's words: "Undeclared variable 'missing' is used before it
+            // was assigned any value." (recorded: `undeclared_read_log`,
+            // `undeclared_read_initializer`, `undeclared_read_return`,
+            // `process_globals_undeclared_read`). In B4X an assignment
+            // declares a name, so a read before any is what is refused.
+            // With an assignment or a loop of the name in the same body that
+            // FerroBASIC refused (in `Process_Globals`), the words would not
+            // be true.
+            format!("undeclared variable `{name}` is used before it was assigned any value")
         } else {
             format!("`{name}` is not declared")
         };
@@ -657,6 +667,60 @@ impl Lowerer {
         let ordering = !matches!(op, CmpOp::Eq | CmpOp::Ne);
         let (kind, domain) = match (&left.ty, &right.ty) {
             (Error, _) | (_, Error) => return error_expr(at),
+            // `b = Null` and `c = Null`: B4J converts the `Null` as it
+            // converts an Object, with `BA.ObjectToBoolean` (which parses
+            // `"null"`: a `RuntimeException`) or `BA.ObjectToChar` (a
+            // `NullPointerException`) (recording run 24: `boolean_eq_null`,
+            // `char_eq_null`). Only `=` is recorded.
+            (Boolean | Char, Null) if op == CmpOp::Eq => {
+                let domain = left.ty.clone();
+                let right = self.coerce(right, &Object);
+                let right = self.coerce(right, &domain);
+                let kind = if domain == Boolean {
+                    CmpKind::Boolean
+                } else {
+                    CmpKind::Char
+                };
+                return Expr {
+                    kind: ExprKind::Compare(op, kind, Box::new(left), Box::new(right)),
+                    ty: Boolean,
+                    range: at,
+                };
+            }
+            // `Null = b`, `Null = c`, `Null = n`: a `NullPointerException`
+            // when it runs (recording run 24: `null_eq_boolean`,
+            // `null_eq_char`, `null_eq_number`). Only `=` and an `Int` are
+            // recorded.
+            (Null, Boolean | Char | Int) if op == CmpOp::Eq => {
+                return Expr {
+                    kind: ExprKind::Compare(op, CmpKind::NullLeft, Box::new(left), Box::new(right)),
+                    ty: Boolean,
+                    range: at,
+                };
+            }
+            // `n < Null`, `Null < n`, `s < Null`, `Null < s`: numbers, the
+            // `Null` parsed from its text, `"null"`, as in `n = Null`: a
+            // `NumberFormatException` when it runs (recording run 24:
+            // `number_less_null`, `null_less_number`, `string_less_null`,
+            // `null_less_string`). Only `<`, an `Int` and a `String` are
+            // recorded.
+            (Int | String, Null) | (Null, Int | String) if op == CmpOp::Lt => {
+                let number = |s: &mut Self, e: Expr| {
+                    let e = if e.ty == Null {
+                        s.coerce(e, &String)
+                    } else {
+                        e
+                    };
+                    s.coerce(e, &Double)
+                };
+                let left = number(self, left);
+                let right = number(self, right);
+                return Expr {
+                    kind: ExprKind::Compare(op, CmpKind::Numeric, Box::new(left), Box::new(right)),
+                    ty: Boolean,
+                    range: at,
+                };
+            }
             // `n = Null`: B4J converts the `Null` with `BA.ObjectToNumber`,
             // which parses its text, `"null"`: a `NumberFormatException`
             // when it runs, whatever the number's type (recorded:
@@ -719,8 +783,15 @@ impl Lowerer {
             (Null, _) | (_, Null) => {
                 let other = if left.ty == Null { &right.ty } else { &left.ty };
                 if other.is_primitive() || ordering {
+                    // Neighbours of the recorded shapes above: another
+                    // operator, another number type, or `Null` on the other
+                    // side.
                     let other = self.ty_name(other);
-                    self.error(at, format!("cannot compare {other} with Null"));
+                    let message = format!(
+                        "`Null` compared with {other} with `{}`: whether this builds is not known yet",
+                        op.symbol()
+                    );
+                    self.error(at, message);
                     return error_expr(at);
                 }
                 (CmpKind::Object, Object)
@@ -819,4 +890,30 @@ fn is_number_format(format: &str) -> bool {
         && !ints.is_empty()
         && ints.bytes().all(|b| b.is_ascii_digit())
         && fracs.is_none_or(|f| !f.is_empty() && f.bytes().all(|b| b.is_ascii_digit()))
+}
+
+impl Lowerer {
+    /// Whether the body around `node` (its Sub, or the whole text outside
+    /// one) assigns `name` or loops over it. The body's names are collected
+    /// once, at its first unresolved read, so many such reads stay linear.
+    fn assigned_or_looped(&mut self, node: &SyntaxNode, name: &str) -> bool {
+        let body = node
+            .ancestors()
+            .find(|n| n.kind() == SUB_DECL)
+            .unwrap_or_else(|| node.ancestors().last().unwrap_or_else(|| node.clone()));
+        let at = range(&body);
+        if self.assigned_or_looped.as_ref().map(|(r, _)| *r) != Some(at) {
+            let names = in_source_order(&body, true)
+                .filter_map(|found| match found {
+                    Found::Assign(target) => Some(key(&name_of(&target))),
+                    Found::Loop { name, .. } => Some(key(&name_of(&name))),
+                    _ => None,
+                })
+                .collect();
+            self.assigned_or_looped = Some((at, names));
+        }
+        self.assigned_or_looped
+            .as_ref()
+            .is_some_and(|(_, names)| names.contains(&key(name)))
+    }
 }

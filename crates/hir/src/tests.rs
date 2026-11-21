@@ -199,11 +199,41 @@ fn ordering_compares_numbers() {
         assert!(has(&d, "a Char cannot be compared with `<`"), "{d:?}");
     }
     // A number `=` Null converts the Null as text, `"null"` (recorded:
-    // `null_number_compare`); with `<` it stays refused.
+    // `null_number_compare`), and so does `<` next to an Int or a String,
+    // on either side (recording run 24: `number_less_null` and the
+    // others); `>` is not recorded.
     let m = ok(&program("Dim n As Int\nDim b As Boolean = n = Null"));
     assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
-    let d = errors(&program("Dim n As Int\nDim b As Boolean = n < Null"));
-    assert!(has(&d, "cannot compare Int with Null"), "{d:?}");
+    for expr in ["n < Null", "Null < n", "s < Null", "Null < s"] {
+        let m = ok(&program(&format!(
+            "Dim n As Int\nDim s As String = \"0\"\nDim b As Boolean = {expr}"
+        )));
+        assert!(show(&last_value(&m)).starts_with("Lt:Numeric("), "{expr}");
+    }
+    let d = errors(&program("Dim n As Int\nDim b As Boolean = n > Null"));
+    assert!(
+        has(
+            &d,
+            "`Null` compared with Int with `>`: whether this builds is not known yet"
+        ),
+        "{d:?}"
+    );
+    // `b = Null` and `c = Null` convert the Null as an Object, `Null = x`
+    // is its own kind (recording run 24); `<>` is not recorded.
+    for (expr, shown) in [("x = Null", "Eq:Boolean("), ("Null = x", "Eq:NullLeft(")] {
+        let m = ok(&program(&format!(
+            "Dim x As Boolean\nDim b As Boolean = {expr}"
+        )));
+        assert!(show(&last_value(&m)).starts_with(shown), "{expr}");
+    }
+    let m = ok(&program(
+        "Dim x As Char = \"c\"\nDim b As Boolean = x = Null",
+    ));
+    assert!(show(&last_value(&m)).starts_with("Eq:Char("));
+    let m = ok(&program("Dim x As Int\nDim b As Boolean = Null = x"));
+    assert!(show(&last_value(&m)).starts_with("Eq:NullLeft("));
+    let d = errors(&program("Dim x As Boolean\nDim b As Boolean = x <> Null"));
+    assert!(has(&d, "not known yet"), "{d:?}");
     // So do a `Double` and a `Long` (recorded: `double_eq_null`,
     // `long_eq_null`).
     for ty in ["Double", "Long"] {
@@ -223,7 +253,7 @@ fn ordering_compares_numbers() {
         }
     }
     let d = errors(&program("Dim n As Float\nDim b As Boolean = Null = n"));
-    assert!(has(&d, "cannot compare"), "{d:?}");
+    assert!(has(&d, "not known yet"), "{d:?}");
     // A Boolean does not convert to a number either (recorded:
     // `boolean_less`), next to a String too.
     for expr in ["\"a\" < True", "True > \"a\"", "False < True"] {
@@ -354,7 +384,18 @@ fn undeclared_names() {
     );
     assert!(has(&d, "`Point` is not declared"), "{d:?}");
     let d = errors(&program("Log(z)"));
+    assert!(has(&d, "undeclared variable `z` is used before"), "{d:?}");
+    // B4J's words for a read only where nothing assigns the name: in
+    // `Process_Globals` FerroBASIC refuses the assignment, and the read
+    // keeps "is not declared"; a call to an unknown name keeps it too.
+    let d = errors(
+        "Sub Process_Globals\n  z = 5\n  Log(z)\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n",
+    );
     assert!(has(&d, "`z` is not declared"), "{d:?}");
+    assert!(!has(&d, "undeclared variable"), "{d:?}");
+    let d = errors(&program("Log(z(1))"));
+    assert!(has(&d, "`z` is not declared"), "{d:?}");
+    assert!(!has(&d, "undeclared variable"), "{d:?}");
 }
 
 #[test]
@@ -810,7 +851,7 @@ fn constants() {
         )),
         [
             "`Size` is a `Const`: it cannot be assigned",
-            "`Foo` is not declared",
+            "undeclared variable `Foo` is used before it was assigned any value",
         ]
     );
     // Empty parentheses are no bounds: the recorded refusal.
@@ -1095,7 +1136,13 @@ fn array_initializer_is_kept() {
         other => panic!("{other:?}"),
     }
     let d = errors(&program("Dim a() As Int = missing"));
-    assert!(has(&d, "`missing` is not declared"), "{d:?}");
+    assert!(
+        has(
+            &d,
+            "undeclared variable `missing` is used before it was assigned any value"
+        ),
+        "{d:?}"
+    );
     let d = errors(&program("Dim a(3) As Int = Array As Int(1)"));
     assert!(has(&d, "cannot also have an initial value"), "{d:?}");
 }
@@ -1625,8 +1672,14 @@ fn loops_in_process_globals() {
         "    For Each Bump In Array As Int(Missing)\n        Log(Other)\n    Next",
     ));
     assert_eq!(diags.len(), 3, "{diags:?}");
-    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
-    assert!(has(&diags, "`Other` is not declared"), "{diags:?}");
+    assert!(
+        has(&diags, "undeclared variable `Missing` is used before"),
+        "{diags:?}"
+    );
+    assert!(
+        has(&diags, "undeclared variable `Other` is used before"),
+        "{diags:?}"
+    );
     // A typed `For` cannot have the name (recorded), with a module variable
     // of that name too, or after a `For Each` of that name.
     for (body, before) in [
@@ -1754,7 +1807,10 @@ fn loops_in_process_globals() {
     ));
     for name in ["Unknown", "Missing", "Other"] {
         assert!(
-            has(&diags, &format!("`{name}` is not declared")),
+            has(
+                &diags,
+                &format!("undeclared variable `{name}` is used before")
+            ),
             "{diags:?}"
         );
     }
@@ -2047,13 +2103,30 @@ fn for_each_without_as_over_a_declared_variable() {
         "    Type Point (X As Int)\n    For Each Point In Array As Int(5, 6)\n    Next\n",
         "    Log(Point)\n    Dim p As Point\n    p.Initialize\n    p.X = 7\n",
     ));
-    // Not recorded after a use or an assignment of the name there, when
-    // nothing else declares it, nor with a `For … As` over it there.
-    for before in [
+    // After a read of the name there, it declares the variable that the
+    // read sees (recording run 24:
+    // `process_globals_for_each_untyped_read_before`).
+    ok(&app(
+        "    Log(u)\n    For Each u In Array As Int(5)\n    Next\n",
         "    Log(u)\n",
-        "    u = 5\n",
-        "    For u As Int = 1 To 2\n    Next\n",
-    ] {
+    ));
+    // After an assignment of the name there, it is refused (recording run
+    // 24: `process_globals_for_each_untyped_assign_before`); not recorded
+    // after a read of a Type's or a built-in type's name, nor with a
+    // `For … As` over it there.
+    let diags = errors(&app(
+        "    Type Point (X As Int)\n    Log(Point)\n    For Each Point In Array As Int(5)\n    Next\n",
+        "",
+    ));
+    assert!(has(&diags, "must be declared first"), "{diags:?}");
+    for name in ["Int", "string", "Map", "Exception"] {
+        let diags = errors(&app(
+            &format!("    Log({name})\n    For Each {name} In Array As Int(5)\n    Next\n"),
+            "",
+        ));
+        assert!(has(&diags, "must be declared first"), "{name}: {diags:?}");
+    }
+    for before in ["    u = 5\n", "    For u As Int = 1 To 2\n    Next\n"] {
         let diags = errors(&app(
             &format!("{before}    For Each u In Array As Int(5)\n    Next\n"),
             "",

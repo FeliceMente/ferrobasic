@@ -26,8 +26,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   The REPL walkthrough is in `docs/tutorial.md`, section 9.
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
-  run. Recording run 23 is imported: 306 conformance tests, 300 passing,
-  6 deviations, none pending or provisional. See
+  run. Recording run 24 is imported: 358 conformance tests, 339 passing,
+  6 deviations, 13 pending and none provisional. The 13 pending tests are
+  probes for the next run. See
   `docs/roadmap.md`.
 
 ## Read before working
@@ -36,6 +37,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - `docs/architecture.md` — components, IR, backends, tooling.
 - `docs/porting.md` — what "builds without changes" requires, layer by layer.
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
+- `docs/spec/level1.md` — draft spec of Levels 1 and 2 (modules, classes,
+  events, resumable subs) for M2, with each rule's source; not implemented.
 - `docs/spec/level0-builtins.md` — keywords and library members at Level 0.
 - `docs/language-server.md` — stdio protocol, editor setup, single-module limits.
 - `docs/spec/cli.md` — `ferro check/run/bundle/repl/lsp`, planned commands, exit codes, standalone binaries.

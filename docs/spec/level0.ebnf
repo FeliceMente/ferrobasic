@@ -19,6 +19,10 @@
 (* FerroBASIC parses "For Each" as the start of a collection loop.        *)
 (* B4J refuses Step, To, Type and Until in the recorded local-variable    *)
 (* tests (keyword_name_step, _to, _type, _until).                         *)
+(* Run 24: B4J refuses Case, Continue, Else, End, Exit, Next, Private,   *)
+(* Public, Return and Select as local variables (keyword_name_case and  *)
+(* the others); whether a Dim alone of seven of them builds is open    *)
+(* (keyword_name_*_dim_only).                                          *)
 (* Whitespace, comments and continuations are trivia kept in the CST.       *)
 
 module        = [ BOM ] , [ header ] , program ;
@@ -142,7 +146,11 @@ exponent      = ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit } ;
 STRING        = '"' , { any_char - '"' } , '"' ;   (* no escapes; may span lines *)
 (* Placeholder: "$" [formatter] "{" expr "}". formatter is empty, digits   *)
 (* "N" or "N.M", or a name (date, time, datetime, xml), case-insensitive.  *)
-(* How to write a literal "${" or '"$' is open.                           *)
+(* There is no escape for a literal "${" or '"$' (recording run 24):     *)
+(* a "\" or "$" before "${" is an ordinary character and "${" still     *)
+(* interpolates; doubled braces are refused; the first '"$' ends the     *)
+(* string. Concatenation inside a placeholder writes them:               *)
+(* $"L${"$" & "{"}5}R"$ (smart_literal_*).                               *)
 smart_string  = '$"' , { any_char | placeholder } , '"$' ;
 placeholder   = "$" , [ formatter ] , "{" , expr , "}" ;
 formatter     = digit , { digit } , [ "." , digit , { digit } ] | IDENT ;

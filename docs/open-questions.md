@@ -11,6 +11,15 @@ Answers from public sources (runtime source code, official docs, forum) are in
 "answered" there is still unconfirmed until a recording agrees with it; the
 related tests stay `pending-recording`.
 
+Some pending probes inherit FerroBASIC's existing firm diagnostics instead of
+the [new-probe skill's](../.claude/skills/new-probe/SKILL.md#the-metatoml)
+"not known yet" convention: the keyword declarations, the `Process_Globals`
+assignment and the read of a `Type`'s name before a loop over it, which
+recording run 24 raised (syntax errors, undeclared-name errors, "is a type,
+not a value"). These
+diagnostics describe the current implementation; they do not establish B4J's
+answer.
+
 - [x] An operand of `&` that holds an arithmetic operator (`+`, `-`, `*`,
       `/`, `Mod`) or a negation outside parentheses is a syntax error, on
       either side and at any depth (`"x" & 1 + 2`, `1 + 2 & "x"`,
@@ -30,7 +39,18 @@ related tests stay `pending-recording`.
       ([docs](research/level0-semantics.md#statements)).
 - [x] Smart string formatters (`$1.2{x}`, `$xml{}`)
       ([source](research/level0-semantics.md#smart-strings-docs-forum-source)).
-- [ ] How to write a literal `${` or `"$` inside a smart string.
+- [x] A smart string has no escape for `${` or `"$`: concatenation inside
+      a placeholder writes them (recording run 24:
+      `level0/smart_literal_open_concat` prints `L${5}R`,
+      `level0/smart_literal_close_concat` prints `L"$R`). A backslash or a
+      `$` before `${` is an ordinary character and the placeholder still
+      interpolates (`level0/smart_literal_open_backslash` prints `L\5R`,
+      `level0/smart_literal_open_dollars` prints `L$5R`). Doubled braces
+      are refused ("Missing parameter.", `level0/smart_literal_open_double`),
+      and the first `"$` always ends the string, so a doubled quote, a
+      backslash or `$$` before it is refused ("Syntax error.",
+      `level0/smart_literal_close_double`, `_close_backslash`,
+      `_close_dollars`). FerroBASIC does the same.
 - [x] `:` separates statements like a line break, also after a single-line `If`
       ([docs](research/level0-semantics.md#statements)).
 - [x] `/` between two integers returns a Double
@@ -60,9 +80,26 @@ related tests stay `pending-recording`.
       B4J refuses the `For Each = …` probe when its body reads an
       undeclared `Each` (recordings `level0/contextual_in`, `level0/keyword_name_each`,
       and run 22's `level0/keyword_name_in_*` and `level0/keyword_name_each_*`).
-- [ ] Which other keywords can be names. B4J refuses `Step`, `To`, `Type`
-      and `Until` in the recorded local-variable probes
-      (`level0/keyword_name_step`, `_to`, `_type`, `_until`).
+- [x] B4J refuses `Step`, `To`, `Type` and `Until` as local variable names
+      (`level0/keyword_name_step`, `_to`, `_type`, `_until`), and, in
+      recording run 24, `Case`, `Continue`, `Else`, `End`, `Exit`, `Next`,
+      `Private`, `Public`, `Return` and `Select` too
+      (`level0/keyword_name_case` and the others). Where it refuses them
+      differs: `End` at the `Dim` ("end as is not a valid identifier."),
+      `Next` at the `Dim` ("'end sub' is missing."), `Select` at `End Sub`
+      (the `Dim` opens a `Select` block: "'end select' is missing."), and
+      the other seven only at the read `Log(X + 1)` ("Missing parameter."
+      for `Case`, `Continue`, `Else`, `Exit` and `Return`, "Syntax error."
+      for `Private` and `Public`). FerroBASIC refuses all ten at the `Dim`.
+- [ ] Whether a local variable named `Case`, `Continue`, `Else`, `Exit`,
+      `Return`, `Private` or `Public` builds when it is declared but never
+      read: run 24's refusals come after their `Dim`. Pending probes
+      `level0/keyword_name_case_dim_only`, `_continue_dim_only`,
+      `_else_dim_only`, `_exit_dim_only`, `_return_dim_only`,
+      `_private_dim_only` and `_public_dim_only` print `declared` if the
+      `Dim` alone builds. FerroBASIC meanwhile refuses all seven. Other
+      positions (parameters, Sub names, module variables) stay open, to
+      probe only if a declaration builds.
 - [x] A counted loop cannot use `Each`, with an explicit type or after
       `Dim Each As Int`. B4J reports a syntax error at `=` in
       `For Each = 1 To 2` after `Dim Each As Int = 9`, and an undeclared
@@ -92,11 +129,16 @@ related tests stay `pending-recording`.
       Sub declares the name, before or after (declarations are hoisted).
 - [x] Such a variable is a `String`: `GetType` gives `java.lang.String`,
       and `+ 1` on it gives `6` (recording: `level0/undeclared_variable_type`).
-- [ ] Whether a read of a name nothing declares or assigns builds. Before
-      a `For Each` without `As` that declares it, it does not: "Undeclared
-      variable 'u' is used before it was assigned any value." (recording:
-      `level0/for_each_untyped_read_before`); with nothing declaring it
-      anywhere, FerroBASIC refuses it as undeclared.
+- [x] A read of a name nothing declares or assigns does not build:
+      "Undeclared variable 'missing' is used before it was assigned any
+      value." in a Log expression, an initializer, a Return expression and
+      `Process_Globals` alike (recording run 24: `level0/undeclared_read_log`,
+      `level0/undeclared_read_initializer`, `level0/undeclared_read_return`,
+      `level0/process_globals_undeclared_read`), as before a `For Each`
+      without `As` that declares it (`level0/for_each_untyped_read_before`).
+      FerroBASIC refuses it with B4J's words, naming the variable as written:
+      "undeclared variable `Missing` is used before it was assigned any
+      value".
 - [x] A variable declared without `As` (`Dim x`, `Dim x = 5`) is a `String`
       (recording: `level0/dim_without_as`).
 - [x] Two `Dim`s of the same name and type in one Sub are one variable,
@@ -114,9 +156,25 @@ related tests stay `pending-recording`.
       "b"` raises `NumberFormatException`, and `"10" < 9` is `False`
       (recordings: `level0/string_compare_less`,
       `level0/mixed_compare_string_left`).
-- [ ] Changing a `Map` while iterating it with `For Each`. A `List` that
+- [x] Changing a `Map` while iterating it with `For Each`. A `List` that
       grows inside its `For Each` is iterated only over the items it had
       when the loop began (recording: `level0/list_modified_in_for_each`).
+      Over a Map's `Keys` or `Values`, setting an existing key completes and
+      the iteration sees the new value, while adding a key or removing an
+      unseen one raises `ConcurrentModificationException` at the next item,
+      `seen=a` then `cme=true` (recording run 24:
+      `level0/map_keys_set_in_for_each`, `level0/map_values_set_in_for_each`,
+      `level0/map_keys_add_in_for_each`, `level0/map_keys_remove_in_for_each`,
+      `level0/map_values_add_in_for_each`,
+      `level0/map_values_remove_in_for_each`): Java's iterator checks the
+      map's `modCount`. FerroBASIC does the same.
+- [ ] What Java's `modCount` rule predicts beyond those six: a key added at
+      the last item, after which no item follows, and `Clear` during the
+      loop. Pending probes `level0/map_keys_add_at_last_in_for_each` (prints
+      `complete` if the loop ends over the items it had) and
+      `level0/map_keys_clear_in_for_each` (`cme=true` if `Clear` counts as a
+      modification). FerroBASIC meanwhile follows the rule: `complete`, and
+      `cme=true`.
 - [x] Output and exit code of a B4J non-UI program that stops on an uncaught
       error: what it logged so far, then exit code 1, with the error on stderr
       (recording: `level0/uncaught_error`).
@@ -143,8 +201,8 @@ related tests stay `pending-recording`.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently no pending or provisional corpus results; this does not
-mean that every possible language question has been settled.
+There are currently 13 pending probes and no provisional corpus results;
+they await the owner's next Windows recording run after run 24.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:
       `level0/for_evaluation_order`). That the start is assigned after the
@@ -272,14 +330,28 @@ evidence, while unchecked parts remain open:
 - [x] `<` / `>` on Booleans is a compile error: "Cannot cast type:
       {Type=Boolean,…} to: number." (recording: `level0/boolean_less`). On
       objects it is still open.
-- [ ] `Null` compared with a Boolean or a Char, with `<`, or written on
-      the left of a number (`Null = n`), is a compile error. An `Int` `=`
-      `Null` builds and raises `NumberFormatException` when it runs, as
-      `BA.ObjectToNumber` parses `"null"` (recording:
+- [x] `Null` compared with a Boolean or a Char, with `<`, or written on
+      the left of a number (`Null = n`) builds, and fails when it runs
+      (recording run 24): `level0/boolean_eq_null` with a
+      `RuntimeException` (`BA.ObjectToBoolean` parses `"null"`: "Cannot
+      parse: null as boolean"); `level0/null_eq_boolean`,
+      `level0/char_eq_null`, `level0/null_eq_char` and
+      `level0/null_eq_number` with a `NullPointerException`;
+      `level0/number_less_null`, `level0/null_less_number`,
+      `level0/string_less_null` and `level0/null_less_string` with a
+      `NumberFormatException`. FerroBASIC does the same; its
+      `NullPointerException`s have no message, as all of its own do. An
+      `Int` `=` `Null` builds and raises `NumberFormatException` when it
+      runs, as `BA.ObjectToNumber` parses `"null"` (recording:
       `level0/null_number_compare`), and so do a `Double` and a `Long`
       (recordings: `level0/double_eq_null`, `level0/long_eq_null`), and a
       `Float`, a `Short` and a `Byte` (recording:
       `level0/number_types_eq_null`).
+- [ ] The neighbours of those shapes that no recording shows: `<>` with
+      `Null` next to a Boolean or a Char, `Null` on the left of another
+      number type, and `>`, `<=`, `>=` with `Null`, or `<` next to another
+      number type. FerroBASIC refuses them: "`Null` compared with Int with
+      `>`: whether this builds is not known yet".
 - [x] A real literal may start with its decimal point (`.08`), also with
       an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
       `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the
@@ -495,8 +567,44 @@ evidence, while unchecked parts remain open:
       declares a module variable Object and leaves the last item there
       (recording run 21:
       `level0/process_globals_for_each_untyped_named_like_type`, prints 6).
-- [ ] Inside `Process_Globals`, over a name nothing else declares that is
-      read or assigned before the untyped loop there: FerroBASIC refuses it.
+- [x] Inside `Process_Globals`, over a name nothing else declares that is
+      read or assigned before the untyped loop there. After an assignment
+      B4J refuses it at the loop ("Current declaration does not match
+      previous one.", recording run 24:
+      `level0/process_globals_for_each_untyped_assign_before`), as in a Sub
+      (`level0/for_each_untyped_assigned_before`); FerroBASIC refuses it at
+      the assignment. After a read it builds: the loop declares a module
+      `Object` that the earlier read sees as `Null` (`before=[null]`,
+      `seen=5`, `seen=6`, `after=6`, recording run 24:
+      `level0/process_globals_for_each_untyped_read_before`), as FerroBASIC
+      does.
+- [ ] The same read before the loop when the name is a `Type`'s: run 21
+      records the loop over a `Type`'s name
+      (`level0/process_globals_for_each_untyped_named_like_type`), run 24
+      the read before a loop over an ordinary name, but not the two
+      together. Pending probe
+      `level0/process_globals_for_each_untyped_named_like_type_read_before`
+      prints `before=[null]`, then `6`, if the read sees the variable.
+      FerroBASIC meanwhile refuses it ("`Point` is a type, not a value").
+- [ ] Whether an untyped `For Each` in `Process_Globals` over a built-in
+      type's name (`Long`, `Int`, `Map` and the others) declares a module
+      variable `Object`, as run 21 records over a `Type`'s name. Pending
+      probe `level0/process_globals_for_each_untyped_named_like_builtin_type`
+      prints `6` if so. FerroBASIC meanwhile builds it, as over a
+      `Type`'s name, and prints `6`; 0.1.1 did too.
+- [ ] The same loop after a read of the built-in type's name there.
+      Pending probe
+      `level0/process_globals_for_each_untyped_named_like_builtin_type_read_before`
+      prints `before=[null]`, then `6`, if the read sees the variable.
+      FerroBASIC meanwhile refuses it ("`Long` is a type, not a value"), as
+      it does for a `Type`'s name.
+- [ ] Whether an assignment in `Process_Globals` to a name nothing else
+      declares declares a module `String` there, as it does in a Sub
+      (`level0/undeclared_variable_type`). The refusal of
+      `level0/process_globals_for_each_untyped_assign_before` suggests it.
+      Pending probe `level0/process_globals_undeclared_assign` prints
+      `after=9` and `type=java.lang.String` if so. FerroBASIC meanwhile
+      refuses it ("`u` is not declared: declare it with `Dim u As <type>`").
 - [x] In `Process_Globals`, a module variable read or assigned before its
       `Dim … As Object` there builds, one variable, and the read gives
       `Null` (recording run 19:

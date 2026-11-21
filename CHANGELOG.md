@@ -5,6 +5,97 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## 0.1.2 (pre-alpha)
+
+A patch release on the way to M2 (`docs/roadmap.md`), and the first with
+prebuilt binaries: each release now carries `ferro` for Linux, Windows and
+macOS, on x64 and ARM64. Recording run 24 answers the 39 Level 0 probes
+of #148: `Null` comparisons that B4J builds now build, a Map changed
+during `For Each` raises `ConcurrentModificationException`, and an
+undeclared read is reported with B4J's words. The M2 plan and a draft
+Level 1 spec are in.
+
+### Language, as in B4J
+
+- Reading a name nothing declares or assigns is reported with B4J's
+  words: "undeclared variable `Cuont` is used before it was assigned any
+  value", instead of "`Cuont` is not declared". A call to an unknown name
+  keeps "is not declared" (#152).
+- `Null` compared with a Boolean or a Char (`b = Null`, `Null = c`), on
+  the left of an Int (`Null = n`), or with `<` next to an Int or a String
+  builds, as in B4J, and raises the error B4J raises when it runs:
+  `RuntimeException` for `b = Null`, `NullPointerException` for the other
+  equalities, `NumberFormatException` for `<` (#154). Their neighbours
+  that no recording shows (`<>`, `>`, another number type) are refused as
+  not known yet, instead of "cannot compare ... with Null".
+- In `Process_Globals`, a read of a name before the untyped `For Each`
+  that declares it builds, as in B4J, and gives `Null` (#155). An
+  assignment before the loop is still refused, as B4J refuses it; a read
+  of a `Type`'s or a built-in type's name before a loop over it is
+  refused until it is recorded.
+
+### Runtime, as in B4J
+
+- Adding or removing a key of a Map while a `For Each` iterates its `Keys`
+  or `Values` raises `ConcurrentModificationException` at the next item,
+  as Java's `LinkedHashMap` does; replacing a value does not (#153).
+  Before, the loop completed after an addition, and stopped with
+  `IndexOutOfBoundsException` after a removal. `Clear` during the loop,
+  and an addition at the last item, follow the same rule until a recording
+  settles them.
+
+### Recorded from B4J
+
+- [Recording run 24](docs/research/recording-run-24.md) answers all 39
+  probes of #148 (#152–#155). Besides the changes above, it confirms what
+  FerroBASIC already did: there is no escape for a literal `${` or `"$` in
+  a smart string (a `\` or `$` before `${` is an ordinary character and the
+  placeholder still interpolates, doubled braces and anything before `"$`
+  are refused, and concatenation inside a placeholder writes the
+  delimiters); a read of a name nothing declares or assigns is
+  refused, in `Log`, an initializer, a `Return` or `Process_Globals`; ten
+  more keywords (`Case`, `Continue`, `Else`, `End`, `Exit`, `Next`,
+  `Private`, `Public`, `Return`, `Select`) cannot be local variable names;
+  and setting a Map value during `For Each` over it completes. The 19
+  probes B4J refused are now negative tests.
+- 358 conformance tests: 339 pass against recordings in the interpreter
+  and as standalone binaries, 6 are documented deviations (D1, D3–D7),
+  13 are pending probes for the next recording run, and none are
+  provisional.
+
+### Testing and tools
+
+- Release pull requests also run CI on Linux and Windows ARM64, besides
+  Linux and Windows x64, macOS arm64 and macOS Intel (#147).
+
+### Project
+
+- Releases attach prebuilt `ferro` archives for Linux, Windows and macOS,
+  each on x64 and ARM64, with licence notices and `SHA256SUMS` (#147,
+  #146 task 1). Every platform must pass workspace and standalone
+  conformance tests before its archive is published. macOS binaries are
+  signed ad hoc but not notarized; Windows binaries are not code-signed,
+  so SmartScreen may warn, and link the C runtime statically, so they
+  need no Visual C++ Redistributable; Linux binaries are static (musl)
+  and run on any distribution of their architecture, with no 32-bit ARM
+  build.
+- The M2 plan: a task breakdown in `docs/roadmap.md`, and a draft spec of
+  Levels 1 and 2 in `docs/spec/level1.md` (modules, classes, events and
+  resumable subs, each rule with its source or marked open) (#149–#151).
+
+### Known limitations
+
+- Classes, other modules, libraries other than jCore, `DateTime`, `Sleep`
+  and `Wait For` arrive at later levels (M2 onward).
+- The REPL cannot load a file into a session or interrupt a running
+  program without ending it; the language server gives diagnostics only.
+- REPL line editing was tried by hand on macOS and Windows only;
+  automated terminal tests run on Linux only.
+- A `NullPointerException` has no message, where Java 19 writes one
+  (`Cannot invoke "…" because "…" is null`): a program that logs
+  `LastException.Message` after one prints a different text (#146,
+  item 14).
+
 ## 0.1.1 (pre-alpha)
 
 A patch release on the way to M2 (`docs/roadmap.md`): recording runs 22

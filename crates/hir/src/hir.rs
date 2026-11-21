@@ -261,6 +261,20 @@ pub enum CmpOp {
     Ge,
 }
 
+impl CmpOp {
+    /// The operator as the source writes it.
+    pub fn symbol(self) -> &'static str {
+        match self {
+            CmpOp::Eq => "=",
+            CmpOp::Ne => "<>",
+            CmpOp::Lt => "<",
+            CmpOp::Gt => ">",
+            CmpOp::Le => "<=",
+            CmpOp::Ge => ">=",
+        }
+    }
+}
+
 /// How a comparison compares; both operands are converted accordingly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CmpKind {
@@ -277,6 +291,12 @@ pub enum CmpKind {
     /// number is a `ClassCastException`), else with the scrutinee's
     /// `equals` (a `Null` scrutinee is a `NullPointerException`).
     Switch,
+    /// `Null = x`, the `Null` literal on the left of a Boolean, a Char or
+    /// an Int: the product decides what it does. B4J builds it, and it
+    /// raises a `NullPointerException` when it runs (recording run 24:
+    /// `null_eq_boolean`, `null_eq_char`, `null_eq_number`). The right
+    /// operand is evaluated, unconverted.
+    NullLeft,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

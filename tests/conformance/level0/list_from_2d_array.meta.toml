@@ -17,4 +17,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: javac: incompatible types: int[][] cannot be converted to List
 # On line 10 of the test (the builder's line 15): Rows.Initialize2(Grid)
-date = "2026-11-16"
+date = "2026-11-21"

@@ -136,6 +136,15 @@ the body's read of `Each` is reported as undeclared
 FerroBASIC parses `For Each` as a collection-loop header and refuses all
 three with syntax errors.
 
+B4J refuses `Step`, `To`, `Type` and `Until` as local variable names, and,
+in recording run 24, `Case`, `Continue`, `Else`, `End`, `Exit`, `Next`,
+`Private`, `Public`, `Return` and `Select` (`keyword_name_case` and the
+others). `End` and `Next` are refused at the `Dim`, and `Dim Select` opens a
+`Select` block; the other seven are refused only where the program reads
+them, so whether a `Dim` alone of them builds is open
+(`keyword_name_*_dim_only`, [open questions](../open-questions.md)).
+FerroBASIC refuses all fourteen at the declaration.
+
 ## Types
 
 | Type | Representation | Default value | JVM | LLVM |
@@ -236,7 +245,10 @@ three with syntax errors.
   assignment to it, as a `String` (recorded: `undeclared_variable`,
   `undeclared_variable_type`); with a `Dim` or a loop of
   it anywhere in the Sub, the hoisted declaration is that variable. Reading a name nothing
-  declares or assigns is *(open)*, so a compile error.
+  declares or assigns is a compile error, in a Sub and in `Process_Globals`
+  ("undeclared variable `x` is used before it was assigned any value",
+  B4J's words; recording run 24: `undeclared_read_*`,
+  `process_globals_undeclared_read`).
 - Two declarations of the same name in one Sub: *(open)*. Provisionally they
   are allowed if the types match, and rejected otherwise.
 
@@ -319,6 +331,13 @@ From lowest to highest precedence.
     `NumberFormatException` (recorded: `null_number_compare`), and with
     every other number type too (recorded: `double_eq_null`,
     `long_eq_null`, `number_types_eq_null`);
+  - recording run 24: `b = Null` builds and raises a `RuntimeException`
+    ("Cannot parse: null as boolean"), `c = Null` a
+    `NullPointerException`; `Null = b`, `Null = c` and `Null = n` (an
+    `Int`) raise a `NullPointerException`; `<` with `Null` on either side
+    of an `Int` or a `String` parses `"null"`: a `NumberFormatException`.
+    The neighbouring shapes (`<>`, `>`, `<=`, `>=`, another number type)
+    are *(open)*, so errors;
   - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
     errors (recorded: `chained_comparison_less`,
     `chained_comparison_equal`), while `x = a = b` assigns one comparison;
@@ -363,9 +382,14 @@ From lowest to highest precedence.
 - **`For Each x [As T] In c`**: iterates arrays, `List`, `Map.Keys` and
   `Map.Values` in order (insertion order for a `Map`). A `List` that grows
   while it is iterated is iterated over the items it had when the loop
-  began (recorded: `list_modified_in_for_each`); changing a `Map` while
-  iterating it is *(open)*. Without `As`, the loop declares `x` an
-  `Object`: over a name nothing declared before it, in source order, it
+  began (recorded: `list_modified_in_for_each`). A `Map` that gains or
+  loses a key while its `Keys` or `Values` are iterated raises
+  `ConcurrentModificationException` at the next item, and setting an
+  existing key's value completes (recorded: `map_keys_add_in_for_each`,
+  `map_keys_set_in_for_each` and the others); an addition at the last item
+  and `Clear` during the loop are *(open)* (see
+  [level0-builtins.md](level0-builtins.md), `Map`). Without `As`, the
+  loop declares `x` an `Object`: over a name nothing declared before it, in source order, it
   declares it (recorded: `for_each_untyped_undeclared`), and a later `Dim`
   of another type is an error (B4J: "Current declaration does not match
   previous one", recorded: `for_each_untyped_declared_after`); over a
@@ -393,7 +417,12 @@ From lowest to highest precedence.
   `process_globals_for_each_untyped_after_typed_object`,
   `process_globals_for_each_untyped_before_typed_object`); over a name
   nothing declares there, it declares a module variable `Object` that every
-  Sub sees (recorded: `process_globals_for_each_untyped_undeclared`); over a
+  Sub sees (recorded: `process_globals_for_each_untyped_undeclared`), and
+  which a read before the loop already sees, as `Null` (recording run 24:
+  `process_globals_for_each_untyped_read_before`; with a `Type`'s or a
+  built-in type's name it is *(open)*, so an error). An assignment before the loop declares a
+  `String` there, which the loop's `Object` does not match (recording run
+  24: `process_globals_for_each_untyped_assign_before`, refused); over a
   `Type`'s name it builds, declaring an Object variable while leaving the
   Type usable (run 21: `process_globals_for_each_untyped_named_like_type`).
   A built-in's name is still *(open)*, so an error (a Sub's name
@@ -426,7 +455,12 @@ From lowest to highest precedence.
 
 - Literals: `"..."`, with no escape sequences; they may span lines. `QUOTE`,
   `CRLF` (a line feed, `Chr(10)`) and `TAB` are constants.
-- Smart strings `$"..."$` may span lines and contain `"`. A placeholder is
+- Smart strings `$"..."$` may span lines and contain `"`. They have no
+  escapes: the first `"$` ends the string, and a `\` or `$` before `${` is an
+  ordinary character, with the placeholder still interpolated (`$"L\${5}R"$`
+  is `L\5R`). Doubled braces (`${{5}}`) are refused. A literal `${` or `"$`
+  is written by concatenation inside a placeholder: `$"L${"$" & "{"}5}R"$`
+  is `L${5}R` (recording run 24, `smart_literal_*`). A placeholder is
   `$[formatter]{expr}`:
   - no formatter: the value converted as by `&`;
   - `N` or `N.M`: `NumberFormat(value, N, M)`. With no `.M`, the fraction digits

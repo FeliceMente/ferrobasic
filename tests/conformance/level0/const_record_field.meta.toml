@@ -18,4 +18,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: Cannot modify Const variable.
 # On line 10 of the test (the builder's line 15): P.X = 4
-date = "2026-11-16"
+date = "2026-11-21"

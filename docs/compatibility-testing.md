@@ -107,12 +107,13 @@ file: its expected stdout, derived by hand from the sources in
 
 ### Current recording status
 
-[Run 23](research/recording-run-23.md) (2026-11-16) brings both conformance
-targets to **306 tests, 300 passing, 6 documented deviations, 0 failures,
-0 pending and 0 passes against provisional output**. Passes include negative
-tests rejected as expected. The run confirmed two refusals: `Each` cannot be
-a counted-loop variable, predeclared or typed. It also recorded the
-final-sigma probe: `ToLowerCase` follows Java's word boundaries. No
+[Run 24](research/recording-run-24.md) (2026-11-21) recorded 123 tests:
+the 78 negative and 6 deviation tests, and 39 Level 0 probes. Both
+conformance targets report **358 tests, 339 passing, 6 documented
+deviations, 0 failures, 13 pending and 0 passes against provisional
+output**. Passes include negative tests rejected as expected. Of the 39
+probes, 19 were refused and are negative tests, and all 20 recordings
+pass. The 13 pending tests are new probes for the next run. No
 `.provisional` files remain. The conformance gate is
 satisfied, and the first M1 [Language Server diagnostics](language-server.md)
 are implemented
@@ -315,17 +316,18 @@ docs/comments-only pushes. Checker changes also need `ferro-compare`.
 
 - `fmt` and `clippy` on Linux;
 - `clippy` and `cargo test --workspace` (every conformance test, in the
-  interpreter and as a standalone binary) on Linux x86_64, Windows, macOS
-  arm64 and macOS Intel;
+  interpreter and as a standalone binary) on Linux and Windows (x64 and
+  ARM64), macOS arm64 and macOS Intel;
 - the real-world corpus on Linux: fetched, then its `--ignored` tests;
 - a static Linux build (`x86_64-unknown-linux-musl`), checked by bundling a
   program and running it.
 
 It runs on pull requests into `main` (releases) and on demand ("Run
-workflow"), not on pull requests into `dev`, which would then wait on four
+workflow"), not on pull requests into `dev`, which would then wait on six
 platforms at every push. Pull requests into `dev` are checked locally
 (AGENTS.md)
-with `scripts/check-all.sh`: `fmt`, `clippy` for every platform CI tests,
+with `scripts/check-all.sh`: `fmt`, `clippy` for its configured Linux,
+Windows and macOS targets,
 the tests, `ferro-difftest` on both targets, the recorder's dry run, the
 real-world corpus, and on Linux x86_64 the static Linux binary, with
 `scripts/check-static-linux.sh` as CI's static-linux job (`--offline` skips
@@ -333,6 +335,28 @@ the corpus download, `--quick` the static binary; a skipped step is named
 at the end). Run the workflow by hand before a release, and after a change to
 platform-specific code (`ferro bundle`, files, the command line). A release
 is merged only with the workflow green.
+
+`.github/workflows/release.yml` ("Release binaries") runs when a release is
+published and builds that tag on the six native runners. Before packaging,
+each runner passes `cargo test --workspace` and an explicit standalone
+conformance run with both debug `ferro` and the release binary. Linux uses
+static musl builds and also bundles and runs `prices_map`; macOS verifies
+the ad hoc signature. Only `ferro`, `LICENSE` and `THIRD-PARTY-NOTICES.txt`
+go in each archive. After all six builds pass, the workflow validates the
+archive contents, generates `SHA256SUMS` and uploads all seven release assets.
+Only the upload job has `contents: write`.
+
+For an existing published release, choose "Run workflow" from `dev`, enter
+the tag (for example `v0.1.1`), and disable `dry_run`. The workflow can backfill
+recent tags such as `v0.1.1` that predate it. Tags must provide `ferro-difftest`
+with `--ferro` and the version/platform output checked above; `v0.0.1`–`v0.0.3`
+lack these prerequisites. Leave `dry_run` enabled
+to save archives and checksums as workflow artifacts instead. PRs into `dev`
+that change the release workflow automatically exercise it in dry mode on
+the branch source; these runs never change releases. Link a green dry run
+in the PR. `windows-11-arm` is a public-preview runner: a failure still fails
+the run and prevents release uploads, and unreliability is reported to the
+owner before deciding whether to drop that platform.
 
 ## Open points
 

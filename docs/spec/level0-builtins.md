@@ -127,7 +127,7 @@ case-sensitive, and boxes of different numeric types are different keys.
 | `Get(Key) As Object` | `Null` if missing |
 | `GetDefault(Key, Default) As Object` | `Default` if missing or `Null` |
 | `Remove(Key) As Object`, `ContainsKey(Key) As Boolean`, `Clear`, `Size As Int` | |
-| `Keys`, `Values` | for `For Each`; a snapshot iterator is *(open)* |
+| `Keys`, `Values` | for `For Each`, live views of the map: setting an existing key's value during the loop completes, and `Values` shows the new value (recording run 24: `map_keys_set_in_for_each`, `map_values_set_in_for_each`). Adding or removing a key raises `java.util.ConcurrentModificationException` at the next item (recording run 24: `map_keys_add_in_for_each`, `map_keys_remove_in_for_each`, `map_values_add_in_for_each`, `map_values_remove_in_for_each`), as Java's iterator checks the map's `modCount`. Two cases follow the same rule *(open)*: `Clear` during the loop raises it too, and an addition at the last item ends the loop, as no item follows (probes `map_keys_clear_in_for_each`, `map_keys_add_at_last_in_for_each`) |
 | `GetKeyAt(Index)`, `GetValueAt(Index)` | deprecated but supported; positional, in insertion order. Past the end: `NoSuchElementException`; the cached position behind them shows through on bad indices ([research](../research/level0-semantics.md#map-source)) |
 
 ## Printing collections

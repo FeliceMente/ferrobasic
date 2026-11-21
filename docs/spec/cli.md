@@ -8,6 +8,11 @@ The first deliverable has two parts:
    native executable for the same OS and architecture as the `ferro` that built it.
    The result runs without FerroBASIC installed and without a JVM.
 
+Prebuilt `ferro` downloads, checksums and first-launch instructions are in
+the [README's Install section](../../README.md#install). Each release archive
+contains only `ferro` (`ferro.exe` on Windows), `LICENSE` and
+`THIRD-PARTY-NOTICES.txt`; the development tools are not distributed.
+
 Both use the interpreter, the semantic reference. Native code generation stays
 in M4 ([../roadmap.md](../roadmap.md)). A standalone binary is the `ferro`
 runtime plus the embedded program, the same approach as `deno compile`.
@@ -394,7 +399,10 @@ is embedded with `libsui` instead (see below).
   - So does an executable that cannot locate or read its own file: it never
     falls back to the CLI in place of its program.
 - Linux (ELF) and Windows (PE) ignore appended bytes, so the result runs as is.
-  Verified on Linux x86_64 and Windows x64.
+  Verified on Linux x64 and ARM64, and Windows x64 and ARM64, with workspace
+  tests and standalone conformance on each native runner. Both Linux release
+  builds use static musl binaries; Windows ARM64 uses the public-preview
+  `windows-11-arm` runner.
 - **macOS**: `codesign` rejects a Mach-O file with bytes after its last
   segment ("main executable failed strict validation"), and Apple Silicon
   refuses to run unsigned binaries. So the package is embedded with
@@ -428,8 +436,11 @@ is embedded with `libsui` instead (see below).
 - **Dependencies**: the output depends on exactly what `ferro` itself depends on.
   On Linux that is the system C library (glibc), unless `ferro` was built for
   `*-linux-musl`, which makes the output fully static (verified with
-  `x86_64-unknown-linux-musl`). On Windows it needs no
-  extra DLLs.
+  `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, including a
+  bundled program run on each architecture). On Windows (MSVC) the C runtime
+  is linked statically (`.cargo/config.toml`), so the output needs only
+  Windows' own DLLs, not the Visual C++ Redistributable; `release.yml`
+  checks this with `dumpbin /dependents` on `ferro.exe` and a bundled program.
 - Building for another OS or architecture is out of scope here (see M4 and the
   `zig cc` / `cargo-zigbuild` question).
 

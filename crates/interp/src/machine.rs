@@ -850,6 +850,9 @@ pub fn compare(
                 )),
             },
         },
+        // B4J unboxes the `Null` (recording run 24: `null_eq_boolean`,
+        // `null_eq_char`, `null_eq_number`); the message is not recorded.
+        CmpKind::NullLeft => Err(Exc::bare(NULL_POINTER)),
         CmpKind::Switch => {
             if matches!(l, Value::Null) {
                 Err(Exc::bare(NULL_POINTER))
@@ -913,7 +916,7 @@ fn iter_size(c: &Value) -> Result<usize, Exc> {
     Ok(match c {
         Value::Array(a) => a.items.borrow().len(),
         Value::List(w) => list_inner(w)?.len()?,
-        Value::View(m, _) => m.borrow().len(),
+        Value::View(m, ..) => m.borrow().len(),
         Value::Null => return Err(Exc::bare(NULL_POINTER)),
         _ => return Err(Exc::internal("not iterable")),
     })
@@ -937,7 +940,13 @@ fn iter_get(c: &Value, i: i32) -> Result<Value, Exc> {
             let l = list_inner(w)?;
             l.get(i)?.ok_or_else(|| oob(l.len().unwrap_or(0)))
         }
-        Value::View(m, keys) => {
+        Value::View(m, keys, expected) => {
+            // Java's iterator checks the map's `modCount` at each item after
+            // the first (recording run 24: `map_keys_add_in_for_each`,
+            // `map_keys_remove_in_for_each` and their `Values` twins).
+            if m.borrow().mod_count() != *expected {
+                return Err(Exc::bare(CONCURRENT_MODIFICATION));
+            }
             let len = m.borrow().len();
             let (k, v) = m.borrow_mut().entry_at(i).ok_or_else(|| oob(len))?;
             Ok(if *keys { k } else { v })

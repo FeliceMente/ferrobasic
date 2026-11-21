@@ -1,0 +1,16 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "negative"   # pending-recording | recorded | deviation | negative
+level = 0
+features = ["scope", "process-globals"]
+
+[recording]
+product = "B4J"
+version = "10.70"
+platform = "Windows 10 10.0"
+java = "19.0.2 (Oracle Corporation)"
+locale = "en-US"   # forced: the reference locale
+machine_locale = "it-IT"
+rejected = true   # the original toolchain refused to build it
+# Error: Undeclared variable 'missing' is used before it was assigned any value.
+# On line 7 of the test (the builder's line 12): Log("value=[" & Missing & "]")
+date = "2026-11-21"

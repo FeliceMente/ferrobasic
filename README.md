@@ -14,7 +14,7 @@ currently provides a reference interpreter, a stateful REPL and a diagnostics-on
 [language server](docs/language-server.md) for LSP-capable editors.
 
 > **Status: pre-alpha.** Milestones M0 and M1 are complete; M2 (classes and
-> events) is next. Level 0 programs (one module,
+> events) is under way. Level 0 programs (one module,
 > language core, `List`/`Map`) can be checked, run with the reference
 > interpreter and built into standalone executables for the host. A stateful
 > REPL supports interactive experiments. Start with the [tutorial](docs/tutorial.md),
@@ -61,6 +61,42 @@ Planned crates (library descriptors, layouts, JVM and LLVM backends, native
 runtime, DAP, program generator) and editor integrations are added when
 their milestone starts: see `docs/architecture.md` and `docs/roadmap.md`.
 
+## Install
+
+Download the archive for your machine from the
+[release assets](https://github.com/FeliceMente/ferrobasic/releases), along with
+that release's `SHA256SUMS`. Replace `<version>` below with the release version
+without the `v`, for example `0.1.2`.
+
+| Platform | Download |
+| --- | --- |
+| Linux x64 | `ferro-<version>-linux-x64.tar.gz` |
+| Linux ARM64 | `ferro-<version>-linux-arm64.tar.gz` |
+| Windows x64 | `ferro-<version>-windows-x64.zip` |
+| Windows ARM64 | `ferro-<version>-windows-arm64.zip` |
+| macOS Apple Silicon | `ferro-<version>-macos-arm64.tar.gz` |
+| macOS Intel | `ferro-<version>-macos-x64.tar.gz` |
+
+Check the archive's SHA-256 against `SHA256SUMS` before extracting: use
+`sha256sum --check --ignore-missing SHA256SUMS` on Linux,
+`shasum -a 256 <archive>` on macOS, or `Get-FileHash <archive> -Algorithm SHA256`
+in Windows PowerShell. For the latter two, compare the hash with the matching
+line in `SHA256SUMS`.
+
+Extract the archive, put `ferro` (`ferro.exe` on Windows) in a directory on
+your `PATH`, and run `ferro version`. Keep the included `LICENSE` and
+`THIRD-PARTY-NOTICES.txt` with it when distributing the binary.
+
+- **macOS:** the binaries are signed ad hoc but aren't notarized; notarization
+  needs a paid Apple Developer account. Allow the first launch in System
+  Settings, or run `xattr -d com.apple.quarantine ferro` after extracting.
+- **Windows:** the binaries aren't code-signed, so SmartScreen may warn.
+  Select **More info**, then **Run anyway**. They link the C runtime
+  statically, so they don't need the Visual C++ Redistributable. The
+  Windows ARM64 build uses a GitHub runner in public preview.
+- **Linux:** the musl builds are static and run on any distribution of their
+  architecture. 32-bit ARM isn't built.
+
 ## Building
 
 Requires a recent stable Rust toolchain (`rust-toolchain.toml` selects the
@@ -94,8 +130,10 @@ ferro bundle prog.bas -o prog     # bundle into a standalone executable
 
 A standalone binary is `ferro` with the program embedded (appended on Linux
 and Windows, placed inside the executable on macOS): it needs neither
-FerroBASIC nor a JVM, only the system C library (or nothing at all when
-`ferro` is built for `x86_64-unknown-linux-musl`).
+FerroBASIC nor a JVM, only the system C library on Linux (or nothing at
+all when `ferro` is built for `x86_64-unknown-linux-musl` or
+`aarch64-unknown-linux-musl`, as in the release downloads), and only
+Windows' own DLLs on Windows, where the C runtime is linked in.
 
 > **Note:** `ferro bundle` does not compile. The executable is the `ferro`
 > interpreter plus the program's checked source, which is parsed and interpreted at
@@ -118,6 +156,7 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 - [Architecture](docs/architecture.md)
 - [Porting existing B4X projects](docs/porting.md)
 - [Language spec, Level 0](docs/spec/level0.md), [grammar](docs/spec/level0.ebnf) and [built-ins](docs/spec/level0-builtins.md)
+- [Language spec, Levels 1 and 2 (draft, M2)](docs/spec/level1.md)
 - [CLI, interpreter and standalone builds](docs/spec/cli.md) and [project files](docs/spec/project-files.md)
 - [Level 0 semantics from public sources](docs/research/level0-semantics.md)
 - [Compatibility testing](docs/compatibility-testing.md)

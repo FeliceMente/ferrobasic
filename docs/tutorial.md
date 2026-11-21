@@ -28,7 +28,7 @@ by its full path. The examples below just write `ferro`.
 
 ```console
 $ ferro version
-ferro 0.1.1 (linux-x64)
+ferro 0.1.2 (linux-x64)
 ```
 
 The part in brackets is the platform `ferro` was built for, for example
@@ -302,7 +302,7 @@ End Sub
 
 ```console
 $ ferro check typo.bas
-typo.bas:6:9: error: `Cuont` is not declared
+typo.bas:6:9: error: undeclared variable `Cuont` is used before it was assigned any value
       Log(Cuont + 1)
           ^
 typo.bas:8:11: error: String has no member `Lenght` at Level 0
@@ -432,7 +432,9 @@ can copy it to another machine with the same OS and architecture.
   Copyright (c) 2026 Marco Iannaccone
   ```
 
-- On Linux it depends only on the system C library.
+- On Linux it depends only on the system C library. On Windows it needs
+  only Windows' own DLLs: the C runtime is linked in, so the Visual C++
+  Redistributable is not needed.
 - For a fully static Linux binary, build `ferro` for musl first:
 
   ```sh

@@ -120,7 +120,16 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
     `NumberFormat.getInstance(Locale.US)` with grouping on, so
     `$1.2{12345.678}` → `12,345.68` ([`Common.NumberFormat`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/keywords/Common.java#L125-L131)).
     Java's default rounding mode for it is HALF_EVEN.
-- **open**: how to write a literal `${` or `"$` inside a smart string.
+- There is no escape for a literal `${` or `"$` inside a smart string
+  (**recorded**, run 24): a `\` or a `$` before `${` is an ordinary
+  character and the placeholder still interpolates (`smart_literal_open_backslash`
+  prints `L\5R`, `smart_literal_open_dollars` `L$5R`); doubled braces are
+  refused ("Missing parameter.", `smart_literal_open_double`); the first
+  `"$` ends the string, whatever comes before it ("Syntax error.",
+  `smart_literal_close_double`, `smart_literal_close_backslash`,
+  `smart_literal_close_dollars`). Concatenation inside a placeholder writes
+  either delimiter (`smart_literal_open_concat` prints `L${5}R`,
+  `smart_literal_close_concat` `L"$R`).
 
 ### Map (source)
 
@@ -156,6 +165,18 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   - a negative index walks nothing and returns the entry last returned
     (its current value, or its last one if it was removed), or raises
     `NullPointerException` if there is none.
+- `For Each` over `Keys` or `Values` sees the map live: setting an existing
+  key's value completes, and `Values` shows the new value (**recorded**, run
+  24: `map_keys_set_in_for_each`, `map_values_set_in_for_each`). Adding a key,
+  or removing one not seen yet, raises `java.util.ConcurrentModificationException`
+  at the next item: `seen=a`, then the exception (**recorded**, run 24:
+  `map_keys_add_in_for_each`, `map_keys_remove_in_for_each`,
+  `map_values_add_in_for_each`, `map_values_remove_in_for_each`). That is
+  `LinkedHashMap`'s iterator, which checks its `modCount` on each `next()`:
+  replacing a value does not change it. FerroBASIC counts the same
+  changes (`OrderedMap::mod_count`); `Clear` counts in Java's `HashMap`
+  too (**source**: [`HashMap.clear`](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/util/HashMap.java)), to confirm with
+  `map_keys_clear_in_for_each`.
 
 ### List (source)
 
@@ -455,7 +476,21 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `False` (**recorded**: `mixed_compare_number_left`,
   `mixed_compare_string_left`). `n = Null` with an `Int` compiles, and
   `BA.ObjectToNumber` raises `NumberFormatException: For input string:
-  "null"` (**recorded**: `null_number_compare`). A Char `=` an `Int`
+  "null"` (**recorded**: `null_number_compare`). The other comparisons
+  with `Null` build too and fail when they run (**recorded**, run 24):
+  `Boolean = Null` with a `RuntimeException` (`boolean_eq_null`);
+  `Null = Boolean`, `Char = Null`, `Null = Char` and `Null = Int` with a
+  `NullPointerException` (`null_eq_boolean`, `char_eq_null`,
+  `null_eq_char`, `null_eq_number`); `<` with `Null` on either side of an
+  `Int` or a `String` with a `NumberFormatException` (`number_less_null`,
+  `null_less_number`, `string_less_null`, `null_less_string`). With the
+  `Null` on the right, B4J converts it as it converts an Object:
+  `BA.ObjectToBoolean` parses `"null"` ("Cannot parse: null as boolean"),
+  `BA.ObjectToChar` calls its `toString()`, and `BA.ObjectToNumber` parses
+  it too (**source**, the same conversions as `object_null_to_int`); on the
+  left, it raises a `NullPointerException` whatever the other type, as
+  unboxing a null would (the generated code is not seen). The
+  neighbouring shapes (`<>`, `>`, other number types) are not recorded. A Char `=` an `Int`
   compiles to `_c==BA.ObjectToChar(65)`, and
   [`ObjectToChar`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L457-L462)
   takes the first character of the number's `toString()`, `'6'`, so
@@ -559,7 +594,17 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   declared too (**recorded**: `for_each_untyped_param_object`,
   `for_each_untyped_pg_loop_object`), and is refused after a read of the
   name: "Undeclared variable 'u' is used before it was assigned any
-  value." (**recorded**: `for_each_untyped_read_before`). The real-world corpus's
+  value." (**recorded**: `for_each_untyped_read_before`). With nothing
+  declaring the name anywhere, a read is refused with the same message, in
+  a Sub and in `Process_Globals` (**recorded**, run 24: `undeclared_read_log`,
+  `undeclared_read_initializer`, `undeclared_read_return`,
+  `process_globals_undeclared_read`). In `Process_Globals`, by contrast, a
+  read before the untyped loop that declares the name builds and gives
+  `Null` (**recorded**, run 24: `process_globals_for_each_untyped_read_before`;
+  with a `Type`'s name it is open),
+  while an assignment before it is refused ("Current declaration does not
+  match previous one.", **recorded**, run 24:
+  `process_globals_for_each_untyped_assign_before`). The real-world corpus's
   `JSONWebToken.bas`, a class, loops `For Each Key In Claims.Keys` in
   `setClaims` with `Key` declared nowhere.
 - **`For Each` over a statically typed Object** is a compile-time error:
@@ -825,8 +870,16 @@ Implemented as recorded with B4J 10.70 (run 12,
   `keyword_name_to`, `keyword_name_type`, `keyword_name_until`, negative
   tests). For `Step` and `To`, B4J says "Missing parameter." at the `Log`
   line; its message for each is in the test's `.meta.toml`.
-- **open**: which of the remaining keywords are accepted as names
-  ([open-questions.md](../open-questions.md#language)).
+- `Case`, `Continue`, `Else`, `End`, `Exit`, `Next`, `Private`, `Public`,
+  `Return` and `Select` are not either (**recorded**, run 24:
+  `keyword_name_case` and the others, negative tests). B4J refuses `End`
+  ("end as is not a valid identifier.") and `Next` ("'end sub' is
+  missing.") at the `Dim`; `Dim Select` opens a `Select` block ("'end
+  select' is missing." at `End Sub`); the other seven get past the `Dim` and
+  are refused at the read `Log(X + 1)` ("Missing parameter.", or "Syntax
+  error." for `Private` and `Public`).
+- **open**: whether a `Dim` alone of those seven builds, and the remaining
+  keywords and positions ([open-questions.md](../open-questions.md#language)).
 
 ### Types (docs)
 
