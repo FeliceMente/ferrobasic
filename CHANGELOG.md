@@ -48,8 +48,10 @@ Level 1 spec are in.
 - [Recording run 24](docs/research/recording-run-24.md) answers all 39
   probes of #148 (#152–#155). Besides the changes above, it confirms what
   FerroBASIC already did: there is no escape for a literal `${` or `"$` in
-  a smart string (a placeholder's concatenation writes them, and the other
-  candidates are refused); a read of a name nothing declares or assigns is
+  a smart string (a `\` or `$` before `${` is an ordinary character and the
+  placeholder still interpolates, doubled braces and anything before `"$`
+  are refused, and concatenation inside a placeholder writes the
+  delimiters); a read of a name nothing declares or assigns is
   refused, in `Log`, an initializer, a `Return` or `Process_Globals`; ten
   more keywords (`Case`, `Continue`, `Else`, `End`, `Exit`, `Next`,
   `Private`, `Public`, `Return`, `Select`) cannot be local variable names;
