@@ -199,11 +199,41 @@ fn ordering_compares_numbers() {
         assert!(has(&d, "a Char cannot be compared with `<`"), "{d:?}");
     }
     // A number `=` Null converts the Null as text, `"null"` (recorded:
-    // `null_number_compare`); with `<` it stays refused.
+    // `null_number_compare`), and so does `<` next to an Int or a String,
+    // on either side (recording run 24: `number_less_null` and the
+    // others); `>` is not recorded.
     let m = ok(&program("Dim n As Int\nDim b As Boolean = n = Null"));
     assert!(show(&last_value(&m)).starts_with("Eq:Numeric("));
-    let d = errors(&program("Dim n As Int\nDim b As Boolean = n < Null"));
-    assert!(has(&d, "cannot compare Int with Null"), "{d:?}");
+    for expr in ["n < Null", "Null < n", "s < Null", "Null < s"] {
+        let m = ok(&program(&format!(
+            "Dim n As Int\nDim s As String = \"0\"\nDim b As Boolean = {expr}"
+        )));
+        assert!(show(&last_value(&m)).starts_with("Lt:Numeric("), "{expr}");
+    }
+    let d = errors(&program("Dim n As Int\nDim b As Boolean = n > Null"));
+    assert!(
+        has(
+            &d,
+            "`Null` compared with Int with `>`: whether this builds is not known yet"
+        ),
+        "{d:?}"
+    );
+    // `b = Null` and `c = Null` convert the Null as an Object, `Null = x`
+    // is its own kind (recording run 24); `<>` is not recorded.
+    for (expr, shown) in [("x = Null", "Eq:Boolean("), ("Null = x", "Eq:NullLeft(")] {
+        let m = ok(&program(&format!(
+            "Dim x As Boolean\nDim b As Boolean = {expr}"
+        )));
+        assert!(show(&last_value(&m)).starts_with(shown), "{expr}");
+    }
+    let m = ok(&program(
+        "Dim x As Char = \"c\"\nDim b As Boolean = x = Null",
+    ));
+    assert!(show(&last_value(&m)).starts_with("Eq:Char("));
+    let m = ok(&program("Dim x As Int\nDim b As Boolean = Null = x"));
+    assert!(show(&last_value(&m)).starts_with("Eq:NullLeft("));
+    let d = errors(&program("Dim x As Boolean\nDim b As Boolean = x <> Null"));
+    assert!(has(&d, "not known yet"), "{d:?}");
     // So do a `Double` and a `Long` (recorded: `double_eq_null`,
     // `long_eq_null`).
     for ty in ["Double", "Long"] {
@@ -223,7 +253,7 @@ fn ordering_compares_numbers() {
         }
     }
     let d = errors(&program("Dim n As Float\nDim b As Boolean = Null = n"));
-    assert!(has(&d, "cannot compare"), "{d:?}");
+    assert!(has(&d, "not known yet"), "{d:?}");
     // A Boolean does not convert to a number either (recorded:
     // `boolean_less`), next to a String too.
     for expr in ["\"a\" < True", "True > \"a\"", "False < True"] {

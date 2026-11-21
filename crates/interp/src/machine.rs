@@ -850,6 +850,9 @@ pub fn compare(
                 )),
             },
         },
+        // B4J unboxes the `Null` (recording run 24: `null_eq_boolean`,
+        // `null_eq_char`, `null_eq_number`); the message is not recorded.
+        CmpKind::NullLeft => Err(Exc::bare(NULL_POINTER)),
         CmpKind::Switch => {
             if matches!(l, Value::Null) {
                 Err(Exc::bare(NULL_POINTER))

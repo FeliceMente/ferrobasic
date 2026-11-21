@@ -109,12 +109,12 @@ file: its expected stdout, derived by hand from the sources in
 
 [Run 24](research/recording-run-24.md) (2026-11-21) recorded 123 tests:
 the 78 negative and 6 deviation tests, and 39 Level 0 probes. Both
-conformance targets report **355 tests, 329 passing, 6 documented
-deviations, 0 failures, 20 pending and 0 passes against provisional
+conformance targets report **355 tests, 338 passing, 6 documented
+deviations, 0 failures, 11 pending and 0 passes against provisional
 output**. Passes include negative tests rejected as expected. Of the 39
-probes, 19 were refused and are negative tests, and 10 recordings pass,
-the Map iteration ones included; the other 10 recordings wait, pending,
-for the FerroBASIC changes that pass them (Null comparisons, a
+probes, 19 were refused and are negative tests, and 19 recordings pass,
+the Map iteration and Null comparison ones included; the last recording
+waits, pending, for the FerroBASIC change that passes it (a
 `Process_Globals` read). The 10 other pending tests are new probes for the
 next run. No
 `.provisional` files remain. The conformance gate is

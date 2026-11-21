@@ -667,6 +667,60 @@ impl Lowerer {
         let ordering = !matches!(op, CmpOp::Eq | CmpOp::Ne);
         let (kind, domain) = match (&left.ty, &right.ty) {
             (Error, _) | (_, Error) => return error_expr(at),
+            // `b = Null` and `c = Null`: B4J converts the `Null` as it
+            // converts an Object, with `BA.ObjectToBoolean` (which parses
+            // `"null"`: a `RuntimeException`) or `BA.ObjectToChar` (a
+            // `NullPointerException`) (recording run 24: `boolean_eq_null`,
+            // `char_eq_null`). Only `=` is recorded.
+            (Boolean | Char, Null) if op == CmpOp::Eq => {
+                let domain = left.ty.clone();
+                let right = self.coerce(right, &Object);
+                let right = self.coerce(right, &domain);
+                let kind = if domain == Boolean {
+                    CmpKind::Boolean
+                } else {
+                    CmpKind::Char
+                };
+                return Expr {
+                    kind: ExprKind::Compare(op, kind, Box::new(left), Box::new(right)),
+                    ty: Boolean,
+                    range: at,
+                };
+            }
+            // `Null = b`, `Null = c`, `Null = n`: a `NullPointerException`
+            // when it runs (recording run 24: `null_eq_boolean`,
+            // `null_eq_char`, `null_eq_number`). Only `=` and an `Int` are
+            // recorded.
+            (Null, Boolean | Char | Int) if op == CmpOp::Eq => {
+                return Expr {
+                    kind: ExprKind::Compare(op, CmpKind::NullLeft, Box::new(left), Box::new(right)),
+                    ty: Boolean,
+                    range: at,
+                };
+            }
+            // `n < Null`, `Null < n`, `s < Null`, `Null < s`: numbers, the
+            // `Null` parsed from its text, `"null"`, as in `n = Null`: a
+            // `NumberFormatException` when it runs (recording run 24:
+            // `number_less_null`, `null_less_number`, `string_less_null`,
+            // `null_less_string`). Only `<`, an `Int` and a `String` are
+            // recorded.
+            (Int | String, Null) | (Null, Int | String) if op == CmpOp::Lt => {
+                let number = |s: &mut Self, e: Expr| {
+                    let e = if e.ty == Null {
+                        s.coerce(e, &String)
+                    } else {
+                        e
+                    };
+                    s.coerce(e, &Double)
+                };
+                let left = number(self, left);
+                let right = number(self, right);
+                return Expr {
+                    kind: ExprKind::Compare(op, CmpKind::Numeric, Box::new(left), Box::new(right)),
+                    ty: Boolean,
+                    range: at,
+                };
+            }
             // `n = Null`: B4J converts the `Null` with `BA.ObjectToNumber`,
             // which parses its text, `"null"`: a `NumberFormatException`
             // when it runs, whatever the number's type (recorded:
@@ -729,8 +783,15 @@ impl Lowerer {
             (Null, _) | (_, Null) => {
                 let other = if left.ty == Null { &right.ty } else { &left.ty };
                 if other.is_primitive() || ordering {
+                    // Neighbours of the recorded shapes above: another
+                    // operator, another number type, or `Null` on the other
+                    // side.
                     let other = self.ty_name(other);
-                    self.error(at, format!("cannot compare {other} with Null"));
+                    let message = format!(
+                        "`Null` compared with {other} with `{}`: whether this builds is not known yet",
+                        op.symbol()
+                    );
+                    self.error(at, message);
                     return error_expr(at);
                 }
                 (CmpKind::Object, Object)
