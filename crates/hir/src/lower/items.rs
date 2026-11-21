@@ -562,9 +562,10 @@ impl Lowerer {
     /// there, which declares a `String` (recording run 24:
     /// `process_globals_for_each_untyped_assign_before`), and, not recorded,
     /// over the name of a Sub, a built-in or `Bit`, after a read of a
-    /// `Type`'s name, and with a `For … As` over it there.
+    /// `Type`'s or a built-in type's name, and with a `For … As` over it
+    /// there.
     fn declare_untyped_loop_globals(&mut self, sub: &SyntaxNode) {
-        // Names assigned before a loop, or a `Type`'s name read before one.
+        // Names assigned before a loop, or a type's name read before one.
         let mut before = HashSet::new();
         let mut skip = HashSet::new();
         let mut loops = Vec::new();
@@ -573,7 +574,10 @@ impl Lowerer {
                 Found::Assign(node) => {
                     before.insert(key(&name_of(&node)));
                 }
-                Found::Use(node) if self.records.contains_key(&key(&name_of(&node))) => {
+                Found::Use(node)
+                    if self.records.contains_key(&key(&name_of(&node)))
+                        || builtin_type(&name_of(&node)).is_some() =>
+                {
                     before.insert(key(&name_of(&node)));
                 }
                 Found::Loop {

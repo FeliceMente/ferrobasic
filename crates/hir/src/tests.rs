@@ -2112,12 +2112,20 @@ fn for_each_without_as_over_a_declared_variable() {
     ));
     // After an assignment of the name there, it is refused (recording run
     // 24: `process_globals_for_each_untyped_assign_before`); not recorded
-    // after a read of a Type's name, nor with a `For … As` over it there.
+    // after a read of a Type's or a built-in type's name, nor with a
+    // `For … As` over it there.
     let diags = errors(&app(
         "    Type Point (X As Int)\n    Log(Point)\n    For Each Point In Array As Int(5)\n    Next\n",
         "",
     ));
     assert!(has(&diags, "must be declared first"), "{diags:?}");
+    for name in ["Int", "string", "Map", "Exception"] {
+        let diags = errors(&app(
+            &format!("    Log({name})\n    For Each {name} In Array As Int(5)\n    Next\n"),
+            "",
+        ));
+        assert!(has(&diags, "must be declared first"), "{name}: {diags:?}");
+    }
     for before in ["    u = 5\n", "    For u As Int = 1 To 2\n    Next\n"] {
         let diags = errors(&app(
             &format!("{before}    For Each u In Array As Int(5)\n    Next\n"),
