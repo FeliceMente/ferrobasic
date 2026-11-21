@@ -346,8 +346,10 @@ archive contents, generates `SHA256SUMS` and uploads all seven release assets.
 Only the upload job has `contents: write`.
 
 For an existing published release, choose "Run workflow" from `dev`, enter
-the tag (for example `v0.1.1`), and disable `dry_run`. The workflow builds the
-tag's source even when that tag predates the workflow. Leave `dry_run` enabled
+the tag (for example `v0.1.1`), and disable `dry_run`. The workflow can backfill
+recent tags such as `v0.1.1` that predate it. Tags must provide `ferro-difftest`
+with `--ferro` and the version/platform output checked above; `v0.0.1`–`v0.0.3`
+lack these prerequisites. Leave `dry_run` enabled
 to save archives and checksums as workflow artifacts instead. PRs into `dev`
 that change the release workflow automatically exercise it in dry mode on
 the branch source; these runs never change releases. Link a green dry run
