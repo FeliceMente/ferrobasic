@@ -2,7 +2,7 @@
 #
 # Runs on pull requests into `main` (releases) and on demand ("Run
 # workflow"), not on every pull request into `dev`, which would wait on
-# four platforms at every push. Pull requests into `dev` are checked
+# six platforms at every push. Pull requests into `dev` are checked
 # locally (AGENTS.md, "Before closing a task").
 
 name: CI
@@ -39,7 +39,8 @@ jobs:
       fail-fast: false
       matrix:
         # macos-latest is Apple Silicon; macos-15-intel is the last Intel image.
-        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
+        # windows-11-arm is in public preview; its failures still block a release.
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       # Keep line endings as committed: test data files are read byte for byte.

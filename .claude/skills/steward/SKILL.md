@@ -122,16 +122,34 @@ The sequence is in `AGENTS.md`, "Branches and releases". In practice:
    compared with what `ferro` prints now, and the version line updated.
 2. **The release**, a pull request whose head is `dev` itself, into `main`
    (not a topic branch, even one that equals `dev`). CI runs on it, on
-   Linux, Windows, macOS arm64 and macOS Intel. Every red job is this pull
-   request's to fix, through a pull request into `dev` that the release
+   Linux and Windows (x64 and ARM64), macOS arm64 and macOS Intel. Every red
+   job is this pull request's to fix, through a pull request into `dev` that the release
    pull request then picks up, so `main` receives only what is on `dev`;
    never skipped or re-run until green: a Windows- or macOS-only failure is usually a path,
    a line ending or a platform `cfg`, which `check-all.sh`'s cross-target
    clippy does not exercise at run time. Merge only when every job is
    green.
 3. **The tag**: `vX.Y.Z` on the merge commit on `main`, and the GitHub
-   release, with notes in the style of the previous release.
-4. **Back into `dev`**: a pull request into `dev` from a new branch cut
+   release, with notes in the style of the previous release. State the download
+   limits: macOS binaries are signed ad hoc but not notarized (allow the first
+   launch in System Settings, or remove `com.apple.quarantine` with `xattr`);
+   Windows binaries aren't code-signed, so SmartScreen may warn; Linux musl
+   binaries are static for x64 and ARM64, with no 32-bit ARM build.
+4. **The assets**: wait for `.github/workflows/release.yml` ("Release binaries")
+   to pass. Check that the published release has all six `ferro-<version>-<platform>`
+   archives (Linux/macOS `.tar.gz`, Windows `.zip`) and `SHA256SUMS`, listing
+   every archive. Each archive must contain only `ferro` (`ferro.exe` on Windows),
+   `LICENSE` and `THIRD-PARTY-NOTICES.txt`. Every runner must pass its workspace
+   and standalone conformance tests; never publish a platform whose checks fail.
+   If the Windows ARM64 preview runner proves unreliable, report that to the
+   owner for a decision on dropping that platform.
+   To backfill an existing release, run this workflow from `dev` with its
+   published `tag` (for example `v0.1.1`) and `dry_run: false`. With `dry_run: true`
+   it saves the archives and checksums as workflow artifacts, without uploading
+   release assets. Test workflow changes on the branch before merging and link
+   the green dry run in the PR; PRs changing the release workflow run it in dry
+   mode automatically.
+5. **Back into `dev`**: a pull request into `dev` from a new branch cut
    from `origin/main`, which also bumps the version to the next `-dev`.
 
 Merging, tagging and publishing are the owner's to do or to ask for.

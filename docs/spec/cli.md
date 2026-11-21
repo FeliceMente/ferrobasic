@@ -8,6 +8,11 @@ The first deliverable has two parts:
    native executable for the same OS and architecture as the `ferro` that built it.
    The result runs without FerroBASIC installed and without a JVM.
 
+Prebuilt `ferro` downloads, checksums and first-launch instructions are in
+the [README's Install section](../../README.md#install). Each release archive
+contains only `ferro` (`ferro.exe` on Windows), `LICENSE` and
+`THIRD-PARTY-NOTICES.txt`; the development tools are not distributed.
+
 Both use the interpreter, the semantic reference. Native code generation stays
 in M4 ([../roadmap.md](../roadmap.md)). A standalone binary is the `ferro`
 runtime plus the embedded program, the same approach as `deno compile`.
