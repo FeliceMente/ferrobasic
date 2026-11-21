@@ -401,6 +401,16 @@ variable's name (forum:
   the same sender filter or none, replaces it: the earlier one is never
   resumed (docs: Language §4.7.2; source: [`Common.WaitFor`](#jcore-references)).
   Waits with a sender filter are checked before those without (source).
+- Mixing the two kinds for one event in one module is *(open)* (Q34). In
+  the source, a `Wait For (sender) E` registered while an unfiltered
+  `Wait For E` already waits, with no matching filtered wait before it,
+  compares the sender with the unfiltered entry's missing filter and raises
+  `NullPointerException`; the other order, the filtered wait first,
+  registers both (source: `Common.WaitFor` reads `wfe.senderFilter.get()`
+  on an entry whose `senderFilter` is null; reproduced in review by
+  calling this jCore commit directly). Until it is recorded, FerroBASIC
+  follows the source in both orders, the `NullPointerException` included,
+  so it accepts nothing the source fails on.
 - "Wait For events handlers precede the regular event handlers" (docs:
   Language §4.7.10): when a waiting Sub takes an event, the event's own Sub
   is not called (source: `raiseEvent2` returns after
@@ -461,8 +471,14 @@ variable's name (forum:
   (forum: [B4J tutorial for B4A developers](https://www.b4x.com/android/forum/threads/b4j-tutorial-for-basic4android-developers.34659/#post-203112)).
 - `Component` is an instance, a module, or `Me` (docs: Language §4.2,
   §4.16.1.2). On a class instance, a missing Sub raises
-  `Sub <name> was not found.`; on anything else it returns `Null` (source:
-  `CallSub4` asks for the error only for a class). On an uninitialised
+  `Sub <name> was not found.`; on a module's context it returns `Null`
+  (source: `CallSub4` asks for the error only for a class). Any other
+  non-null `Component` (an `Object` that is not an instance, a `List`, a
+  `String` that names no module) goes to `getComponentBA`, which casts it to
+  `String` and looks up a module of that name, so it raises
+  (`ClassCastException`, or a `ClassNotFoundException`, wrapped in a
+  `RuntimeException`) rather than returning `Null` (source); what B4J
+  prints is *(open)* (Q35). On an uninitialised
   instance it calls nothing and returns `Null`, and `Null` or `""` as
   `Component` means the calling module (source:
   [`Common.getComponentBA`](#jcore-references)). What the compiler passes
@@ -490,9 +506,14 @@ variable's name (forum:
 - `SubExists(Object, Sub)` "tests whether the object includes the
   specified method. Returns false if the object was not initialized or not
   an instance of a user class" (docs: jCore Javadoc and Language §4.2). It is
-  case-insensitive and `False` for `Null` (source:
-  [`Common.SubExists`](#jcore-references)). On a module name it is
-  *(open)* (Q30).
+  case-insensitive, `False` for `Null` and for an uninitialised instance
+  (source: [`Common.SubExists`](#jcore-references)). The documentation and
+  the source disagree on objects that are not instances: `SubExists` passes
+  every non-null object to `getComponentBA`, which casts it to `String`, so
+  `SubExists(o, "F")` on a plain `Object` raises `ClassCastException`
+  (source; reproduced in review by calling this jCore commit directly)
+  where the Javadoc says `False`. It is *(open)* (Q35), and so is a module
+  name (Q30).
 
 ## What FerroBASIC refuses meanwhile
 
@@ -647,6 +668,25 @@ terminates.
     `CallSubDelayed(p, "Hello")` with `p` not initialised, `Catch`,
     `Log(LastException.Message.Contains("NullPointerException"))`: what is
     printed?
+
+### Found in review
+
+34. **Mixed sender filters.** `x` is an instance of a class whose Sub
+    `Fire` calls `CallSub2(Caller, "E", 1)` on the module that passed itself
+    as `Caller`. In Main, before `StartMessageLoop`: Sub `A` runs
+    `Wait For E (V As Int)` and logs `A`; Sub `B` runs
+    `Wait For (x) E (V As Int)` and logs `B`; `AppStart` calls `A`, then
+    `B` inside `Try`/`Catch` logging
+    `LastException.Message.Contains("NullPointerException")`, then
+    `CallSubDelayed(x, "Fire")` and `CallSubDelayed2(Me, "E", 2)`, then
+    stops the loop. A second probe calls `B` before `A`. Which call raises,
+    and which waits resume, in what order?
+35. **CallSub and SubExists on objects that are not instances.**
+    `Dim o As Object`, then, each inside `Try`/`Catch`:
+    `Log(SubExists(o, "F"))`, `CallSub(o, "F")`, the same on a `List` and on
+    the `String` `"nomodule"`, logging `true`/`false` from the `Catch` for
+    `ClassCastException` and for `ClassNotFoundException`: does each print
+    `false`, return `Null`, or raise, and which?
 
 ## jCore references
 

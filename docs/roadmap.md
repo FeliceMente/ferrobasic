@@ -193,11 +193,11 @@ every refusal of something still open is a "not known yet" diagnostic.
     the same lowering;
   - `Sleep`; `Wait For` with and without a sender filter, replacing an
     earlier wait, taking precedence over the event's Sub, binding the
-    event's parameters (Q29);
+    event's parameters (Q29), mixing filtered and unfiltered waits (Q34);
   - `ResumableSub`, `Wait For (rs) Complete (R As T)`, `Completed`
     (Q26); errors after a pause and `Try` around a pause (Q27, Q28);
   - `CallSub`, `CallSub2`, `CallSub3`, `CallSubDelayed`,
-    `CallSubDelayed2`, `CallSubDelayed3`, `SubExists` (Q30–Q33).
+    `CallSubDelayed2`, `CallSubDelayed3`, `SubExists` (Q30–Q33, Q35).
 - [ ] **Level 1 library members**, after C's research and recordings, in
       any order with the items above (`DateTime` needs nothing else;
       `Regex` neither): the members listed under task C, with tests.
