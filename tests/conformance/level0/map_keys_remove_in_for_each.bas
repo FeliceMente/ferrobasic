@@ -5,7 +5,7 @@ Sub AppStart (Args() As String)
     ' What happens when For Each over Map.Keys removes an unseen key?
     ' One seen= line per item: a,b,c for a snapshot; a,c for a live view; complete if
     ' iteration ends. A caught error prints kind tests (cme/nse/npe/bounds); size=2 afterwards
-    ' if mutation ran. b=2 after add; b=null after remove.
+    ' if mutation ran. b=null after removing the key.
     ' See docs/open-questions.md.
     ' FerroBASIC meanwhile prints, one line per item below:
     '   seen=a

@@ -1,6 +1,10 @@
 Sub Process_Globals
     ' Does an untyped For Each in Process_Globals build after an assignment to its
     ' otherwise undeclared name?
+    ' A refusal may be an implicit String/Object declaration conflict: assigning u
+    ' may declare a String before the untyped loop declares an Object, as in the
+    ' recorded local case for_each_untyped_assigned_before. Read the recorded
+    ' diagnostic before attributing a refusal to an assign-before restriction.
     ' Build refusal, or seen=5, seen=6, after=6 if the loop declares a shared module Object;
     ' after=9 means AppStart sees the earlier assignment instead of the loop's last item.
     ' A different after= value identifies the value AppStart sees.

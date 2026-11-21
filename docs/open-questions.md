@@ -11,6 +11,14 @@ Answers from public sources (runtime source code, official docs, forum) are in
 "answered" there is still unconfirmed until a recording agrees with it; the
 related tests stay `pending-recording`.
 
+The pending Null-comparison, undeclared-read and keyword-name probes inherit
+FerroBASIC's existing firm diagnostics (`cannot compare ... with Null`,
+undeclared-name errors and syntax errors). These do not yet follow the
+[new-probe skill's](../.claude/skills/new-probe/SKILL.md#the-metatoml)
+"not known yet" diagnostic convention. They describe the current implementation;
+they do not establish B4J's answer. This probe-only change preserves those
+diagnostics and acceptance while awaiting the recording.
+
 - [x] An operand of `&` that holds an arithmetic operator (`+`, `-`, `*`,
       `/`, `Mod`) or a negation outside parentheses is a syntax error, on
       either side and at any depth (`"x" & 1 + 2`, `1 + 2 & "x"`,
@@ -38,12 +46,18 @@ related tests stay `pending-recording`.
       `level0/smart_literal_open_dollars`, `level0/smart_literal_close_dollars`
       (`$$`), and `level0/smart_literal_open_concat`,
       `level0/smart_literal_close_concat` (`&` inside a placeholder).
-      Escaping would print `L${5}R` or `L"$R`; a refusal or the retained
-      escape/interpolated value distinguishes the other answers. FerroBASIC
-      meanwhile accepts the backslash and `$$` opening candidates, printing
+      Opening candidates print `L${5}R` if escaping works; a refusal or the
+      retained escape/interpolated value distinguishes the other answers.
+      The three closing escape candidates print `L"$R` if escaping works,
+      or fail to build:
+      without an escape, the first `"$` ends the string and leaves invalid
+      trailing code. FerroBASIC meanwhile accepts the backslash and `$$`
+      opening candidates, printing
       `L\5R` and `L$5R`, and both concatenation candidates, printing the
       literal delimiters; it refuses the other four. Acceptance stays as it is
-      pending the next recording, following #127 and #137.
+      pending the next recording, following
+      [#127](https://github.com/FeliceMente/ferrobasic/pull/127) and
+      [#137](https://github.com/FeliceMente/ferrobasic/pull/137).
 - [x] `:` separates statements like a line break, also after a single-line `If`
       ([docs](research/level0-semantics.md#statements)).
 - [x] `/` between two integers returns a Double
@@ -81,10 +95,13 @@ related tests stay `pending-recording`.
       `level0/keyword_name_return`, `level0/keyword_name_public`,
       `level0/keyword_name_private`, `level0/keyword_name_else`,
       `level0/keyword_name_end`, `level0/keyword_name_exit`,
-      `level0/keyword_name_continue`. These are plausible domain names
-      (a case, next item, selection, return value, visibility flags,
-      fallback, end position, exit or continuation); the PR explains the
-      selection. Each prints `5` if accepted, or fails to build independently.
+      `level0/keyword_name_continue`. The sample targets useful application
+      names: `Case` for a case record, `Next` for a following item, `Select`
+      for a selection, `Return` for a financial return or result,
+      `Public`/`Private` for visibility flags, `Else` for a fallback,
+      `End` for an end position or time, and `Exit`/`Continue` for routing
+      or continuation flags. Each prints `5` if accepted, or fails to build
+      independently.
       FerroBASIC meanwhile refuses all ten; other names and positions remain open.
 - [x] A counted loop cannot use `Each`, with an explicit type or after
       `Dim Each As Int`. B4J reports a syntax error at `=` in
@@ -557,6 +574,11 @@ evidence, while unchecked parts remain open:
       `after=6` for a shared variable. `after=9` would show that AppStart sees
       the earlier assignment instead of the loop's last item. FerroBASIC
       meanwhile refuses both.
+      The assignment may first declare a String, conflicting with the
+      untyped loop's Object declaration; a recording's refusal diagnostic
+      distinguishes that cause from an assign-before restriction. The
+      corresponding local case is already recorded as a declaration conflict
+      (`level0/for_each_untyped_assigned_before`).
 - [x] In `Process_Globals`, a module variable read or assigned before its
       `Dim … As Object` there builds, one variable, and the read gives
       `Null` (recording run 19:
