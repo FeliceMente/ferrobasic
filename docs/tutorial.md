@@ -432,7 +432,9 @@ can copy it to another machine with the same OS and architecture.
   Copyright (c) 2026 Marco Iannaccone
   ```
 
-- On Linux it depends only on the system C library.
+- On Linux it depends only on the system C library. On Windows it needs
+  only Windows' own DLLs: the C runtime is linked in, so the Visual C++
+  Redistributable is not needed.
 - For a fully static Linux binary, build `ferro` for musl first:
 
   ```sh

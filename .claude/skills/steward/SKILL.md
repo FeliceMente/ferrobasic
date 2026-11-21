@@ -133,7 +133,8 @@ The sequence is in `AGENTS.md`, "Branches and releases". In practice:
    release, with notes in the style of the previous release. State the download
    limits: macOS binaries are signed ad hoc but not notarized (allow the first
    launch in System Settings, or remove `com.apple.quarantine` with `xattr`);
-   Windows binaries aren't code-signed, so SmartScreen may warn; Linux musl
+   Windows binaries aren't code-signed, so SmartScreen may warn, and need no
+   Visual C++ Redistributable (the C runtime is linked in); Linux musl
    binaries are static for x64 and ARM64, with no 32-bit ARM build.
 4. **The assets**: wait for `.github/workflows/release.yml` ("Release binaries")
    to pass. Check that the published release has all six `ferro-<version>-<platform>`

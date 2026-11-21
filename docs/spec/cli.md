@@ -437,7 +437,10 @@ is embedded with `libsui` instead (see below).
   On Linux that is the system C library (glibc), unless `ferro` was built for
   `*-linux-musl`, which makes the output fully static (verified with
   `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, including a
-  bundled program run on each architecture). On Windows it needs no extra DLLs.
+  bundled program run on each architecture). On Windows (MSVC) the C runtime
+  is linked statically (`.cargo/config.toml`), so the output needs only
+  Windows' own DLLs, not the Visual C++ Redistributable; `release.yml`
+  checks this with `dumpbin /dependents` on `ferro.exe` and a bundled program.
 - Building for another OS or architecture is out of scope here (see M4 and the
   `zig cc` / `cargo-zigbuild` question).
 
