@@ -3,12 +3,15 @@ End Sub
 
 Sub AppStart (Args() As String)
     ' Does b = Null build, compare, or raise a conversion error?
-    ' Build refusal, or value=true/false for a comparison result. A caught conversion error
-    ' prints nfe=true for NumberFormatException, npe=true for NullPointerException, cce=true
-    ' for ClassCastException, or runtime=true for RuntimeException; other kind tests are
-    ' false.
-    ' See docs/open-questions.md.
-    ' FerroBASIC meanwhile refuses this program.
+    ' Recording run 24: it builds, and when it runs it raises
+    ' a RuntimeException (BA.ObjectToBoolean parses "null").
+    ' FerroBASIC prints the same.
+    ' See docs/spec/level0.md, comparisons.
+    ' Expected output, one line per item below:
+    '   nfe=false
+    '   npe=false
+    '   cce=false
+    '   runtime=true
     Dim b As Boolean = False
     Try
         Log("value=" & (b = Null))
