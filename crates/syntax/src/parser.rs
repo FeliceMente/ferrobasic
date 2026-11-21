@@ -214,6 +214,13 @@ const MAX_NESTING: u32 = 1000;
 /// untyped (run 22) or typed (run 23), it reports reading `Each` in the
 /// body as undeclared, and after `Dim Each` it reports a syntax error at
 /// `=` (run 23). FerroBASIC refuses all three with syntax errors.
+/// No other keyword is a name: B4J refuses `Step`, `To`, `Type` and
+/// `Until` (`keyword_name_step` and the others), and `Case`, `Continue`,
+/// `Else`, `End`, `Exit`, `Next`, `Private`, `Public`, `Return` and
+/// `Select` (run 24: `keyword_name_case` and the others) as local
+/// variables. Seven of those B4J refuses only where the program reads
+/// them; whether a `Dim` alone of them builds is open
+/// (`keyword_name_*_dim_only`), and refused meanwhile.
 const CONTEXTUAL_KEYWORDS: &[SyntaxKind] = &[IN_KW, EACH_KW];
 
 fn is_name_token(kind: SyntaxKind) -> bool {

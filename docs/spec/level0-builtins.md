@@ -127,7 +127,7 @@ case-sensitive, and boxes of different numeric types are different keys.
 | `Get(Key) As Object` | `Null` if missing |
 | `GetDefault(Key, Default) As Object` | `Default` if missing or `Null` |
 | `Remove(Key) As Object`, `ContainsKey(Key) As Boolean`, `Clear`, `Size As Int` | |
-| `Keys`, `Values` | for `For Each`; a snapshot iterator is *(open)* |
+| `Keys`, `Values` | for `For Each`, live views of the map: setting an existing key's value during the loop completes, and `Values` shows the new value (recording run 24: `map_keys_set_in_for_each`, `map_values_set_in_for_each`). B4J raises `java.util.ConcurrentModificationException` at the next item after a key is added or removed during the loop (recording run 24: `map_keys_add_in_for_each` and three more); FerroBASIC does not raise it yet, and those four tests stay pending until it does ([open questions](../open-questions.md)) |
 | `GetKeyAt(Index)`, `GetValueAt(Index)` | deprecated but supported; positional, in insertion order. Past the end: `NoSuchElementException`; the cached position behind them shows through on bad indices ([research](../research/level0-semantics.md#map-source)) |
 
 ## Printing collections

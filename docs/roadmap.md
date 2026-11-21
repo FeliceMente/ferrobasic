@@ -88,11 +88,12 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       checking open buffers as the user types. [Setup and limits](language-server.md).
       Multi-module linking remains Level 1; it is not supplied by the server.
 - [x] Conformance gate: the conformance tests pass in the interpreter and as standalone
-      binaries. [Recording run 23](research/recording-run-23.md) (2026-11-16)
-      brings the recorded corpus to 306 tests. With 39 new Level 0 probes
-      awaiting the next recording, both targets now report 345 tests:
-      300 passing, 6 documented deviations, 39 pending, no failures or
-      provisional passes.
+      binaries. [Recording run 24](research/recording-run-24.md) (2026-11-21)
+      records the 39 Level 0 probes of
+      [#148](https://github.com/FeliceMente/ferrobasic/pull/148). Both
+      targets now report 353 tests: 325 passing, 6 documented deviations,
+      22 pending, no failures or provisional passes. 14 pending tests are
+      recorded and wait for the changes that pass them; 8 are new probes.
 
 The conformance gate and the M1 tooling items above are implemented.
 REPL history and line editing are implemented with bounded in-memory multiline
@@ -151,9 +152,10 @@ every refusal of something still open is a "not known yet" diagnostic.
       library questions.
 - [ ] **Recording run 25** on the owner's Windows machine (B4J 10.70), with
       the recorder of task B: the batch above and task C's probes,
-      imported as the steward skill says ("Recording runs"). Run 24 comes
-      first, with today's recorder: it records the 39 Level 0 probes of
-      [#148](https://github.com/FeliceMente/ferrobasic/pull/148). The spec draft's *(open)* rules then
+      imported as the steward skill says ("Recording runs"). Run 24 came
+      first, with today's recorder: it recorded the 39 Level 0 probes of
+      [#148](https://github.com/FeliceMente/ferrobasic/pull/148)
+      ([report](research/recording-run-24.md)). The spec draft's *(open)* rules then
       become recorded ones or refusals, and `spec/level1.md` stops being a
       draft for what the run settles. Later batches and runs follow each
       item below, as Level 0's did.

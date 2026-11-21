@@ -7,6 +7,22 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 ## Unreleased
 
+### Recorded from B4J
+
+- Recording run 24 is imported (#146, task 2): 353 conformance tests,
+  325 passing in the interpreter and as standalone binaries, 6 deviations,
+  22 pending. It settles 25 of #148's 39 probes: there is no escape for a
+  literal `${` or `"$` in a smart string, a read of a name nothing declares
+  or assigns is refused, ten more keywords (`Case`, `Continue`, `Else`,
+  `End`, `Exit`, `Next`, `Private`, `Public`, `Return`, `Select`) cannot
+  be local variable names, and setting a Map value during `For Each` over
+  it completes. The other 14 recordings come with the changes that pass
+  them; 8 new probes wait for the next run.
+- Reading a name nothing declares or assigns is reported with B4J's
+  words: "undeclared variable `Cuont` is used before it was assigned any
+  value", instead of "`Cuont` is not declared". A call to an unknown name
+  keeps "is not declared".
+
 ### Project
 
 - Releases attach prebuilt `ferro` archives for Linux, Windows and macOS,

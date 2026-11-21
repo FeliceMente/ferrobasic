@@ -107,14 +107,15 @@ file: its expected stdout, derived by hand from the sources in
 
 ### Current recording status
 
-[Run 23](research/recording-run-23.md) (2026-11-16) recorded the existing
-306 tests. With 39 new Level 0 probes awaiting the owner's next Windows
-recording run, both conformance targets report **345 tests, 300 passing,
-6 documented deviations, 0 failures, 39 pending and 0 passes against
-provisional output**. Passes include negative
-tests rejected as expected. The run confirmed two refusals: `Each` cannot be
-a counted-loop variable, predeclared or typed. It also recorded the
-final-sigma probe: `ToLowerCase` follows Java's word boundaries. No
+[Run 24](research/recording-run-24.md) (2026-11-21) recorded 123 tests:
+the 78 negative and 6 deviation tests, and 39 Level 0 probes. Both
+conformance targets report **353 tests, 325 passing, 6 documented
+deviations, 0 failures, 22 pending and 0 passes against provisional
+output**. Passes include negative tests rejected as expected. Of the 39
+probes, 19 were refused and are negative tests, and 6 recordings pass;
+the other 14 recordings wait, pending, for the FerroBASIC changes that pass
+them (Map iteration, Null comparisons, a `Process_Globals` read). The 8
+other pending tests are new probes for the next run. No
 `.provisional` files remain. The conformance gate is
 satisfied, and the first M1 [Language Server diagnostics](language-server.md)
 are implemented
