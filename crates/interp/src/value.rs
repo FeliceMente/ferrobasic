@@ -381,8 +381,11 @@ pub enum Value {
     Exc(Option<Rc<Exc>>),
     Array(Rc<ArrayObj>),
     Record(Rc<RecordObj>),
-    /// `Map.Keys` (`true`) or `Map.Values`.
-    View(MapRef, bool),
+    /// `Map.Keys` (`true`) or `Map.Values`, with the map's modification
+    /// count when it was taken ([`OrderedMap::mod_count`]): a `For Each`
+    /// over it raises `ConcurrentModificationException` at its next item
+    /// once a key was added or removed.
+    View(MapRef, bool, u32),
     /// A plain `java.lang.Object`, which `Dim o As Object` creates: it has
     /// only an identity.
     Plain(Rc<()>),
@@ -480,6 +483,10 @@ pub struct OrderedMap {
     kept: Vec<(usize, HKey)>,
     live: usize,
     cursor: Cursor,
+    /// Java's `modCount`: how many times a key was added or removed, or the
+    /// map cleared. Replacing a value does not count (recording run 24:
+    /// `map_keys_set_in_for_each`).
+    mod_count: u32,
 }
 
 /// Where [`OrderedMap::find`] found an entry: its slot in `entries`, and
@@ -525,6 +532,10 @@ enum Current {
 impl OrderedMap {
     pub fn len(&self) -> usize {
         self.live
+    }
+
+    pub fn mod_count(&self) -> u32 {
+        self.mod_count
     }
 
     /// Where the entry for `key`, whose key is `h`, is: in `stale` (at this
@@ -589,6 +600,7 @@ impl OrderedMap {
         self.index.insert(h, self.entries.len());
         self.entries.push(Some((key, value)));
         self.live += 1;
+        self.mod_count = self.mod_count.wrapping_add(1);
         Ok(None)
     }
 
@@ -613,6 +625,7 @@ impl OrderedMap {
             self.cursor.current = Some(Current::Removed(k, v.clone()));
         }
         self.live -= 1;
+        self.mod_count = self.mod_count.wrapping_add(1);
         if self.live == 0 {
             self.entries.clear();
             self.kept.clear();
@@ -626,6 +639,8 @@ impl OrderedMap {
 
     pub fn clear(&mut self) {
         self.cursor.next = None;
+        // Java counts a `clear` even of an empty map.
+        self.mod_count = self.mod_count.wrapping_add(1);
         if let Some(Current::Slot(i)) = self.cursor.current
             && let Some((k, v)) = self.entries[i].take()
         {
@@ -863,7 +878,7 @@ fn take_values(v: &mut Value, work: &mut Vec<Value>) {
                 map.get_mut().take_values(work);
             }
         }
-        Value::View(map, _) => {
+        Value::View(map, ..) => {
             if let Some(map) = Rc::get_mut(map) {
                 map.get_mut().take_values(work);
             }
@@ -1035,7 +1050,7 @@ impl HKey {
             Value::Array(a) => HKey::Ref(ptr(a)),
             Value::Plain(p) => HKey::Ref(ptr(p)),
             Value::Record(r) => HKey::Ref(ptr(r)),
-            Value::View(m, keys) => HKey::Ref(ptr(m) + *keys as usize),
+            Value::View(m, keys, _) => HKey::Ref(ptr(m) + *keys as usize),
         }
     }
 }
@@ -1178,8 +1193,8 @@ pub fn java_class_name(v: &Value, program: &Program) -> Option<String> {
                 .get(r.id.0 as usize)
                 .map_or(String::new(), |rec| rec.name.to_lowercase())
         ),
-        Value::View(_, true) => "java.util.LinkedHashMap$LinkedKeySet".into(),
-        Value::View(_, false) => "java.util.LinkedHashMap$LinkedValues".into(),
+        Value::View(_, true, _) => "java.util.LinkedHashMap$LinkedKeySet".into(),
+        Value::View(_, false, _) => "java.util.LinkedHashMap$LinkedValues".into(),
     })
 }
 
@@ -1451,7 +1466,7 @@ impl<'p, 'o> Printer<'p, 'o> {
                 self.put(&format!("java.lang.Object@{:x}", identity_hash(ptr(p))))?;
             }
             Value::Record(r) => self.record(r)?,
-            Value::View(m, keys) => {
+            Value::View(m, keys, _) => {
                 let items = m
                     .borrow()
                     .snapshot(|(k, v)| if *keys { k.clone() } else { v.clone() })?;
@@ -1578,6 +1593,29 @@ mod tests {
             Some(Value::Int(i)) => Some(*i),
             _ => None,
         }
+    }
+
+    /// The modification count follows Java's `modCount`: adding or removing
+    /// a key and `Clear` (even of an empty map) count; replacing a value,
+    /// removing a missing key and positional reads do not.
+    #[test]
+    fn map_mod_count() {
+        let mut m = OrderedMap::default();
+        let n = |m: &OrderedMap| m.mod_count();
+        m.put(Value::str("a"), Value::Int(1)).unwrap();
+        m.put(Value::str("b"), Value::Int(2)).unwrap();
+        assert_eq!(n(&m), 2);
+        m.put(Value::str("a"), Value::Int(10)).unwrap();
+        assert_eq!(n(&m), 2);
+        m.remove(&Value::str("zz")).unwrap();
+        m.positional(1).unwrap();
+        m.entry_at(0);
+        assert_eq!(n(&m), 2);
+        m.remove(&Value::str("a")).unwrap();
+        assert_eq!(n(&m), 3);
+        m.clear();
+        m.clear();
+        assert_eq!(n(&m), 5);
     }
 
     /// Lists are keyed by their contents; one changed after it was put is

@@ -22,6 +22,10 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   words: "undeclared variable `Cuont` is used before it was assigned any
   value", instead of "`Cuont` is not declared". A call to an unknown name
   keeps "is not declared".
+- Adding or removing a key of a Map, or clearing it, while a `For Each`
+  iterates its `Keys` or `Values` raises `ConcurrentModificationException`
+  at the next item, as in B4J (recording run 24, four of the 14
+  recordings above). Replacing a value does not.
 
 ### Project
 
