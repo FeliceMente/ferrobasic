@@ -1,0 +1,6 @@
+# Link the C runtime statically on Windows (MSVC), so `ferro.exe`, and every
+# program `ferro bundle` writes from it, runs without the Visual C++
+# Redistributable (VCRUNTIME140.dll). `.github/workflows/release.yml` sets the
+# same flag, for tags built before this file existed, and checks the result.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -97,6 +97,10 @@ jobs:
       VERSION: ${{ needs.source.outputs.version }}
       PLATFORM: ${{ matrix.platform }}
       TARGET: ${{ matrix.target }}
+      # Link the C runtime statically on Windows, as .cargo/config.toml does,
+      # also for tags built before that file existed. Other targets ignore it.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+      CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -161,6 +165,33 @@ jobs:
           if ($actual -cne "ferro $env:VERSION ($env:PLATFORM)") { throw "Unexpected version/platform" }
           cargo run --locked -p ferro-difftest -- --target standalone --ferro $binary
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify static Windows runtime and bundle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Neither ferro.exe nor a program it bundles may need the Visual C++
+          # Redistributable: the hosted runners have it, users may not.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\**\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { throw "dumpbin.exe not found" }
+          $binary = Join-Path $PWD "target/$env:TARGET/release/ferro.exe"
+          $work = Join-Path $env:RUNNER_TEMP 'static-bundle'
+          New-Item -ItemType Directory -Force $work | Out-Null
+          $bundled = Join-Path $work 'prices_map.exe'
+          & $binary bundle tests/conformance/level0/prices_map.bas -o $bundled
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($executable in $binary, $bundled) {
+            $dependents = & $dumpbin /nologo /dependents $executable
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $dependents | Write-Output
+            if ($dependents | Select-String -Pattern 'vcruntime|msvcp|api-ms-win-crt-') {
+              throw "$executable depends on the Visual C++ runtime"
+            }
+          }
+          $actual = & $bundled
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $expected = Get-Content tests/conformance/level0/prices_map.expected
+          if (($actual -join "`n") -cne ($expected -join "`n")) { throw "Bundled prices_map output differs from its recording" }
       - name: Package Unix archive
         if: runner.os != 'Windows'
         shell: bash
