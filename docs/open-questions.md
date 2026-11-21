@@ -13,11 +13,11 @@ related tests stay `pending-recording`.
 
 Some pending probes inherit FerroBASIC's existing firm diagnostics instead of
 the [new-probe skill's](../.claude/skills/new-probe/SKILL.md#the-metatoml)
-"not known yet" convention: the Null comparisons (`cannot compare ... with
-Null`) and the read before an untyped `For Each` in `Process_Globals`, which
-recording run 24 settles and whose recordings are imported with the changes
-that implement them, and the keyword declarations and the `Process_Globals`
-assignment that run 24 raised (syntax errors, undeclared-name errors). These
+"not known yet" convention: the read before an untyped `For Each` in
+`Process_Globals`, which recording run 24 settles and whose recording is
+imported with the change that implements it, and the keyword declarations
+and the `Process_Globals` assignment that run 24 raised (syntax errors,
+undeclared-name errors). These
 diagnostics describe the current implementation; they do not establish B4J's
 answer.
 
@@ -202,9 +202,9 @@ answer.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently 20 pending tests and no provisional corpus results.
-Recording run 24 recorded 10 of them, which wait for the FerroBASIC changes
-that pass them; the other 10 are probes for the owner's next Windows
+There are currently 11 pending tests and no provisional corpus results.
+Recording run 24 recorded one of them, which waits for the FerroBASIC change
+that passes it; the other 10 are probes for the owner's next Windows
 recording run.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:
@@ -333,24 +333,28 @@ evidence, while unchecked parts remain open:
 - [x] `<` / `>` on Booleans is a compile error: "Cannot cast type:
       {Type=Boolean,…} to: number." (recording: `level0/boolean_less`). On
       objects it is still open.
-- [ ] `Null` compared with a Boolean or a Char, with `<`, or written on
-      the left of a number (`Null = n`). Recording run 24 shows that all
-      nine pending probes build and fail when they run:
-      `level0/boolean_eq_null` with a `RuntimeException`;
-      `level0/null_eq_boolean`, `level0/char_eq_null`, `level0/null_eq_char`
-      and `level0/null_eq_number` with a `NullPointerException`;
+- [x] `Null` compared with a Boolean or a Char, with `<`, or written on
+      the left of a number (`Null = n`) builds, and fails when it runs
+      (recording run 24): `level0/boolean_eq_null` with a
+      `RuntimeException` (`BA.ObjectToBoolean` parses `"null"`: "Cannot
+      parse: null as boolean"); `level0/null_eq_boolean`,
+      `level0/char_eq_null`, `level0/null_eq_char` and
+      `level0/null_eq_number` with a `NullPointerException`;
       `level0/number_less_null`, `level0/null_less_number`,
       `level0/string_less_null` and `level0/null_less_string` with a
-      `NumberFormatException`. They stay pending until FerroBASIC builds
-      them: it meanwhile refuses all nine ("cannot compare ... with Null").
-      The messages of the `RuntimeException` and the
-      `NullPointerException`s are not recorded. An `Int` `=`
-      `Null` builds and raises `NumberFormatException` when it runs, as
-      `BA.ObjectToNumber` parses `"null"` (recording:
+      `NumberFormatException`. FerroBASIC does the same; its
+      `NullPointerException`s have no message, as all of its own do. An
+      `Int` `=` `Null` builds and raises `NumberFormatException` when it
+      runs, as `BA.ObjectToNumber` parses `"null"` (recording:
       `level0/null_number_compare`), and so do a `Double` and a `Long`
       (recordings: `level0/double_eq_null`, `level0/long_eq_null`), and a
       `Float`, a `Short` and a `Byte` (recording:
       `level0/number_types_eq_null`).
+- [ ] The neighbours of those shapes that no recording shows: `<>` with
+      `Null` next to a Boolean or a Char, `Null` on the left of another
+      number type, and `>`, `<=`, `>=` with `Null`, or `<` next to another
+      number type. FerroBASIC refuses them: "`Null` compared with Int with
+      `>`: whether this builds is not known yet".
 - [x] A real literal may start with its decimal point (`.08`), also with
       an exponent (`.5e2`) (recordings: `level0/real_leading_point`,
       `level0/real_leading_point_exponent`; `MteBuildLib.b4j` in the
