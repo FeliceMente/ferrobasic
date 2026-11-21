@@ -3,17 +3,17 @@ End Sub
 
 Sub AppStart (Args() As String)
     ' What happens when For Each over Map.Values removes an unseen key?
-    ' One seen= line per item: 1,2,3 for a snapshot; 1,3 for a live view; complete if
-    ' iteration ends. A caught error prints kind tests (cme/nse/npe/bounds); size=2 afterwards
-    ' if mutation ran. b=null after removing the key.
-    ' See docs/open-questions.md.
-    ' FerroBASIC meanwhile prints, one line per item below:
+    ' Recording run 24: B4J raises ConcurrentModificationException at the next
+    ' item. Adding or removing a key changes the map's modCount, which Java's
+    ' iterator checks; replacing a value does not (map_values_set_in_for_each).
+    ' FerroBASIC prints the same.
+    ' See docs/spec/level0-builtins.md, Map.
+    ' Expected output, one line per item below:
     '   seen=1
-    '   seen=3
-    '   cme=false
+    '   cme=true
     '   nse=false
     '   npe=false
-    '   bounds=true
+    '   bounds=false
     '   size=2
     '   b=null
     Dim m As Map = CreateMap("a": 1, "b": 2, "c": 3)
