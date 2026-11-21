@@ -36,6 +36,8 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - `docs/architecture.md` — components, IR, backends, tooling.
 - `docs/porting.md` — what "builds without changes" requires, layer by layer.
 - `docs/spec/level0.md` and `docs/spec/level0.ebnf` — the current language subset.
+- `docs/spec/level1.md` — draft spec of Levels 1 and 2 (modules, classes,
+  events, resumable subs) for M2, with each rule's source; not implemented.
 - `docs/spec/level0-builtins.md` — keywords and library members at Level 0.
 - `docs/language-server.md` — stdio protocol, editor setup, single-module limits.
 - `docs/spec/cli.md` — `ferro check/run/bundle/repl/lsp`, planned commands, exit codes, standalone binaries.
