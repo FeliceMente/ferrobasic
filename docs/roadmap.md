@@ -117,9 +117,10 @@ with conformance tests and its row in
 [language-support.md](language-support.md), as `AGENTS.md` requires, and
 every refusal of something still open is a "not known yet" diagnostic.
 
-- [ ] **The plan** (task A): this breakdown and the
+- [x] **The plan** (task A): this breakdown and the
       [Level 1 spec draft](spec/level1.md), with each rule's source and
-      the questions for probes.
+      the questions for probes. Merged in
+      [#149](https://github.com/FeliceMente/ferrobasic/pull/149).
 - [ ] **Test infrastructure for several modules** (task B). Today the
       recorder wraps one `.bas` in a project with `NumberOfModules=0`
       (`tools/recorder/src/project.rs`). Needed:
