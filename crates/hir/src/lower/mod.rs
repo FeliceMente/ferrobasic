@@ -93,6 +93,10 @@ struct Lowerer {
     /// How the current Sub declares each local name, in source order
     /// (`hoist_locals`).
     local_history: HashMap<String, LocalHistory>,
+    /// The names a body assigns or loops over, by the body's range,
+    /// collected once for the body's first unresolved read
+    /// (`assigned_or_looped`).
+    assigned_or_looped: Option<(TextRange, HashSet<String>)>,
     // State of the Sub being lowered.
     locals: Vec<Var>,
     local_names: HashMap<String, LocalId>,
