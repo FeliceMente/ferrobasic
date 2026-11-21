@@ -74,8 +74,10 @@ Level 1 spec are in.
   #146 task 1). Every platform must pass workspace and standalone
   conformance tests before its archive is published. macOS binaries are
   signed ad hoc but not notarized; Windows binaries are not code-signed,
-  so SmartScreen may warn; Linux binaries are static (musl) and run on any
-  distribution of their architecture, with no 32-bit ARM build.
+  so SmartScreen may warn, and link the C runtime statically, so they
+  need no Visual C++ Redistributable; Linux binaries are static (musl)
+  and run on any distribution of their architecture, with no 32-bit ARM
+  build.
 - The M2 plan: a task breakdown in `docs/roadmap.md`, and a draft spec of
   Levels 1 and 2 in `docs/spec/level1.md` (modules, classes, events and
   resumable subs, each rule with its source or marked open) (#149–#151).

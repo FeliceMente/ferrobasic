@@ -91,8 +91,9 @@ your `PATH`, and run `ferro version`. Keep the included `LICENSE` and
   needs a paid Apple Developer account. Allow the first launch in System
   Settings, or run `xattr -d com.apple.quarantine ferro` after extracting.
 - **Windows:** the binaries aren't code-signed, so SmartScreen may warn.
-  Select **More info**, then **Run anyway**. The Windows ARM64 build uses a
-  GitHub runner in public preview.
+  Select **More info**, then **Run anyway**. They link the C runtime
+  statically, so they don't need the Visual C++ Redistributable. The
+  Windows ARM64 build uses a GitHub runner in public preview.
 - **Linux:** the musl builds are static and run on any distribution of their
   architecture. 32-bit ARM isn't built.
 
@@ -129,9 +130,10 @@ ferro bundle prog.bas -o prog     # bundle into a standalone executable
 
 A standalone binary is `ferro` with the program embedded (appended on Linux
 and Windows, placed inside the executable on macOS): it needs neither
-FerroBASIC nor a JVM, only the system C library (or nothing at all when
-`ferro` is built for `x86_64-unknown-linux-musl` or
-`aarch64-unknown-linux-musl`, as in the release downloads).
+FerroBASIC nor a JVM, only the system C library on Linux (or nothing at
+all when `ferro` is built for `x86_64-unknown-linux-musl` or
+`aarch64-unknown-linux-musl`, as in the release downloads), and only
+Windows' own DLLs on Windows, where the C runtime is linked in.
 
 > **Note:** `ferro bundle` does not compile. The executable is the `ferro`
 > interpreter plus the program's checked source, which is parsed and interpreted at
