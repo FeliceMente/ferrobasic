@@ -201,7 +201,7 @@ answer.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently 11 pending probes and no provisional corpus results;
+There are currently 13 pending probes and no provisional corpus results;
 they await the owner's next Windows recording run after run 24.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:
@@ -586,6 +586,18 @@ evidence, while unchecked parts remain open:
       `level0/process_globals_for_each_untyped_named_like_type_read_before`
       prints `before=[null]`, then `6`, if the read sees the variable.
       FerroBASIC meanwhile refuses it ("`Point` is a type, not a value").
+- [ ] Whether an untyped `For Each` in `Process_Globals` over a built-in
+      type's name (`Long`, `Int`, `Map` and the others) declares a module
+      variable `Object`, as run 21 records over a `Type`'s name. Pending
+      probe `level0/process_globals_for_each_untyped_named_like_builtin_type`
+      prints `6` if so. FerroBASIC meanwhile builds it, as over a
+      `Type`'s name, and prints `6`; 0.1.1 did too.
+- [ ] The same loop after a read of the built-in type's name there.
+      Pending probe
+      `level0/process_globals_for_each_untyped_named_like_builtin_type_read_before`
+      prints `before=[null]`, then `6`, if the read sees the variable.
+      FerroBASIC meanwhile refuses it ("`Long` is a type, not a value"), as
+      it does for a `Type`'s name.
 - [ ] Whether an assignment in `Process_Globals` to a name nothing else
       declares declares a module `String` there, as it does in a Sub
       (`level0/undeclared_variable_type`). The refusal of

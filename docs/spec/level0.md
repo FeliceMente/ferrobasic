@@ -419,8 +419,8 @@ From lowest to highest precedence.
   nothing declares there, it declares a module variable `Object` that every
   Sub sees (recorded: `process_globals_for_each_untyped_undeclared`), and
   which a read before the loop already sees, as `Null` (recording run 24:
-  `process_globals_for_each_untyped_read_before`; with a `Type`'s name it is
-  *(open)*, so an error). An assignment before the loop declares a
+  `process_globals_for_each_untyped_read_before`; with a `Type`'s or a
+  built-in type's name it is *(open)*, so an error). An assignment before the loop declares a
   `String` there, which the loop's `Object` does not match (recording run
   24: `process_globals_for_each_untyped_assign_before`, refused); over a
   `Type`'s name it builds, declaring an Object variable while leaving the

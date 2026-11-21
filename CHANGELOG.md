@@ -31,7 +31,8 @@ Level 1 spec are in.
 - In `Process_Globals`, a read of a name before the untyped `For Each`
   that declares it builds, as in B4J, and gives `Null` (#155). An
   assignment before the loop is still refused, as B4J refuses it; a read
-  of a `Type`'s name before a loop over it is refused until it is recorded.
+  of a `Type`'s or a built-in type's name before a loop over it is
+  refused until it is recorded.
 
 ### Runtime, as in B4J
 
@@ -57,9 +58,9 @@ Level 1 spec are in.
   `Private`, `Public`, `Return`, `Select`) cannot be local variable names;
   and setting a Map value during `For Each` over it completes. The 19
   probes B4J refused are now negative tests.
-- 356 conformance tests: 339 pass against recordings in the interpreter
+- 358 conformance tests: 339 pass against recordings in the interpreter
   and as standalone binaries, 6 are documented deviations (D1, D3–D7),
-  11 are pending probes for the next recording run, and none are
+  13 are pending probes for the next recording run, and none are
   provisional.
 
 ### Testing and tools
