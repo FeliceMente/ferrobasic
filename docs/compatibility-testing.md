@@ -109,14 +109,11 @@ file: its expected stdout, derived by hand from the sources in
 
 [Run 24](research/recording-run-24.md) (2026-11-21) recorded 123 tests:
 the 78 negative and 6 deviation tests, and 39 Level 0 probes. Both
-conformance targets report **355 tests, 338 passing, 6 documented
+conformance targets report **356 tests, 339 passing, 6 documented
 deviations, 0 failures, 11 pending and 0 passes against provisional
 output**. Passes include negative tests rejected as expected. Of the 39
-probes, 19 were refused and are negative tests, and 19 recordings pass,
-the Map iteration and Null comparison ones included; the last recording
-waits, pending, for the FerroBASIC change that passes it (a
-`Process_Globals` read). The 10 other pending tests are new probes for the
-next run. No
+probes, 19 were refused and are negative tests, and all 20 recordings
+pass. The 11 pending tests are new probes for the next run. No
 `.provisional` files remain. The conformance gate is
 satisfied, and the first M1 [Language Server diagnostics](language-server.md)
 are implemented

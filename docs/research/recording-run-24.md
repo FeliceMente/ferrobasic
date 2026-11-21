@@ -1049,3 +1049,10 @@ Error occurred on line: 19 (Main)
   the exception messages was added: `b = Null`'s comes from
   `BA.ObjectToBoolean`'s source, and a `NullPointerException`'s is
   JDK-specific.
+- `process_globals_for_each_untyped_read_before` was imported with the
+  checker change that builds it: a read before the untyped loop no longer
+  keeps the loop from declaring its module `Object`; an assignment still
+  does. A read of a `Type`'s name before such a loop is not recorded and
+  stays refused: new probe
+  `process_globals_for_each_untyped_named_like_type_read_before`. With it,
+  every recording of run 24 is imported.

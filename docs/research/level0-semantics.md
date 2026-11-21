@@ -600,7 +600,8 @@ cast does and the forum reported (**recorded**: `double_to_int_assign`).
   `undeclared_read_initializer`, `undeclared_read_return`,
   `process_globals_undeclared_read`). In `Process_Globals`, by contrast, a
   read before the untyped loop that declares the name builds and gives
-  `Null` (**recorded**, run 24: `process_globals_for_each_untyped_read_before`),
+  `Null` (**recorded**, run 24: `process_globals_for_each_untyped_read_before`;
+  with a `Type`'s name it is open),
   while an assignment before it is refused ("Current declaration does not
   match previous one.", **recorded**, run 24:
   `process_globals_for_each_untyped_assign_before`). The real-world corpus's

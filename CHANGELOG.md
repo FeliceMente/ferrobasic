@@ -34,6 +34,9 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   the 14 recordings above). Their neighbours that no recording shows
   (`<>`, `>`, another number type) are refused as not known yet, instead
   of "cannot compare ... with Null".
+- In `Process_Globals`, a read of a name before the untyped `For Each`
+  that declares it builds, as in B4J, and gives `Null` (recording run 24,
+  the last of the 14 recordings above).
 
 ### Project
 
