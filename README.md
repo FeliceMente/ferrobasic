@@ -14,7 +14,7 @@ currently provides a reference interpreter, a stateful REPL and a diagnostics-on
 [language server](docs/language-server.md) for LSP-capable editors.
 
 > **Status: pre-alpha.** Milestones M0 and M1 are complete; M2 (classes and
-> events) is next. Level 0 programs (one module,
+> events) is under way. Level 0 programs (one module,
 > language core, `List`/`Map`) can be checked, run with the reference
 > interpreter and built into standalone executables for the host. A stateful
 > REPL supports interactive experiments. Start with the [tutorial](docs/tutorial.md),
@@ -154,6 +154,7 @@ sessions, `scripts/cloud-setup.sh` can be used as the environment setup script.
 - [Architecture](docs/architecture.md)
 - [Porting existing B4X projects](docs/porting.md)
 - [Language spec, Level 0](docs/spec/level0.md), [grammar](docs/spec/level0.ebnf) and [built-ins](docs/spec/level0-builtins.md)
+- [Language spec, Levels 1 and 2 (draft, M2)](docs/spec/level1.md)
 - [CLI, interpreter and standalone builds](docs/spec/cli.md) and [project files](docs/spec/project-files.md)
 - [Level 0 semantics from public sources](docs/research/level0-semantics.md)
 - [Compatibility testing](docs/compatibility-testing.md)

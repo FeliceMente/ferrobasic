@@ -382,9 +382,14 @@ From lowest to highest precedence.
 - **`For Each x [As T] In c`**: iterates arrays, `List`, `Map.Keys` and
   `Map.Values` in order (insertion order for a `Map`). A `List` that grows
   while it is iterated is iterated over the items it had when the loop
-  began (recorded: `list_modified_in_for_each`); changing a `Map` while
-  iterating it is *(open)*. Without `As`, the loop declares `x` an
-  `Object`: over a name nothing declared before it, in source order, it
+  began (recorded: `list_modified_in_for_each`). A `Map` that gains or
+  loses a key while its `Keys` or `Values` are iterated raises
+  `ConcurrentModificationException` at the next item, and setting an
+  existing key's value completes (recorded: `map_keys_add_in_for_each`,
+  `map_keys_set_in_for_each` and the others); an addition at the last item
+  and `Clear` during the loop are *(open)* (see
+  [level0-builtins.md](level0-builtins.md), `Map`). Without `As`, the
+  loop declares `x` an `Object`: over a name nothing declared before it, in source order, it
   declares it (recorded: `for_each_untyped_undeclared`), and a later `Dim`
   of another type is an error (B4J: "Current declaration does not match
   previous one", recorded: `for_each_untyped_declared_after`); over a
