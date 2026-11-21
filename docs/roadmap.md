@@ -117,7 +117,7 @@ with conformance tests and its row in
 [language-support.md](language-support.md), as `AGENTS.md` requires, and
 every refusal of something still open is a "not known yet" diagnostic.
 
-- [ ] **The plan** (task A): this breakdown and the
+- [x] **The plan** (task A): this breakdown and the
       [Level 1 spec draft](spec/level1.md), with each rule's source and
       the questions for probes.
 - [ ] **Test infrastructure for several modules** (task B). Today the
