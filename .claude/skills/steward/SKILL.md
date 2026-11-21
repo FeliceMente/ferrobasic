@@ -123,8 +123,8 @@ The sequence is in `AGENTS.md`, "Branches and releases". In practice:
 2. **The release**, a pull request whose head is `dev` itself, into `main`
    (not a topic branch, even one that equals `dev`). CI runs on it, on
    Linux and Windows (x64 and ARM64), macOS arm64 and macOS Intel. Every red
-   job is this pull request's to fix, through a pull request into `dev` that the release
-   pull request then picks up, so `main` receives only what is on `dev`;
+   job is this pull request's to fix, through a pull request into `dev` that
+   the release pull request then picks up, so `main` receives only what is on `dev`;
    never skipped or re-run until green: a Windows- or macOS-only failure is usually a path,
    a line ending or a platform `cfg`, which `check-all.sh`'s cross-target
    clippy does not exercise at run time. Merge only when every job is
