@@ -3,11 +3,12 @@ End Sub
 
 Sub AppStart (Args() As String)
     ' What happens when For Each over Map.Keys sets an existing unseen key?
-    ' One seen= line per item: a,b,c for a snapshot; a,b,c for a live view; complete if
-    ' iteration ends. A caught error prints kind tests (cme/nse/npe/bounds); size=3 afterwards
-    ' if mutation ran. b=20 confirms the replacement.
-    ' See docs/open-questions.md.
-    ' FerroBASIC meanwhile prints, one line per item below:
+    ' Recording run 24 records that iteration completes: replacing the value of a key
+    ' is not a structural change, so no ConcurrentModificationException.
+    ' Adding or removing a key is (map_keys_add_in_for_each,
+    ' map_keys_remove_in_for_each). FerroBASIC prints the same.
+    ' See docs/spec/level0-builtins.md, Map.
+    ' Expected output, one line per item below:
     '   seen=a
     '   seen=b
     '   seen=c

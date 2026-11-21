@@ -2,11 +2,11 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' Can & inside a placeholder write a literal "$ inside a smart string?
-    ' L"$R if the concatenated delimiter stays literal; otherwise a build refusal if the
-    ' generated delimiter ends the string.
-    ' See docs/open-questions.md.
-    ' FerroBASIC meanwhile prints, one line per item below:
-    '   L"$R
+    ' Can a literal "$ be built by concatenation inside a smart string? Yes:
+    ' Recording run 24 records L"$R. This is the way to write "$, since a smart
+    ' string has no escape for it (smart_literal_close_double).
+    ' FerroBASIC prints the same.
+    ' See docs/spec/level0.md, smart strings.
+    ' Expected output: L"$R
     Log($"L${QUOTE & "$"}R"$)
 End Sub

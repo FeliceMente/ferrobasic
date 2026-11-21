@@ -20,4 +20,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: Cannot cast type: {Type=Char,Rank=0, RemoteObject=True} to: number.
 # On line 9 of the test (the builder's line 14): Log(65 = c)
-date = "2026-11-16"
+date = "2026-11-21"
