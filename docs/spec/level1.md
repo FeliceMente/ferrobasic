@@ -531,13 +531,19 @@ than `ResumableSub`, an event Sub whose signature does not match the
 event, a filtered and an unfiltered `Wait For` of the same event in one
 module (Q34), and a `SubExists`, `CallSub*` or `CallSubDelayed*` whose
 `Component` is statically a module's name, a `String` (other than the
-literal `""`), a `List` or any other type that is neither a class nor `Object` (Q30, Q35). An `Object`
-`Component` cannot be judged before run time: holding an instance it is
-settled by the source (`getComponentBA` tests `B4AClass` first), so the
-duck-typing use (`CallSub2(Shapes.Get(i), "Draw", …)`) and a class's
-`CallSub(mCallback, …)` are accepted; holding anything else, the call
-stops the program with FerroBASIC's own "not known yet" runtime error,
-never an imitation of jCore's, until Q35 is recorded.
+literal `""`), a `List` or any other type that is neither a class nor
+`Object` (Q30, Q35). An `Object` `Component` cannot be judged before run
+time, so the check is made when the call runs. The values the source
+settles behave as the rules above say, whatever the variable's type: an
+instance (`getComponentBA` tests `B4AClass` first), so the duck-typing use
+(`CallSub2(Shapes.Get(i), "Draw", …)`) and a class's
+`CallSub(mCallback, …)` work; `Null`, for which `SubExists` is `False`;
+and `Null` or `""` for `CallSub*` and `CallSubDelayed*`, meaning the
+calling module (source: `Common.SubExists` tests `Null` before
+`getComponentBA`, which returns the caller for `Null` and `""`). Holding
+anything else, the call stops the program with FerroBASIC's own "not
+known yet" runtime error, never an imitation of jCore's, until Q35 is
+recorded.
 
 Reproducing what the source does is not a way to accept an open construct:
 a runtime error that matches jCore still means the program was accepted,
