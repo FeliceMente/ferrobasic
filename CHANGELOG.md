@@ -5,6 +5,15 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+### Project
+
+- Releases attach prebuilt `ferro` archives for Linux, Windows and macOS,
+  each on x64 and ARM64, with licence notices and `SHA256SUMS` (#146, task 1).
+  Every platform must pass workspace and standalone conformance tests before
+  publishing; release PRs also test Linux and Windows ARM64.
+
 ## 0.1.1 (pre-alpha)
 
 A patch release on the way to M2 (`docs/roadmap.md`): recording runs 22
