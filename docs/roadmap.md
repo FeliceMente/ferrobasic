@@ -140,16 +140,20 @@ every refusal of something still open is a "not known yet" diagnostic.
       `GetSystemProperty`, `SetSystemProperty`, `IsDevTool`, and jCore
       10.70's `Initialized`/`NotInitialized`, from the sources
       [research/level0-semantics.md](research/level0-semantics.md) cites,
-      with their own questions for probes. Owner decision
-      [OD5](#m2-owner-decisions) on clock, time zone and environment.
+      in a new `research/level1-library.md`, with pending probes in
+      `tests/conformance/level1/` (single-module programs, which today's
+      recorder can record). Owner decision [OD5](#m2-owner-decisions) on
+      clock, time zone and environment.
 - [ ] **First probe batch** (task D), after B: the
       [questions for probes](spec/level1.md#questions-for-probes) as
       `pending-recording` tests (with `ferro_rejects` where FerroBASIC
       refuses them), their entries in `docs/open-questions.md`, and C's
       library questions.
-- [ ] **Recording run 24** on the owner's Windows machine (B4J 10.70), with
-      the recorder of task B: the batch above, imported as the steward
-      skill says ("Recording runs"). The spec draft's *(open)* rules then
+- [ ] **Recording run 25** on the owner's Windows machine (B4J 10.70), with
+      the recorder of task B: the batch above and task C's probes,
+      imported as the steward skill says ("Recording runs"). Run 24 comes
+      first, with today's recorder: it records the 39 Level 0 probes of
+      [#148](https://github.com/FeliceMente/ferrobasic/pull/148). The spec draft's *(open)* rules then
       become recorded ones or refusals, and `spec/level1.md` stops being a
       draft for what the run settles. Later batches and runs follow each
       item below, as Level 0's did.
@@ -277,11 +281,12 @@ the item that names it.
   between the recording machine and FerroBASIC's run: whether the
   recorder fixes them (time zone, a known environment variable) or tests
   print only what is stable.
-- **OD6 — where Level 1 research lives.** This draft cites its sources
-  rule by rule; Level 0 keeps them in
-  [research/level0-semantics.md](research/level0-semantics.md). Task C
-  may start a `research/level1-semantics.md`, with the spec citing it, or
-  keep citing in the spec.
+- **OD6 — where Level 1 research lives.** The library research of task
+  C goes in `research/level1-library.md`. The language rules of
+  [spec/level1.md](spec/level1.md) cite their sources in the spec itself,
+  while Level 0 keeps them in
+  [research/level0-semantics.md](research/level0-semantics.md): whether
+  they move to a research document too, or stay in the spec.
 - **OD7 — the REPL and the language server in M2.** Whether the REPL
   accepts class definitions and several modules, or stays a single code
   module in M2; whether project-wide diagnostics in `ferro lsp` are part
