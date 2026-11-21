@@ -940,8 +940,8 @@ impl Machine<'_, '_> {
                 Value::Null
             }
             MapSize => Value::Int(map.borrow().len() as i32),
-            MapKeys => Value::View(map.clone(), true),
-            MapValues => Value::View(map.clone(), false),
+            MapKeys => Value::View(map.clone(), true, map.borrow().mod_count()),
+            MapValues => Value::View(map.clone(), false, map.borrow().mod_count()),
             MapGetKeyAt => positional(true)?,
             MapGetValueAt => positional(false)?,
             _ => return Err(Exc::internal("not a Map member")),
