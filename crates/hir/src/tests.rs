@@ -2103,13 +2103,22 @@ fn for_each_without_as_over_a_declared_variable() {
         "    Type Point (X As Int)\n    For Each Point In Array As Int(5, 6)\n    Next\n",
         "    Log(Point)\n    Dim p As Point\n    p.Initialize\n    p.X = 7\n",
     ));
-    // Not recorded after a use or an assignment of the name there, when
-    // nothing else declares it, nor with a `For … As` over it there.
-    for before in [
+    // After a read of the name there, it declares the variable that the
+    // read sees (recording run 24:
+    // `process_globals_for_each_untyped_read_before`).
+    ok(&app(
+        "    Log(u)\n    For Each u In Array As Int(5)\n    Next\n",
         "    Log(u)\n",
-        "    u = 5\n",
-        "    For u As Int = 1 To 2\n    Next\n",
-    ] {
+    ));
+    // After an assignment of the name there, it is refused (recording run
+    // 24: `process_globals_for_each_untyped_assign_before`); not recorded
+    // after a read of a Type's name, nor with a `For … As` over it there.
+    let diags = errors(&app(
+        "    Type Point (X As Int)\n    Log(Point)\n    For Each Point In Array As Int(5)\n    Next\n",
+        "",
+    ));
+    assert!(has(&diags, "must be declared first"), "{diags:?}");
+    for before in ["    u = 5\n", "    For u As Int = 1 To 2\n    Next\n"] {
         let diags = errors(&app(
             &format!("{before}    For Each u In Array As Int(5)\n    Next\n"),
             "",
