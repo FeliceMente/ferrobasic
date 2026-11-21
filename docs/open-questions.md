@@ -11,6 +11,14 @@ Answers from public sources (runtime source code, official docs, forum) are in
 "answered" there is still unconfirmed until a recording agrees with it; the
 related tests stay `pending-recording`.
 
+The pending Null-comparison, undeclared-read and keyword-name probes inherit
+FerroBASIC's existing firm diagnostics (`cannot compare ... with Null`,
+undeclared-name errors and syntax errors). These do not yet follow the
+[new-probe skill's](../.claude/skills/new-probe/SKILL.md#the-metatoml)
+"not known yet" diagnostic convention. They describe the current implementation;
+they do not establish B4J's answer. This probe-only change preserves those
+diagnostics and acceptance while awaiting the recording.
+
 - [x] An operand of `&` that holds an arithmetic operator (`+`, `-`, `*`,
       `/`, `Mod`) or a negation outside parentheses is a syntax error, on
       either side and at any depth (`"x" & 1 + 2`, `1 + 2 & "x"`,
@@ -30,7 +38,26 @@ related tests stay `pending-recording`.
       ([docs](research/level0-semantics.md#statements)).
 - [x] Smart string formatters (`$1.2{x}`, `$xml{}`)
       ([source](research/level0-semantics.md#smart-strings-docs-forum-source)).
-- [ ] How to write a literal `${` or `"$` inside a smart string.
+- [ ] How to write a literal `${` or `"$` inside a smart string. Pending
+      probes try each candidate separately for each delimiter:
+      `level0/smart_literal_open_double`, `level0/smart_literal_close_double`
+      (double the braces or quote), `level0/smart_literal_open_backslash`,
+      `level0/smart_literal_close_backslash` (backslash),
+      `level0/smart_literal_open_dollars`, `level0/smart_literal_close_dollars`
+      (`$$`), and `level0/smart_literal_open_concat`,
+      `level0/smart_literal_close_concat` (`&` inside a placeholder).
+      Opening candidates print `L${5}R` if escaping works; a refusal or the
+      retained escape/interpolated value distinguishes the other answers.
+      The three closing escape candidates print `L"$R` if escaping works,
+      or fail to build:
+      without an escape, the first `"$` ends the string and leaves invalid
+      trailing code. FerroBASIC meanwhile accepts the backslash and `$$`
+      opening candidates, printing
+      `L\5R` and `L$5R`, and both concatenation candidates, printing the
+      literal delimiters; it refuses the other four. Acceptance stays as it is
+      pending the next recording, following
+      [#127](https://github.com/FeliceMente/ferrobasic/pull/127) and
+      [#137](https://github.com/FeliceMente/ferrobasic/pull/137).
 - [x] `:` separates statements like a line break, also after a single-line `If`
       ([docs](research/level0-semantics.md#statements)).
 - [x] `/` between two integers returns a Double
@@ -63,6 +90,19 @@ related tests stay `pending-recording`.
 - [ ] Which other keywords can be names. B4J refuses `Step`, `To`, `Type`
       and `Until` in the recorded local-variable probes
       (`level0/keyword_name_step`, `_to`, `_type`, `_until`).
+      Pending local-variable probes: `level0/keyword_name_case`,
+      `level0/keyword_name_next`, `level0/keyword_name_select`,
+      `level0/keyword_name_return`, `level0/keyword_name_public`,
+      `level0/keyword_name_private`, `level0/keyword_name_else`,
+      `level0/keyword_name_end`, `level0/keyword_name_exit`,
+      `level0/keyword_name_continue`. The sample targets useful application
+      names: `Case` for a case record, `Next` for a following item, `Select`
+      for a selection, `Return` for a financial return or result,
+      `Public`/`Private` for visibility flags, `Else` for a fallback,
+      `End` for an end position or time, and `Exit`/`Continue` for routing
+      or continuation flags. Each prints `5` if accepted, or fails to build
+      independently.
+      FerroBASIC meanwhile refuses all ten; other names and positions remain open.
 - [x] A counted loop cannot use `Each`, with an explicit type or after
       `Dim Each As Int`. B4J reports a syntax error at `=` in
       `For Each = 1 To 2` after `Dim Each As Int = 9`, and an undeclared
@@ -96,7 +136,14 @@ related tests stay `pending-recording`.
       a `For Each` without `As` that declares it, it does not: "Undeclared
       variable 'u' is used before it was assigned any value." (recording:
       `level0/for_each_untyped_read_before`); with nothing declaring it
-      anywhere, FerroBASIC refuses it as undeclared.
+      anywhere, FerroBASIC refuses it as undeclared. Pending probes isolate a
+      Log expression (`level0/undeclared_read_log`), an initializer
+      (`level0/undeclared_read_initializer`), a Return expression
+      (`level0/undeclared_read_return`), and a read in Process_Globals
+      (`level0/process_globals_undeclared_read`). Each either fails to build
+      or prints `value=[]` for an implicit empty String, `value=[null]` for
+      Null, or another default between brackets (the Process_Globals probe
+      then prints `app`). FerroBASIC meanwhile refuses all four.
 - [x] A variable declared without `As` (`Dim x`, `Dim x = 5`) is a `String`
       (recording: `level0/dim_without_as`).
 - [x] Two `Dim`s of the same name and type in one Sub are one variable,
@@ -117,6 +164,18 @@ related tests stay `pending-recording`.
 - [ ] Changing a `Map` while iterating it with `For Each`. A `List` that
       grows inside its `For Each` is iterated only over the items it had
       when the loop began (recording: `level0/list_modified_in_for_each`).
+      Pending probes independently add a key, remove an unseen key, or set
+      an existing unseen key, through both views:
+      `level0/map_keys_add_in_for_each`, `level0/map_keys_remove_in_for_each`,
+      `level0/map_keys_set_in_for_each`, `level0/map_values_add_in_for_each`,
+      `level0/map_values_remove_in_for_each`, `level0/map_values_set_in_for_each`.
+      `seen=` lines distinguish snapshots from live views; `complete` marks
+      normal completion. Catch prints only kind tests (`cme`, `nse`, `npe`,
+      `bounds`); `size=` and `b=` report the resulting size and changed entry.
+      FerroBASIC meanwhile accepts all six: additions visit only the three
+      original items; removals visit `a,c` or `1,3`, then catch an
+      IndexOutOfBoundsException; replacement visits `a,b,c` or `1,20,3`.
+      Final sizes are 4, 2 and 3 respectively; `b` is 2, Null and 20.
 - [x] Output and exit code of a B4J non-UI program that stops on an uncaught
       error: what it logged so far, then exit code 1, with the error on stderr
       (recording: `level0/uncaught_error`).
@@ -143,8 +202,8 @@ related tests stay `pending-recording`.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently no pending or provisional corpus results; this does not
-mean that every possible language question has been settled.
+There are currently 39 pending probes and no provisional corpus results;
+the probes await the owner's next Windows recording run after run 23.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:
       `level0/for_evaluation_order`). That the start is assigned after the
@@ -272,8 +331,18 @@ evidence, while unchecked parts remain open:
 - [x] `<` / `>` on Booleans is a compile error: "Cannot cast type:
       {Type=Boolean,…} to: number." (recording: `level0/boolean_less`). On
       objects it is still open.
-- [ ] `Null` compared with a Boolean or a Char, with `<`, or written on
-      the left of a number (`Null = n`), is a compile error. An `Int` `=`
+- [ ] Whether `Null` compared with a Boolean or a Char, with `<`, or written
+      on the left of a number (`Null = n`) builds. Pending probes isolate
+      both equality directions (`level0/boolean_eq_null`,
+      `level0/null_eq_boolean`, `level0/char_eq_null`, `level0/null_eq_char`),
+      Null on the left of an Int (`level0/null_eq_number`), and both ordering
+      directions with an Int or numeric String (`level0/number_less_null`,
+      `level0/null_less_number`, `level0/string_less_null`,
+      `level0/null_less_string`). Each either fails to build, prints
+      `value=true`/`value=false`, or catches a conversion error and prints
+      kind tests for NumberFormatException, NullPointerException,
+      ClassCastException and RuntimeException. FerroBASIC meanwhile refuses
+      all nine, retaining its existing diagnostics. An `Int` `=`
       `Null` builds and raises `NumberFormatException` when it runs, as
       `BA.ObjectToNumber` parses `"null"` (recording:
       `level0/null_number_compare`), and so do a `Double` and a `Long`
@@ -497,6 +566,19 @@ evidence, while unchecked parts remain open:
       `level0/process_globals_for_each_untyped_named_like_type`, prints 6).
 - [ ] Inside `Process_Globals`, over a name nothing else declares that is
       read or assigned before the untyped loop there: FerroBASIC refuses it.
+      Pending probes `level0/process_globals_for_each_untyped_read_before`
+      and `level0/process_globals_for_each_untyped_assign_before` isolate
+      the two forms. A build refusal distinguishes them from a hoisted module
+      Object: the read then prints `before=[null]` (or `before=[]` for an
+      empty String); both loops print `seen=5`, `seen=6`, and AppStart prints
+      `after=6` for a shared variable. `after=9` would show that AppStart sees
+      the earlier assignment instead of the loop's last item. FerroBASIC
+      meanwhile refuses both.
+      The assignment may first declare a String, conflicting with the
+      untyped loop's Object declaration; a recording's refusal diagnostic
+      distinguishes that cause from an assign-before restriction. The
+      corresponding local case is already recorded as a declaration conflict
+      (`level0/for_each_untyped_assigned_before`).
 - [x] In `Process_Globals`, a module variable read or assigned before its
       `Dim … As Object` there builds, one variable, and the read gives
       `Null` (recording run 19:
