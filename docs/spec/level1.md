@@ -408,9 +408,11 @@ variable's name (forum:
   `NullPointerException`; the other order, the filtered wait first,
   registers both (source: `Common.WaitFor` reads `wfe.senderFilter.get()`
   on an entry whose `senderFilter` is null; reproduced in review by
-  calling this jCore commit directly). Until it is recorded, FerroBASIC
-  follows the source in both orders, the `NullPointerException` included,
-  so it accepts nothing the source fails on.
+  calling this jCore commit directly). That is evidence for the probe, not
+  a rule to implement: until Q34 is recorded, FerroBASIC refuses a module
+  that has both a filtered and an unfiltered `Wait For` of the same event,
+  with a "not known yet" diagnostic, as
+  [below](#what-ferrobasic-refuses-meanwhile).
 - "Wait For events handlers precede the regular event handlers" (docs:
   Language §4.7.10): when a waiting Sub takes an event, the event's own Sub
   is not called (source: `raiseEvent2` returns after
@@ -478,7 +480,8 @@ variable's name (forum:
   `String` and looks up a module of that name, so it raises
   (`ClassCastException`, or a `ClassNotFoundException`, wrapped in a
   `RuntimeException`) rather than returning `Null` (source); what B4J
-  prints is *(open)* (Q35). On an uninitialised
+  prints is *(open)* (Q35), and FerroBASIC refuses such a `Component`
+  meanwhile ([below](#what-ferrobasic-refuses-meanwhile)). On an uninitialised
   instance it calls nothing and returns `Null`, and `Null` or `""` as
   `Component` means the calling module (source:
   [`Common.getComponentBA`](#jcore-references)). What the compiler passes
@@ -513,7 +516,8 @@ variable's name (forum:
   `SubExists(o, "F")` on a plain `Object` raises `ClassCastException`
   (source; reproduced in review by calling this jCore commit directly)
   where the Javadoc says `False`. It is *(open)* (Q35), and so is a module
-  name (Q30).
+  name (Q30); FerroBASIC refuses both meanwhile
+  ([below](#what-ferrobasic-refuses-meanwhile)).
 
 ## What FerroBASIC refuses meanwhile
 
@@ -523,8 +527,21 @@ in [language-support.md](../language-support.md). In particular, until
 their probes are recorded: a module's name used as a value, `Me` in a code
 module other than the main one, `Sender` outside an event Sub, a `Try`
 around a `Sleep` or `Wait For`, a resumable sub with a return type other
-than `ResumableSub`, and an event Sub whose signature does not match the
-event.
+than `ResumableSub`, an event Sub whose signature does not match the
+event, a filtered and an unfiltered `Wait For` of the same event in one
+module (Q34), and a `SubExists`, `CallSub*` or `CallSubDelayed*` whose
+`Component` is statically a module's name, a `String` (other than the
+literal `""`), a `List` or any other type that is neither a class nor `Object` (Q30, Q35). An `Object`
+`Component` cannot be judged before run time: holding an instance it is
+settled by the source (`getComponentBA` tests `B4AClass` first), so the
+duck-typing use (`CallSub2(Shapes.Get(i), "Draw", …)`) and a class's
+`CallSub(mCallback, …)` are accepted; holding anything else, the call
+stops the program with FerroBASIC's own "not known yet" runtime error,
+never an imitation of jCore's, until Q35 is recorded.
+
+Reproducing what the source does is not a way to accept an open construct:
+a runtime error that matches jCore still means the program was accepted,
+and that needs a recording (`AGENTS.md`, "Before closing a task").
 
 ## Questions for probes
 
@@ -686,7 +703,9 @@ terminates.
     `Log(SubExists(o, "F"))`, `CallSub(o, "F")`, the same on a `List` and on
     the `String` `"nomodule"`, logging `true`/`false` from the `Catch` for
     `ClassCastException` and for `ClassNotFoundException`: does each print
-    `false`, return `Null`, or raise, and which?
+    `false`, return `Null`, or raise, and which? And with `o` holding an
+    initialised instance whose class has `F`, do `SubExists(o, "F")` and
+    `CallSub(o, "F")` print `true` and call it?
 
 ## jCore references
 
