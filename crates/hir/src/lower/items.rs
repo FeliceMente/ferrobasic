@@ -555,25 +555,33 @@ impl Lowerer {
 
     /// A `For Each` without `As` in `Process_Globals` over a name nothing
     /// else there declares makes it a module variable `Object`, which every
-    /// Sub sees (recorded: `process_globals_for_each_untyped_undeclared`).
-    /// Not recorded, so left undeclared and refused when lowered: over the
-    /// name of a Sub, a built-in or `Bit`, after a use or an
-    /// assignment of the name there, and with a `For … As` over it there.
+    /// Sub sees (recorded: `process_globals_for_each_untyped_undeclared`),
+    /// and which a read before the loop already sees, as `Null` (recording
+    /// run 24: `process_globals_for_each_untyped_read_before`). Left
+    /// undeclared and refused when lowered: after an assignment of the name
+    /// there, which declares a `String` (recording run 24:
+    /// `process_globals_for_each_untyped_assign_before`), and, not recorded,
+    /// over the name of a Sub, a built-in or `Bit`, after a read of a
+    /// `Type`'s name, and with a `For … As` over it there.
     fn declare_untyped_loop_globals(&mut self, sub: &SyntaxNode) {
-        let mut seen = HashSet::new();
+        // Names assigned before a loop, or a `Type`'s name read before one.
+        let mut before = HashSet::new();
         let mut skip = HashSet::new();
         let mut loops = Vec::new();
         for found in in_source_order(sub, true) {
             match found {
-                Found::Use(node) | Found::Assign(node) => {
-                    seen.insert(key(&name_of(&node)));
+                Found::Assign(node) => {
+                    before.insert(key(&name_of(&node)));
+                }
+                Found::Use(node) if self.records.contains_key(&key(&name_of(&node))) => {
+                    before.insert(key(&name_of(&node)));
                 }
                 Found::Loop {
                     name,
                     origin: Origin::UntypedForEach,
                     ..
                 } => {
-                    if seen.contains(&key(&name_of(&name))) {
+                    if before.contains(&key(&name_of(&name))) {
                         skip.insert(key(&name_of(&name)));
                     }
                     loops.push(name);

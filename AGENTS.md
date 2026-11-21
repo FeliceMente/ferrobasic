@@ -26,10 +26,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   The REPL walkthrough is in `docs/tutorial.md`, section 9.
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
-  run. Recording run 24 is imported: 355 conformance tests, 338 passing,
-  6 deviations, 11 pending and none provisional. One of the pending tests
-  is recorded and waits for the FerroBASIC change that passes it; 10 are
-  new probes for the next run. See
+  run. Recording run 24 is imported: 356 conformance tests, 339 passing,
+  6 deviations, 11 pending and none provisional. The 11 pending tests are
+  probes for the next run. See
   `docs/roadmap.md`.
 
 ## Read before working

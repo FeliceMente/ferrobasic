@@ -13,11 +13,10 @@ related tests stay `pending-recording`.
 
 Some pending probes inherit FerroBASIC's existing firm diagnostics instead of
 the [new-probe skill's](../.claude/skills/new-probe/SKILL.md#the-metatoml)
-"not known yet" convention: the read before an untyped `For Each` in
-`Process_Globals`, which recording run 24 settles and whose recording is
-imported with the change that implements it, and the keyword declarations
-and the `Process_Globals` assignment that run 24 raised (syntax errors,
-undeclared-name errors). These
+"not known yet" convention: the keyword declarations, the `Process_Globals`
+assignment and the read of a `Type`'s name before a loop over it, which
+recording run 24 raised (syntax errors, undeclared-name errors, "is a type,
+not a value"). These
 diagnostics describe the current implementation; they do not establish B4J's
 answer.
 
@@ -202,10 +201,8 @@ answer.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently 11 pending tests and no provisional corpus results.
-Recording run 24 recorded one of them, which waits for the FerroBASIC change
-that passes it; the other 10 are probes for the owner's next Windows
-recording run.
+There are currently 11 pending probes and no provisional corpus results;
+they await the owner's next Windows recording run after run 24.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:
       `level0/for_evaluation_order`). That the start is assigned after the
@@ -570,7 +567,7 @@ evidence, while unchecked parts remain open:
       declares a module variable Object and leaves the last item there
       (recording run 21:
       `level0/process_globals_for_each_untyped_named_like_type`, prints 6).
-- [ ] Inside `Process_Globals`, over a name nothing else declares that is
+- [x] Inside `Process_Globals`, over a name nothing else declares that is
       read or assigned before the untyped loop there. After an assignment
       B4J refuses it at the loop ("Current declaration does not match
       previous one.", recording run 24:
@@ -579,8 +576,16 @@ evidence, while unchecked parts remain open:
       the assignment. After a read it builds: the loop declares a module
       `Object` that the earlier read sees as `Null` (`before=[null]`,
       `seen=5`, `seen=6`, `after=6`, recording run 24:
-      `level0/process_globals_for_each_untyped_read_before`). That probe
-      stays pending until FerroBASIC builds it: it meanwhile refuses it.
+      `level0/process_globals_for_each_untyped_read_before`), as FerroBASIC
+      does.
+- [ ] The same read before the loop when the name is a `Type`'s: run 21
+      records the loop over a `Type`'s name
+      (`level0/process_globals_for_each_untyped_named_like_type`), run 24
+      the read before a loop over an ordinary name, but not the two
+      together. Pending probe
+      `level0/process_globals_for_each_untyped_named_like_type_read_before`
+      prints `before=[null]`, then `6`, if the read sees the variable.
+      FerroBASIC meanwhile refuses it ("`Point` is a type, not a value").
 - [ ] Whether an assignment in `Process_Globals` to a name nothing else
       declares declares a module `String` there, as it does in a Sub
       (`level0/undeclared_variable_type`). The refusal of
