@@ -302,7 +302,7 @@ End Sub
 
 ```console
 $ ferro check typo.bas
-typo.bas:6:9: error: `Cuont` is not declared
+typo.bas:6:9: error: undeclared variable `Cuont` is used before it was assigned any value
       Log(Cuont + 1)
           ^
 typo.bas:8:11: error: String has no member `Lenght` at Level 0

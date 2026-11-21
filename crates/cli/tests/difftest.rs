@@ -65,7 +65,7 @@ fn a_refused_program_reports_the_diagnostic() {
     assert_eq!(verdict.state, State::Fail);
     assert_eq!(
         verdict.detail,
-        "rejected, but must build:\n`Missing` is not declared"
+        "rejected, but must build:\nundeclared variable `Missing` is used before it was assigned any value"
     );
 }
 
