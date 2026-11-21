@@ -2,10 +2,10 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' Can doubling the quote write a literal "$ inside a smart string?
-    ' L"$R if doubling escapes the closing delimiter; otherwise a build refusal:
-    ' the first "$ ends the string and leaves invalid trailing code.
-    ' See docs/open-questions.md.
-    ' FerroBASIC meanwhile refuses this program.
+    ' Can doubling the quote write a literal "$ inside a smart string? No:
+    ' Recording run 24 shows that B4J refuses it (Syntax error.): the first "$ ends
+    ' the string. A smart string has no escape for "$; concatenation writes
+    ' it (smart_literal_close_concat). FerroBASIC refuses it too.
+    ' See docs/spec/level0.md, smart strings.
     Log($"L""$R"$)
 End Sub

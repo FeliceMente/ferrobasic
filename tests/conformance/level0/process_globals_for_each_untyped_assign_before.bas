@@ -1,15 +1,15 @@
 Sub Process_Globals
     ' Does an untyped For Each in Process_Globals build after an assignment to its
-    ' otherwise undeclared name?
-    ' A refusal may be an implicit String/Object declaration conflict: assigning u
-    ' may declare a String before the untyped loop declares an Object, as in the
-    ' recorded local case for_each_untyped_assigned_before. Read the recorded
-    ' diagnostic before attributing a refusal to an assign-before restriction.
-    ' Build refusal, or seen=5, seen=6, after=6 if the loop declares a shared module Object;
-    ' after=9 means AppStart sees the earlier assignment instead of the loop's last item.
-    ' A different after= value identifies the value AppStart sees.
+    ' otherwise undeclared name? No.
+    ' Recording run 24 shows that B4J refuses it at the For Each (Current declaration
+    ' does not match previous one.): the assignment declares u a String, and
+    ' the untyped loop then declares it an Object, as in the recorded local
+    ' case for_each_untyped_assigned_before.
+    ' FerroBASIC refuses it too, at the assignment: it does not declare a
+    ' module variable by assignment in Process_Globals (an open question:
+    ' process_globals_undeclared_assign).
     ' See docs/open-questions.md.
-    ' FerroBASIC meanwhile refuses this program.
+    ' The exact diagnostic is in the recording metadata.
     u = 9
     For Each u In Array As Int(5, 6)
         Log("seen=" & u)

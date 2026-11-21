@@ -272,6 +272,16 @@ impl Lowerer {
             "`Bit` is used through its functions, e.g. `Bit.And(a, b)`".to_string()
         } else if self.records.contains_key(&key(&name)) || builtin_type(&name).is_some() {
             format!("`{name}` is a type, not a value")
+        } else if args.is_none() && !self.assigned_or_looped(node, &name) {
+            // B4J's words: "Undeclared variable 'missing' is used before it
+            // was assigned any value." (recorded: `undeclared_read_log`,
+            // `undeclared_read_initializer`, `undeclared_read_return`,
+            // `process_globals_undeclared_read`). In B4X an assignment
+            // declares a name, so a read before any is what is refused.
+            // With an assignment or a loop of the name in the same body that
+            // FerroBASIC refused (in `Process_Globals`), the words would not
+            // be true.
+            format!("undeclared variable `{name}` is used before it was assigned any value")
         } else {
             format!("`{name}` is not declared")
         };
@@ -819,4 +829,30 @@ fn is_number_format(format: &str) -> bool {
         && !ints.is_empty()
         && ints.bytes().all(|b| b.is_ascii_digit())
         && fracs.is_none_or(|f| !f.is_empty() && f.bytes().all(|b| b.is_ascii_digit()))
+}
+
+impl Lowerer {
+    /// Whether the body around `node` (its Sub, or the whole text outside
+    /// one) assigns `name` or loops over it. The body's names are collected
+    /// once, at its first unresolved read, so many such reads stay linear.
+    fn assigned_or_looped(&mut self, node: &SyntaxNode, name: &str) -> bool {
+        let body = node
+            .ancestors()
+            .find(|n| n.kind() == SUB_DECL)
+            .unwrap_or_else(|| node.ancestors().last().unwrap_or_else(|| node.clone()));
+        let at = range(&body);
+        if self.assigned_or_looped.as_ref().map(|(r, _)| *r) != Some(at) {
+            let names = in_source_order(&body, true)
+                .filter_map(|found| match found {
+                    Found::Assign(target) => Some(key(&name_of(&target))),
+                    Found::Loop { name, .. } => Some(key(&name_of(&name))),
+                    _ => None,
+                })
+                .collect();
+            self.assigned_or_looped = Some((at, names));
+        }
+        self.assigned_or_looped
+            .as_ref()
+            .is_some_and(|(_, names)| names.contains(&key(name)))
+    }
 }

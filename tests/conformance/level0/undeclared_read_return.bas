@@ -2,11 +2,11 @@ Sub Process_Globals
 End Sub
 
 Sub AppStart (Args() As String)
-    ' Does Return reading a name nothing declares or assigns build?
-    ' Build refusal if a never-declared, never-assigned name cannot be read; value=[] for an
-    ' implicit empty String, value=[null] for Null, or the default value between brackets.
-    ' See docs/open-questions.md.
-    ' FerroBASIC meanwhile refuses this program.
+    ' Does returning a name nothing declares or assigns build? No:
+    ' Recording run 24 shows that B4J refuses it (Undeclared variable 'missing' is
+    ' used before it was assigned any value.). FerroBASIC refuses it with
+    ' the same words. The exact diagnostic is in the recording metadata.
+    ' See docs/research/level0-semantics.md.
     Log("value=[" & ReadMissing & "]")
 End Sub
 

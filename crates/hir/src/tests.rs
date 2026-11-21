@@ -354,7 +354,18 @@ fn undeclared_names() {
     );
     assert!(has(&d, "`Point` is not declared"), "{d:?}");
     let d = errors(&program("Log(z)"));
+    assert!(has(&d, "undeclared variable `z` is used before"), "{d:?}");
+    // B4J's words for a read only where nothing assigns the name: in
+    // `Process_Globals` FerroBASIC refuses the assignment, and the read
+    // keeps "is not declared"; a call to an unknown name keeps it too.
+    let d = errors(
+        "Sub Process_Globals\n  z = 5\n  Log(z)\nEnd Sub\nSub AppStart (Args() As String)\nEnd Sub\n",
+    );
     assert!(has(&d, "`z` is not declared"), "{d:?}");
+    assert!(!has(&d, "undeclared variable"), "{d:?}");
+    let d = errors(&program("Log(z(1))"));
+    assert!(has(&d, "`z` is not declared"), "{d:?}");
+    assert!(!has(&d, "undeclared variable"), "{d:?}");
 }
 
 #[test]
@@ -810,7 +821,7 @@ fn constants() {
         )),
         [
             "`Size` is a `Const`: it cannot be assigned",
-            "`Foo` is not declared",
+            "undeclared variable `Foo` is used before it was assigned any value",
         ]
     );
     // Empty parentheses are no bounds: the recorded refusal.
@@ -1095,7 +1106,13 @@ fn array_initializer_is_kept() {
         other => panic!("{other:?}"),
     }
     let d = errors(&program("Dim a() As Int = missing"));
-    assert!(has(&d, "`missing` is not declared"), "{d:?}");
+    assert!(
+        has(
+            &d,
+            "undeclared variable `missing` is used before it was assigned any value"
+        ),
+        "{d:?}"
+    );
     let d = errors(&program("Dim a(3) As Int = Array As Int(1)"));
     assert!(has(&d, "cannot also have an initial value"), "{d:?}");
 }
@@ -1625,8 +1642,14 @@ fn loops_in_process_globals() {
         "    For Each Bump In Array As Int(Missing)\n        Log(Other)\n    Next",
     ));
     assert_eq!(diags.len(), 3, "{diags:?}");
-    assert!(has(&diags, "`Missing` is not declared"), "{diags:?}");
-    assert!(has(&diags, "`Other` is not declared"), "{diags:?}");
+    assert!(
+        has(&diags, "undeclared variable `Missing` is used before"),
+        "{diags:?}"
+    );
+    assert!(
+        has(&diags, "undeclared variable `Other` is used before"),
+        "{diags:?}"
+    );
     // A typed `For` cannot have the name (recorded), with a module variable
     // of that name too, or after a `For Each` of that name.
     for (body, before) in [
@@ -1754,7 +1777,10 @@ fn loops_in_process_globals() {
     ));
     for name in ["Unknown", "Missing", "Other"] {
         assert!(
-            has(&diags, &format!("`{name}` is not declared")),
+            has(
+                &diags,
+                &format!("undeclared variable `{name}` is used before")
+            ),
             "{diags:?}"
         );
     }

@@ -19,4 +19,4 @@ machine_locale = "it-IT"
 rejected = true   # the original toolchain refused to build it
 # Error: Current declaration does not match previous one.
 # On line 11 of the test (the builder's line 16): For Each Bump As Int In Array As Int(6)
-date = "2026-11-16"
+date = "2026-11-21"
