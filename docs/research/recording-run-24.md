@@ -1035,3 +1035,9 @@ Error occurred on line: 19 (Main)
   `process_globals_for_each_untyped_assign_before` suggests that an
   assignment in `Process_Globals` declares a `String`: new probe
   `process_globals_undeclared_assign`. Both go into the next run.
+- The 4 Map additions and removals were imported with the interpreter
+  change that raises `ConcurrentModificationException`: a Map counts its
+  structural changes, and a `For Each` over its `Keys` or `Values` checks
+  that count at each item after the first. New probes
+  `map_keys_add_at_last_in_for_each` and `map_keys_clear_in_for_each`
+  test the two cases the rule predicts that no recording shows.

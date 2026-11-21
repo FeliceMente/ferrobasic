@@ -157,20 +157,25 @@ answer.
       "b"` raises `NumberFormatException`, and `"10" < 9` is `False`
       (recordings: `level0/string_compare_less`,
       `level0/mixed_compare_string_left`).
-- [ ] Changing a `Map` while iterating it with `For Each`. A `List` that
+- [x] Changing a `Map` while iterating it with `For Each`. A `List` that
       grows inside its `For Each` is iterated only over the items it had
       when the loop began (recording: `level0/list_modified_in_for_each`).
-      Recording run 24 answers the six probes: setting an existing key
-      completes and the iteration sees the new value
-      (`level0/map_keys_set_in_for_each`, `level0/map_values_set_in_for_each`,
-      as FerroBASIC does), while adding a key or removing an unseen one
-      raises `ConcurrentModificationException` at the next item
-      (`level0/map_keys_add_in_for_each`, `level0/map_keys_remove_in_for_each`,
+      Over a Map's `Keys` or `Values`, setting an existing key completes and
+      the iteration sees the new value, while adding a key or removing an
+      unseen one raises `ConcurrentModificationException` at the next item,
+      `seen=a` then `cme=true` (recording run 24:
+      `level0/map_keys_set_in_for_each`, `level0/map_values_set_in_for_each`,
+      `level0/map_keys_add_in_for_each`, `level0/map_keys_remove_in_for_each`,
       `level0/map_values_add_in_for_each`,
-      `level0/map_values_remove_in_for_each`: `seen=a`, then `cme=true`).
-      Those four stay pending until FerroBASIC raises it too: it meanwhile
-      completes the additions and catches an IndexOutOfBoundsException after
-      the removals.
+      `level0/map_values_remove_in_for_each`): Java's iterator checks the
+      map's `modCount`. FerroBASIC does the same.
+- [ ] What Java's `modCount` rule predicts beyond those six: a key added at
+      the last item, after which no item follows, and `Clear` during the
+      loop. Pending probes `level0/map_keys_add_at_last_in_for_each` (prints
+      `complete` if the loop ends over the items it had) and
+      `level0/map_keys_clear_in_for_each` (`cme=true` if `Clear` counts as a
+      modification). FerroBASIC meanwhile follows the rule: `complete`, and
+      `cme=true`.
 - [x] Output and exit code of a B4J non-UI program that stops on an uncaught
       error: what it logged so far, then exit code 1, with the error on stderr
       (recording: `level0/uncaught_error`).
@@ -197,9 +202,9 @@ answer.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently 22 pending tests and no provisional corpus results.
-Recording run 24 recorded 14 of them, which wait for the FerroBASIC changes
-that pass them; the other 8 are probes for the owner's next Windows
+There are currently 20 pending tests and no provisional corpus results.
+Recording run 24 recorded 10 of them, which wait for the FerroBASIC changes
+that pass them; the other 10 are probes for the owner's next Windows
 recording run.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:

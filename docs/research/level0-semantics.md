@@ -173,7 +173,10 @@ Checked bit for bit against OpenJDK 21.0.12 (fixtures in
   `map_keys_add_in_for_each`, `map_keys_remove_in_for_each`,
   `map_values_add_in_for_each`, `map_values_remove_in_for_each`). That is
   `LinkedHashMap`'s iterator, which checks its `modCount` on each `next()`:
-  replacing a value does not change it. FerroBASIC does not raise it yet.
+  replacing a value does not change it. FerroBASIC counts the same
+  changes (`OrderedMap::mod_count`); `Clear` counts in Java's `HashMap`
+  too (**source**: [`HashMap.clear`](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/util/HashMap.java)), to confirm with
+  `map_keys_clear_in_for_each`.
 
 ### List (source)
 
