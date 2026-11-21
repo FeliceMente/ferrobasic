@@ -66,7 +66,7 @@ their milestone starts: see `docs/architecture.md` and `docs/roadmap.md`.
 Download the archive for your machine from the
 [release assets](https://github.com/FeliceMente/ferrobasic/releases), along with
 that release's `SHA256SUMS`. Replace `<version>` below with the release version
-without the `v`, for example `0.1.1`.
+without the `v`, for example `0.1.2`.
 
 | Platform | Download |
 | --- | --- |
