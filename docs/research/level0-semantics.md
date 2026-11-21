@@ -483,8 +483,14 @@ with the message `Object should first be initialized (List).` (or `(Map).`)
   `NullPointerException` (`null_eq_boolean`, `char_eq_null`,
   `null_eq_char`, `null_eq_number`); `<` with `Null` on either side of an
   `Int` or a `String` with a `NumberFormatException` (`number_less_null`,
-  `null_less_number`, `string_less_null`, `null_less_string`). The
-  messages of the first two kinds are not recorded. A Char `=` an `Int`
+  `null_less_number`, `string_less_null`, `null_less_string`). With the
+  `Null` on the right, B4J converts it as it converts an Object:
+  `BA.ObjectToBoolean` parses `"null"` ("Cannot parse: null as boolean"),
+  `BA.ObjectToChar` calls its `toString()`, and `BA.ObjectToNumber` parses
+  it too (**source**, the same conversions as `object_null_to_int`); on the
+  left, it raises a `NullPointerException` whatever the other type, as
+  unboxing a null would (the generated code is not seen). The
+  neighbouring shapes (`<>`, `>`, other number types) are not recorded. A Char `=` an `Int`
   compiles to `_c==BA.ObjectToChar(65)`, and
   [`ObjectToChar`](https://github.com/AnywhereSoftware/B4J/blob/e26e645a611dd24c2034fbbeaf11ba26b70dee8b/jCore/src/anywheresoftware/b4a/BA.java#L457-L462)
   takes the first character of the number's `toString()`, `'6'`, so

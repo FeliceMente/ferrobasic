@@ -331,6 +331,13 @@ From lowest to highest precedence.
     `NumberFormatException` (recorded: `null_number_compare`), and with
     every other number type too (recorded: `double_eq_null`,
     `long_eq_null`, `number_types_eq_null`);
+  - recording run 24: `b = Null` builds and raises a `RuntimeException`
+    ("Cannot parse: null as boolean"), `c = Null` a
+    `NullPointerException`; `Null = b`, `Null = c` and `Null = n` (an
+    `Int`) raise a `NullPointerException`; `<` with `Null` on either side
+    of an `Int` or a `String` parses `"null"`: a `NumberFormatException`.
+    The neighbouring shapes (`<>`, `>`, `<=`, `>=`, another number type)
+    are *(open)*, so errors;
   - comparisons do not chain: `a < b < c` and `If a = b = c Then` are
     errors (recorded: `chained_comparison_less`,
     `chained_comparison_equal`), while `x = a = b` assigns one comparison;

@@ -1041,3 +1041,11 @@ Error occurred on line: 19 (Main)
   that count at each item after the first. New probes
   `map_keys_add_at_last_in_for_each` and `map_keys_clear_in_for_each`
   test the two cases the rule predicts that no recording shows.
+- The 9 Null comparisons were imported with the checker and interpreter
+  change that builds them: `b = Null` and `c = Null` convert the `Null` as
+  an Object, `Null = x` is its own comparison kind (a
+  `NullPointerException` in the B4J profile), and `<` parses `"null"` as a
+  number. Only the recorded operators and types are accepted. No probe of
+  the exception messages was added: `b = Null`'s comes from
+  `BA.ObjectToBoolean`'s source, and a `NullPointerException`'s is
+  JDK-specific.

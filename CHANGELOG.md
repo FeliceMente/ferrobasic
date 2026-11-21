@@ -26,6 +26,14 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
   iterates its `Keys` or `Values` raises `ConcurrentModificationException`
   at the next item, as in B4J (recording run 24, four of the 14
   recordings above). Replacing a value does not.
+- `Null` compared with a Boolean or a Char (`b = Null`, `Null = c`), on
+  the left of an Int (`Null = n`), or with `<` next to an Int or a String
+  builds, as in B4J, and raises the error B4J raises when it runs:
+  `RuntimeException` for `b = Null`, `NullPointerException` for the other
+  equalities, `NumberFormatException` for `<` (recording run 24, nine of
+  the 14 recordings above). Their neighbours that no recording shows
+  (`<>`, `>`, another number type) are refused as not known yet, instead
+  of "cannot compare ... with Null".
 
 ### Project
 
