@@ -26,8 +26,10 @@ justify owning a Mach-O writer and signer now.
 - Intel takes a different path: libsui removes the old signature via
   `codesign` and a temporary file, appends a sentinel, length and package,
   and extends `__LINKEDIT`. FerroBASIC reserves that temporary path with
-  `create_new` first. Its own `sign_for_intel_mac` signs the staged output
-  with `codesign --force --sign -`, propagating failure. It does **not** use
+  `create_new` first. FerroBASIC's `sign_for_intel_mac` in
+  [`main.rs`](../../crates/cli/src/main.rs) is passed to
+  `standalone::write_standalone` as its `finish` callback: it signs the staged
+  output with `codesign --force --sign -`, propagating failure. It does **not** use
   libsui's Intel `build_and_sign` temporary-file path. The runtime reader
   scans its executable on disk for the sentinel.
 - Linux and Windows do not use libsui at all. They append FerroBASIC's
@@ -90,7 +92,8 @@ and zerocopy. Removing all hashing would remove the Apple Silicon signer.
 
 ## Measurements
 
-Measured on an Apple Silicon Mac, macOS 27.2.1, using stable
+Measured on an Apple Silicon Mac, macOS 27.2.1 (build 26B131, reported by
+`sw_vers`), using stable
 `rustc 1.99.1 (58cf8f9c3 2026-10-13)`, the committed release profile
 (`lto = "thin"`), explicit `aarch64-apple-darwin` and
 `x86_64-apple-darwin` targets, and no extra `RUSTFLAGS`.
@@ -106,7 +109,9 @@ is a separate check.
 
 Total executable saving: **36,288 bytes (1.30%) on arm64**, **28,112 bytes
 (1.00%) on Intel**. Notices save **18,193 bytes (16.23%) and 422 lines**;
-the listed crate/version pairs drop from 133 to 112. The file is embedded
+the listed crate/version pairs in the `Rust crates:` section drop from
+132 to 111. Count only that section, ending at its first blank line; the
+later in-tree Unicode notice is not a crate/version pair. The file is embedded
 in every `ferro` and bundled program by `include_str!`, so notices contribute
 to executable size. Alignment, signature size and dead-code elimination
 mean executable deltas do not equal the notices delta exactly. Most unused
@@ -127,7 +132,8 @@ libsui subtree does not remove 27 packages from the notices.
 ### Method and reproducibility
 
 All experiments took place in an exported copy under `/tmp`; the registry
-source and this branch's manifests, lockfile and notices were left intact.
+source and the baseline repository's manifests, lockfile and notices were
+left intact.
 
 1. Export the baseline with `git archive` to a scratch directory, retaining
    `Cargo.lock`. Build both targets with:
@@ -188,8 +194,8 @@ libsui on macOS.
 
 An upstream split could make PE/icon and ELF support optional, gate the
 `ImageError` variant/imports too, and retain a Mach-O plus signer subset.
-That is a new upstream API/version and compatibility review, or a maintained
-fork, rather than the small manifest-only change authorized for this task.
+That requires a new upstream API/version and compatibility review, or a
+maintained fork, rather than a small manifest-only change.
 The scratch measurements quantify its possible benefit. No dependency
 change is implemented here.
 
@@ -249,7 +255,7 @@ load command. A follow-up needs malformed/truncated/overflow inputs,
 insufficient padding, absent/existing signature, supported command fixups,
 section reading and payloads across alignment/signing-page boundaries.
 Development and review would take several days, with continued macOS upkeep;
-it is outside this evaluation's authorization to implement it.
+implementation remains a separate project from this evaluation.
 
 ### 3. Keep and pin: recommended for the owner's decision
 
@@ -275,7 +281,7 @@ The following tests would catch common failures in a changed writer:
 | Test | What it detects |
 | --- | --- |
 | `bundle::binaries_are_validly_signed` | Requires `codesign --verify --strict --verbose=2` on macOS, including Intel. |
-| `bundle::standalone_binaries_behave_like_ferro_run` | Bundles every corpus program with expected output, moves it away from the build tree, compares output, stderr and exit status against both recordings and `ferro run`; catches startup, reader and relocation failures. |
+| `bundle::standalone_binaries_behave_like_ferro_run` | Bundles every corpus program with expected output, moves it away from the build tree, compares stdout against the recording, and stdout, stderr and exit status against `ferro run`; catches startup, reader and relocation failures. |
 | `difftest::the_corpus_passes_as_standalone_binaries` | Full standalone conformance, including deviations and expected refusals; also run explicitly with `cargo run -p ferro-difftest -- --target standalone`. |
 | `bundle::arguments_go_to_app_start`, `exit_codes_and_corrupt_binaries`, `default_output_is_the_file_stem` | Checks package discovery, argument routing and execution/exit behavior. The byte-corruption portion is deliberately disabled on macOS because it invalidates the signature. |
 | `standalone::tests::load_commands_must_end_before_the_first_section`, `malformed_mach_o_headers_are_errors` | Synthetic coverage for #132's overlap guard and malformed headers; these test the guard, not every writer fixup. |
@@ -286,7 +292,13 @@ The following tests would catch common failures in a changed writer:
 [CI workflow](../../.github/workflows/ci.yml) includes the bundle and standalone
 conformance integration tests on `macos-latest` (arm64) and `macos-15-intel`.
 Cross-target clippy checks compilation, not signing or execution.
-The PR records the local `scripts/check-all.sh --quick` result (static Linux
-build skipped for this docs-only change), native macOS conformance counts,
-and the manual workflow run URL/result. The scratch smoke checks do not
-claim full qualification of the measurement fork.
+At evaluation commit `9992719`, local `scripts/check-all.sh --quick` passed
+on Apple Silicon, with only the static Linux build skipped. Interpreter and
+standalone conformance each reported 358 tests: 339 pass, 0 fail,
+6 deviations, 13 pending, and no provisional outputs.
+The [manual CI run](https://github.com/FeliceMente/ferrobasic/actions/runs/45008215191)
+passed all nine jobs, including both native Mac architectures and the static
+Linux build skipped locally. The baseline and scratch `prices_map.bas`
+bundles also executed successfully and passed strict signature verification
+on arm64 and x86_64 through Rosetta. These smoke checks do not claim full
+qualification of the measurement fork.

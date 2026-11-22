@@ -807,11 +807,14 @@ evidence, while unchecked parts remain open:
       binaries: `THIRD-PARTY-NOTICES.txt`, generated with `cargo-about`
       (`tools/licenses/`), compiled into `ferro` and printed by
       `ferro licenses`.
-- [ ] Trim `libsui`'s dependencies: on macOS it brings in about 40 crates
-      in its dependency tree. The [macOS embedding evaluation](research/macos-embedding.md)
-      distinguishes unused PE/image/ELF support from the SHA-256 signer,
-      measures binary/notices savings, and finds no feature switches at
-      0.16.4. Recommendation for the owner's decision: keep it, pin exactly
-      to `=0.16.4`, and retain #132's header padding and overlap check.
+- [x] Evaluate whether `libsui`'s macOS dependencies can be trimmed through
+      features: 0.16.4 has no feature switches. The
+      [macOS embedding evaluation](research/macos-embedding.md) distinguishes
+      unused PE/image/ELF support from the SHA-256 signer and measures
+      binary/notices savings.
+- [ ] Decide whether to pin or replace `libsui`. The
+      [evaluation](research/macos-embedding.md) recommends keeping it,
+      pinning exactly to `=0.16.4`, and retaining #132's header padding and
+      overlap check; the owner's decision remains open.
 - [ ] Evaluate Cranelift for the REPL JIT and debug builds.
 - [ ] Evaluate `zig cc` / `cargo-zigbuild` as the cross-linker.
