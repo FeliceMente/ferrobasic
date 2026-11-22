@@ -12,12 +12,14 @@ seem to disagree, `AGENTS.md` wins.
 
 ## Which checks stand in for CI
 
-- A pull request into `dev` gets no CI (`docs/compatibility-testing.md`,
-  "CI"). `scripts/check-all.sh` is its CI: run it before every push, and
-  push only when every step passed. `--quick` (no static Linux build) is
-  enough for a push that changes only comments or docs, with no Rust,
-  workflow or build change; name the skipped step in the pull request. A
-  red step is fixed before the push, never left for a reviewer.
+- A pull request into `dev` gets the `check-all (Linux)` CI job
+  (`docs/compatibility-testing.md`, "CI"), which must be green before merge.
+  Still run `scripts/check-all.sh` locally before every push, and push only
+  when every step passed. CI is a second line of checking; Windows and macOS
+  runtime tests run only on release PRs or on demand. `--quick` (no static
+  Linux build) is enough for a push that changes only comments or docs,
+  with no Rust, workflow or build change; name the skipped step in the pull
+  request. A red step is fixed before the push, never left for a reviewer.
 - A fresh environment (a new container, say) has only its host's target.
   Before its first full `check-all.sh`, install the others:
 

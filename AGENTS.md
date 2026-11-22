@@ -125,9 +125,9 @@ cargo test -p ferro-project --test projects -- --ignored
    on Linux x86_64, the static Linux binary. A fresh environment first needs
    every target (`docs/compatibility-testing.md`, "Local checks"):
    `rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl`.
-   CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for
-   pull requests into `main` and on demand (see
-   `docs/compatibility-testing.md`, "CI").
+   CI (`.github/workflows/ci.yml`) runs the Linux check on every pull request
+   into `dev`, and the full Linux, Windows and macOS matrix on pull requests
+   into `main` and on demand (see `docs/compatibility-testing.md`, "CI").
 2. New behaviour has conformance tests; open questions and deviations are recorded.
    A change to what `ferro check` accepts or refuses is compared with
    `ferro-compare` against `origin/dev`, and the PR says what it changes;
