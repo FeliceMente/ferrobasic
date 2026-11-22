@@ -328,6 +328,9 @@ docs/comments-only pushes. Checker changes also need `ferro-compare`.
 and runs `scripts/check-all.sh` without flags or skips: format, cross-target
 Clippy, workspace tests, interpreter and standalone conformance, the recorder's
 dry run, the downloaded real-world corpus and the static Linux binary.
+CI never uses `--quick`, not even for docs-only PRs: `--quick` is only the
+local shortcut `AGENTS.md` allows for them, and CI then still covers the
+static Linux binary that a local `--quick` run skips.
 It must be green before merge. The Cargo registry and `target/` are cached
 with a key including `Cargo.lock`, the resolved Rust toolchain, the check
 scripts and the CI workflow. Cache reuse is limited to later runs of the
