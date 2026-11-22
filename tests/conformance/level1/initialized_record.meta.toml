@@ -1,6 +1,6 @@
 # Conformance test metadata. See docs/compatibility-testing.md.
 status = "pending-recording"
-ferro_rejects = true
+ferro_rejects = true  # FerroBASIC already refuses this program; awaiting recording
 level = 1
 features = ["initialization", "type"]
 

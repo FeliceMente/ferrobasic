@@ -142,9 +142,9 @@ every refusal of something still open is a "not known yet" diagnostic.
       10.70's `Initialized`/`NotInitialized`, from the sources
       [research/level0-semantics.md](research/level0-semantics.md) cites,
       in [research/level1-library.md](research/level1-library.md), with
-      eight pending probes in `tests/conformance/level1/` (single-module programs, which today's
-      recorder can record). Owner decision [OD5](#m2-owner-decisions) on
-      clock, time zone and environment.
+      eight pending probes in `tests/conformance/level1/` (single-module
+      programs, which today's recorder can record). Owner decision
+      [OD5](#m2-owner-decisions) on clock, time zone and environment.
 - [ ] **First probe batch** (task D), after B: the
       [questions for probes](spec/level1.md#questions-for-probes) as
       `pending-recording` tests (with `ferro_rejects` where FerroBASIC
