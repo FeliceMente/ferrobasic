@@ -91,8 +91,8 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       binaries. [Recording run 24](research/recording-run-24.md) (2026-11-21)
       records the 39 Level 0 probes of
       [#148](https://github.com/FeliceMente/ferrobasic/pull/148). Both
-      targets now report 366 tests: 339 passing, 6 documented deviations,
-      21 pending (13 Level 0 and 8 Level 1 library probes for run 25),
+      targets now report 369 tests: 339 passing, 6 documented deviations,
+      24 pending (16 Level 0 and 8 Level 1 library probes for run 25),
       no failures or provisional passes.
 
 The conformance gate and the M1 tooling items above are implemented.

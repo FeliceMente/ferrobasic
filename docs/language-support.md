@@ -91,7 +91,7 @@ The "not yet" rows come from the
 | `For … To … Step … Next`, `For Each … In … Next` | ✅ | over arrays, `List`, `Map.Keys`, `Map.Values`; a statically typed Object collection is a compile error, as in B4J (recording run 21: `for_each_over_non_collection_object`); `For` evaluates its step, limit and start in that order, once (tests `for_evaluation_order`, `for_limit_evaluated_once`). Mutating a Map during iteration: see the Map row. |
 | `Do While … Loop`, `Do Until … Loop` | ✅ | `Loop While`/`Loop Until` are syntax errors, as in B4X; test `do_loop_while` |
 | `Exit`, `Continue`, `Return` | ✅ | `Exit` also leaves a `Select` |
-| `Try … Catch … End Try`, `LastException` | ✅ | a `Catch` sees the innermost cause; JDK messages are *(open)*; tests `uncaught_error`, `list_sort_type_errors` |
+| `Try … Catch … End Try`, `LastException` | ✅ | a `Catch` sees the innermost cause; JDK messages are *(open)*: probes `exception_message_null_pointer`, `exception_message_class_cast`, `exception_message_illegal_argument`; tests `uncaught_error`, `list_sort_type_errors` |
 | Statements nested more than 1000 deep | ⚠️ | a compile error (D1); test `deep_nesting` |
 | `Sleep`, `Wait For`, resumable subs | ❌ | Level 2 |
 | Events (`Sub Name_Event`), `Sender` | ❌ | Level 1 |
@@ -127,7 +127,7 @@ The "not yet" rows come from the
 | `Map` | ✅ | all 13: `Initialize`, `IsInitialized`, `Put`, `Get`, `GetDefault`, `Remove`, `ContainsKey`, `Clear`, `Size`, `Keys`, `Values`, `GetKeyAt`, `GetValueAt`. Tests `map_members`, `map_order`, `map_get_key_at`. A List key compares by its contents (test `list_as_map_key`); a Map key by identity (test `map_as_map_key`). Setting an existing key during For Each completes and `Values` shows the new value, as in B4J (recording run 24: `map_keys_set_in_for_each`, `map_values_set_in_for_each`). Adding or removing a key during For Each raises `ConcurrentModificationException` at the next item, as in B4J (recording run 24: `map_keys_add_in_for_each`, `map_keys_remove_in_for_each`, `map_values_add_in_for_each`, `map_values_remove_in_for_each`). A key added at the last item and `Clear` follow the same rule *(open)*: probes `map_keys_add_at_last_in_for_each`, `map_keys_clear_in_for_each`. |
 | Arrays | ✅ | `Length` |
 | `Type` records | ✅ | `Initialize`, `IsInitialized`, fields |
-| `Exception` (`LastException`) | ✅ | `Message`, `IsInitialized`; the innermost cause of what was caught (test `list_sort_type_errors`) |
+| `Exception` (`LastException`) | ✅ | `Message`, `IsInitialized`; the innermost cause of what was caught (test `list_sort_type_errors`); JDK message details are *(open)*: probes `exception_message_null_pointer`, `exception_message_class_cast`, `exception_message_illegal_argument` |
 | `Bit` | 🟡 | 11 of the 13 in the reference: `And`, `Or`, `Xor`, `Not`, `ShiftLeft`, `ShiftRight`, `UnsignedShiftRight`, `ToHexString`, `ToBinaryString`, `ToOctalString`, `ParseInt`. Missing: `ArrayCopy`, `InputStreamToBytes`, and the `Long` variants the runtime also has (`AndLong`, `ParseLong`, `ToHexStringLong`…). Test `bit_functions`. |
 | `DateTime` | ❌ | Level 1; [library research](research/level1-library.md#datetime-parsing-and-formatting). Literal pattern validation *(open)*: `level1/datetime_invalid_patterns`; clock/zone probes await OD5. |
 | `Regex`, `Matcher` | ❌ | Level 1; [library research](research/level1-library.md#regex-methods), including Matcher2 and all Matcher members. Literal pattern validation *(open)*: `level1/regex_invalid_literal`. |

@@ -182,8 +182,6 @@ answer.
       ([public samples](spec/project-files.md#sources)).
 - [x] `LogDebug` prints nothing in release mode (recording:
       `level0/log_debug`).
-- [ ] Exact text of JDK-generated exception messages seen through
-      `LastException.Message` (index and number-parse errors), and which JDK.
 - [ ] Default JVM locale on the recording machine (affects `ToLowerCase` /
       `ToUpperCase` for Turkish, Azeri and Lithuanian locales). Recordings
       force `en-US`; the recorder also runs each test in the machine's own
@@ -201,7 +199,7 @@ answer.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently 21 pending probes (13 Level 0 and eight Level 1 library)
+There are currently 24 pending probes (16 Level 0 and eight Level 1 library)
 and no provisional corpus results;
 they await the owner's next Windows recording run after run 24.
 
@@ -259,12 +257,58 @@ they await the owner's next Windows recording run after run 24.
       when they are passed to `BA.switchObjectToInt` (recording:
       `level0/case_values_evaluated`), also when `Case Else` runs
       (recording: `level0/case_values_evaluated_else`).
-- [ ] Exact texts of JDK-generated messages (`ClassCastException`,
-      `IndexOutOfBoundsException`, …) seen through `LastException.Message`.
-      `SortType`'s wrapped `IllegalArgumentException` (an item of another
-      type) has no message in FerroBASIC; on JDK 21 `Field.get` says
-      `Can not get java.lang.Object field <class>.N on <class>`, naming B4J's
-      generated classes (a record's is `b4j.example.main$_point`).
+- [ ] JDK-generated exception messages seen through `LastException.Message`:
+      null dereferences, casts, indices, number parsing, reflection and the
+      other exception kinds raised by the interpreter. Run 25 must confirm
+      which JDK details B4J exposes after wrapping and selecting the innermost
+      cause. The recording JDK is OpenJDK 19; the exact text also depends on
+      the bytecode and class names B4J generates. `Message` is Java
+      `toString()`, not `getMessage()` ([research](research/level0-semantics.md#try--catch-and-lastexception-source-docs)),
+      so even a bare exception has a nonempty `Message` (its class name).
+      Dedicated message probes for indices and number parsing are still
+      needed; those cases remain part of this question.
+      Three pending probes log predicates, never the whole text:
+  - `level0/exception_message_null_pointer`: `GetType(Null)` dereferences
+    null. A JEP 358 message prints `kind=true`, `detail=true`, `because=true`;
+    a bare NPE prints `kind=true`, `detail=false`, `because=false`, as
+    FerroBASIC does meanwhile. Another detail prints `detail=true` but
+    `because=false`. [JEP 358](https://openjdk.org/jeps/358) describes the
+    failed operation and the null expression; OpenJDK 19's
+    [message builder](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/hotspot/share/interpreter/bytecodeUtils.cpp#L1172-L1179)
+    supplies `because`, and its
+    [default setting](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/hotspot/share/runtime/globals.hpp#L642-L644)
+    enables helpful messages. This applies to VM-generated NPEs, not every
+    explicitly constructed NPE.
+  - `level0/exception_message_class_cast`: the recorded failing conversion
+    of a 2D array held in Object to List (`list_from_2d_array_object`).
+    The JDK's [checkcast message](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/hotspot/share/runtime/sharedRuntime.cpp#L2127-L2166)
+    prints `kind=true`, `cast=true`, `loader=true`; FerroBASIC's shorter
+    text prints `kind=true`, `cast=true`, `loader=false`. A bare CCE prints
+    `kind=true`, `cast=false`, `loader=false`.
+  - `level0/exception_message_illegal_argument`: `SortType` with two record
+    types, one reflection error only (`list_sort_type_errors`, A/B).
+    JDK 19's [Field.get detail](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/jdk/internal/reflect/MethodHandleFieldAccessorImpl.java#L68-L86)
+    names the field and generated classes: `kind=true`, `detail=true`,
+    `field=true`. FerroBASIC leaves this cause bare: `kind=true`,
+    `detail=false`, `field=false`. Another detail gives `detail=true`,
+    `field=false`. A retained RuntimeException wrapper gives `kind=false`;
+    the direct probes also check the kind prefix. Every probe prints
+    `no exception` if its operation succeeds (the null probe also logs
+    the returned type).
+
+  Planned deviation (the next free ID; the old D8 is retired), only if
+  run 25 confirms a difference: original behaviour is the JDK's detail
+  message, exposed with the exception class through `LastException.Message`;
+  FerroBASIC supplies no detail for NPEs and reflection's
+  IllegalArgumentException, and its own or JDK-like text for
+  other kinds (some already match). The reason for accepting the difference
+  is that reproducing JDK wording requires its version-specific algorithms
+  and B4J's generated bytecode and class names. No interpreter messages
+  change while these probes are pending. The run-25 import must classify
+  each confirming probe as `deviation` and add it to
+  [deviations.md](deviations.md) with its recorded test; a matching probe
+  becomes `recorded`. No deviation row exists yet because no recording
+  settles these message predicates.
 - [x] Which fields `SortType` finds on the first item's class (jCore calls
       `getClass().getDeclaredField(name)`, then `setAccessible(true)`): a
       record has `IsInitialized` too, and sorts by it; a field a JDK class

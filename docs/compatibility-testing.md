@@ -109,11 +109,11 @@ file: its expected stdout, derived by hand from the sources in
 
 [Run 24](research/recording-run-24.md) (2026-11-21) recorded 123 tests:
 the 78 negative and 6 deviation tests, and 39 Level 0 probes. Both
-conformance targets report **366 tests, 339 passing, 6 documented
-deviations, 0 failures, 21 pending and 0 passes against provisional
+conformance targets report **369 tests, 339 passing, 6 documented
+deviations, 0 failures, 24 pending and 0 passes against provisional
 output**. Passes include negative tests rejected as expected. Of the 39
 probes, 19 were refused and are negative tests, and all 20 recordings
-pass. The 21 pending tests (13 Level 0 and eight
+pass. The 24 pending tests (16 Level 0 and eight
 [Level 1 library probes](research/level1-library.md)) await run 25. No
 `.provisional` files remain. The conformance gate is
 satisfied, and the first M1 [Language Server diagnostics](language-server.md)
