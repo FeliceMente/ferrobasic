@@ -5,6 +5,14 @@ command line may still change. Expected outputs are recorded from B4J
 10.70 (Windows 10, OpenJDK 19) by `tools/recorder`; a test B4J has not run
 yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
+## Unreleased
+
+### Testing and tools
+
+- Every pull request into `dev` runs the full `scripts/check-all.sh` on
+  Linux, including the static binary check; release PRs keep the six-platform
+  matrix (#146, task 3).
+
 ## 0.1.2 (pre-alpha)
 
 A patch release on the way to M2 (`docs/roadmap.md`), and the first with

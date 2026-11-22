@@ -136,6 +136,16 @@ is wrong, so a person classifies it, as for
 Until then it loads and counts as pending, like any other pending test. A
 build that fails without an error in a form the recorder reads is reported
 as "build failed", with the builder output and no metadata.
+`date` is the recorder machine's UTC date when the run that last wrote the
+table started. A run builds every test that is not `recorded` (and others
+only with `--rerecord` or `--only`), so a recorded test keeps the date of
+the run that recorded its `.expected`. A negative test, and a pending probe
+B4J refuses, is built again by every run, and each refusal rewrites its
+`date`: it moves forward with each run. Its hand-written comment, such as
+"refused it on 2026-11-02", keeps the first refusal, so the two dates
+answer different questions. A deviation test is built again too, but the
+recorder only saves its output in `deviation-outputs/` and never writes its
+`.meta.toml`.
 
 ## Where test programs come from
 
@@ -313,7 +323,21 @@ docs/comments-only pushes. Checker changes also need `ferro-compare`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on GitHub Actions:
+`.github/workflows/ci.yml` runs on GitHub Actions. Every pull request into
+`dev`, including docs-only changes, gets one `check-all (Linux)` job on
+`ubuntu-latest`. It installs all five targets listed under "Local checks"
+and runs `scripts/check-all.sh` without flags or skips: format, cross-target
+Clippy, workspace tests, interpreter and standalone conformance, the recorder's
+dry run, the downloaded real-world corpus and the static Linux binary.
+It must be green before merge. The Cargo registry and `target/` are cached
+with a key including `Cargo.lock`, the resolved Rust toolchain, the check
+scripts and the CI workflow. Cache reuse is limited to later runs of the
+same PR; there is no shared cache warmed by pushes to `dev`. Only this CI
+workflow uses the cache, never `release.yml`. A new push cancels the PR's
+previous CI run.
+
+Pull requests into `main` (releases) and on demand ("Run workflow") get the
+full checks:
 
 - `fmt` and `clippy` on Linux;
 - `clippy` and `cargo test --workspace` (every conformance test, in the
@@ -323,19 +347,11 @@ docs/comments-only pushes. Checker changes also need `ferro-compare`.
 - a static Linux build (`x86_64-unknown-linux-musl`), checked by bundling a
   program and running it.
 
-It runs on pull requests into `main` (releases) and on demand ("Run
-workflow"), not on pull requests into `dev`, which would then wait on six
-platforms at every push. Pull requests into `dev` are checked locally
-(AGENTS.md)
-with `scripts/check-all.sh`: `fmt`, `clippy` for its configured Linux,
-Windows and macOS targets,
-the tests, `ferro-difftest` on both targets, the recorder's dry run, the
-real-world corpus, and on Linux x86_64 the static Linux binary, with
-`scripts/check-static-linux.sh` as CI's static-linux job (`--offline` skips
-the corpus download, `--quick` the static binary; a skipped step is named
-at the end). Run the workflow by hand before a release, and after a change to
-platform-specific code (`ferro bundle`, files, the command line). A release
-is merged only with the workflow green.
+Run `scripts/check-all.sh` locally before every push, as described under
+"Local checks"; CI is a second line of checking. Windows and macOS runtime
+tests still run only on release PRs or on demand. Run the workflow by hand
+before a release, and after a change to platform-specific code (`ferro bundle`,
+files, the command line). A release is merged only with the workflow green.
 
 `.github/workflows/release.yml` ("Release binaries") runs when a release is
 published and builds that tag on the six native runners. Before packaging,
