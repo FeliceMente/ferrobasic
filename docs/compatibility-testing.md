@@ -319,8 +319,10 @@ and runs `scripts/check-all.sh` without flags or skips: format, cross-target
 Clippy, workspace tests, interpreter and standalone conformance, the recorder's
 dry run, the downloaded real-world corpus and the static Linux binary.
 It must be green before merge. The Cargo registry and `target/` are cached
-with a key including `Cargo.lock` and the resolved Rust toolchain; only this
-CI workflow uses the cache, never `release.yml`. A new push cancels the PR's
+with a key including `Cargo.lock`, the resolved Rust toolchain, the check
+scripts and the CI workflow. Cache reuse is limited to later runs of the
+same PR; there is no shared cache warmed by pushes to `dev`. Only this CI
+workflow uses the cache, never `release.yml`. A new push cancels the PR's
 previous CI run.
 
 Pull requests into `main` (releases) and on demand ("Run workflow") get the

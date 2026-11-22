@@ -1,6 +1,6 @@
 ---
 name: steward
-description: How to drive a FerroBASIC pull request to a mergeable state - checks before a push, review threads, CI on release pull requests, the recording workflow, and the release sequence. Read it before acting on CI or review events on a pull request of this repository, and before preparing a release.
+description: How to drive a FerroBASIC pull request to a mergeable state - checks before a push, review threads, Linux CI on dev pull requests, release CI, the recording workflow, and the release sequence. Read it before acting on CI or review events on a pull request of this repository, and before preparing a release.
 ---
 
 # Stewarding a FerroBASIC pull request

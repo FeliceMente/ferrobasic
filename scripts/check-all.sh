@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Every check a pull request into `dev` needs before it is pushed
-# (AGENTS.md, "Before closing a task"): CI runs only on pull requests into
-# `main`. Stops at the first failure, naming the step.
+# (AGENTS.md, "Before closing a task"). CI also runs this script on Linux
+# for every pull request into `dev`; release PRs into `main` run the full
+# platform matrix. Stops at the first failure, naming the step.
 #
 #   scripts/check-all.sh [--offline] [--quick]
 #
