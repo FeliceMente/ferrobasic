@@ -5,8 +5,8 @@ Evaluation for [#146, task 5](https://github.com/FeliceMente/ferrobasic/issues/1
 `3f09334ab7ba7ea33a99dd5fd15efd33059823ee`, FerroBASIC 0.1.3-dev.
 
 **Recommendation: option 3, keep libsui and pin it exactly to `=0.16.4`,
-retaining both protections from #132.** The pin is a proposed follow-up for
-the owner to approve; this evaluation changes only documentation. Option 1
+retaining both protections from #132.** The owner adopted option 3:
+`crates/cli/Cargo.toml` requires `libsui = "=0.16.4"`. Option 1
 is unavailable: the locked libsui has no Cargo features. Removing unused
 functionality requires an upstream change, a fork, or a replacement. The
 measured release executable saving is about 1%, insufficient by itself to
@@ -257,10 +257,10 @@ section reading and payloads across alignment/signing-page boundaries.
 Development and review would take several days, with continued macOS upkeep;
 implementation remains a separate project from this evaluation.
 
-### 3. Keep and pin: recommended for the owner's decision
+### 3. Keep and pin: adopted
 
 Change the existing macOS-only dependency from `"0.16.4"` (a compatible
-version range) to `"=0.16.4"` in a follow-up. `Cargo.lock` already selects
+version range) to `"=0.16.4"`. This is now done. `Cargo.lock` already selects
 0.16.4 with an archive checksum, so normal locked builds would not change.
 An exact requirement also prevents a later compatible 0.16.x release from
 being selected when updating/regenerating the lockfile. It does not pin
