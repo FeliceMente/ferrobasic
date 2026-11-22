@@ -11,7 +11,7 @@ yet is pending until the next recording run (`docs/compatibility-testing.md`).
 
 - Every pull request into `dev` runs the full `scripts/check-all.sh` on
   Linux, including the static binary check; release PRs keep the six-platform
-  matrix (#146, task 3).
+  matrix (#146).
 
 ## 0.1.2 (pre-alpha)
 
