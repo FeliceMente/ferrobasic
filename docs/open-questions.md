@@ -265,6 +265,8 @@ they await the owner's next Windows recording run after run 24.
       the bytecode and class names B4J generates. `Message` is Java
       `toString()`, not `getMessage()` ([research](research/level0-semantics.md#try--catch-and-lastexception-source-docs)),
       so even a bare exception has a nonempty `Message` (its class name).
+      Dedicated message probes for indices and number parsing are still
+      needed; those cases remain part of this question.
       Three pending probes log predicates, never the whole text:
   - `level0/exception_message_null_pointer`: `GetType(Null)` dereferences
     null. A JEP 358 message prints `kind=true`, `detail=true`, `because=true`;
@@ -307,10 +309,6 @@ they await the owner's next Windows recording run after run 24.
   [deviations.md](deviations.md) with its recorded test; a matching probe
   becomes `recorded`. No deviation row exists yet because no recording
   settles these message predicates.
-- [ ] Exact text of JDK-generated messages for index and number-parse errors
-      (`IndexOutOfBoundsException`, `NumberFormatException`) seen through
-      `LastException.Message`. No probe yet; the interpreter supplies its own
-      text.
 - [x] Which fields `SortType` finds on the first item's class (jCore calls
       `getClass().getDeclaredField(name)`, then `setAccessible(true)`): a
       record has `IsInitialized` too, and sorts by it; a field a JDK class
