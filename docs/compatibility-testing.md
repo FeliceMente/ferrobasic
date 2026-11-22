@@ -135,6 +135,16 @@ is wrong, so a person classifies it, as for
 Until then it loads and counts as pending, like any other pending test. A
 build that fails without an error in a form the recorder reads is reported
 as "build failed", with the builder output and no metadata.
+`date` is the recorder machine's UTC date when the run that last wrote the
+table started. A run builds every test that is not `recorded` (and others
+only with `--rerecord` or `--only`), so a recorded test keeps the date of
+the run that recorded its `.expected`. A negative test, and a pending probe
+B4J refuses, is built again by every run, and each refusal rewrites its
+`date`: it moves forward with each run. Its hand-written comment, such as
+"refused it on 2026-11-02", keeps the first refusal, so the two dates
+answer different questions. A deviation test is built again too, but the
+recorder only saves its output in `deviation-outputs/` and never writes its
+`.meta.toml`.
 
 ## Where test programs come from
 
