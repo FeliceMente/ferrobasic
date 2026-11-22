@@ -808,8 +808,10 @@ evidence, while unchecked parts remain open:
       (`tools/licenses/`), compiled into `ferro` and printed by
       `ferro licenses`.
 - [ ] Trim `libsui`'s dependencies: on macOS it brings in about 40 crates
-      (image decoding, compression, hashing) that `ferro` never uses. Check
-      whether its features can be turned off, which would shorten the
-      notices and shrink the macOS binary.
+      in its dependency tree. The [macOS embedding evaluation](research/macos-embedding.md)
+      distinguishes unused PE/image/ELF support from the SHA-256 signer,
+      measures binary/notices savings, and finds no feature switches at
+      0.16.4. Recommendation for the owner's decision: keep it, pin exactly
+      to `=0.16.4`, and retain #132's header padding and overlap check.
 - [ ] Evaluate Cranelift for the REPL JIT and debug builds.
 - [ ] Evaluate `zig cc` / `cargo-zigbuild` as the cross-linker.
