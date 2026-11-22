@@ -43,7 +43,11 @@ jobs:
           path: |
             ~/.cargo/registry
             target/
-          key: check-all-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', 'scripts/*.sh', '.github/workflows/ci.yml') }}
+          # The commit ends the key, so every run saves a fresh cache; a new
+          # run restores the newest one with the same prefix.
+          key: check-all-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', 'scripts/*.sh', '.github/workflows/ci.yml') }}-${{ github.sha }}
+          restore-keys: |
+            check-all-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', 'scripts/*.sh', '.github/workflows/ci.yml') }}-
       - name: Install all check-all targets
         run: rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl
       # ubuntu-latest provides curl and file. No flags: include the corpus
