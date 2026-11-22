@@ -199,7 +199,7 @@ answer.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently 13 pending probes and no provisional corpus results;
+There are currently 16 pending probes and no provisional corpus results;
 they await the owner's next Windows recording run after run 24.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:

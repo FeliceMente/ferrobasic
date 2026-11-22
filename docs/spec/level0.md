@@ -445,7 +445,10 @@ From lowest to highest precedence.
   cause. `LastException.Message` is `<kind>`, then `": "` and the message when
   there is one, e.g. `java.lang.RuntimeException: Object should first be
   initialized (List).`. It is observable output; messages produced by the JDK
-  itself (index and parse errors) are *(open)*.
+  itself (null dereferences, casts, indices, parsing and reflection) are
+  *(open)*: probes `exception_message_null_pointer`,
+  `exception_message_class_cast` and `exception_message_illegal_argument`
+  await recording run 25; see [open questions](../open-questions.md).
 - **Uncaught runtime errors**: the program stops. A diagnostic goes to stderr,
   with the error type and the source line, and the exit code is non-zero
   *(open: B4J's exact output and exit code)*. Only the error type and the fact
