@@ -812,9 +812,11 @@ evidence, while unchecked parts remain open:
       [macOS embedding evaluation](research/macos-embedding.md) distinguishes
       unused PE/image/ELF support from the SHA-256 signer and measures
       binary/notices savings.
-- [ ] Decide whether to pin or replace `libsui`. The
-      [evaluation](research/macos-embedding.md) recommends keeping it,
-      pinning exactly to `=0.16.4`, and retaining #132's header padding and
-      overlap check; the owner's decision remains open.
+- [x] Decide whether to pin or replace `libsui`: pinned. The owner chose
+      the [evaluation](research/macos-embedding.md)'s option 3: `libsui` is
+      kept, required exactly as `=0.16.4` (`crates/cli/Cargo.toml`), and
+      #132's header padding and overlap check stay. Replacing it is to be
+      revisited only if `libsui` upstream gains features, or if reducing
+      dependencies becomes a goal.
 - [ ] Evaluate Cranelift for the REPL JIT and debug builds.
 - [ ] Evaluate `zig cc` / `cargo-zigbuild` as the cross-linker.
