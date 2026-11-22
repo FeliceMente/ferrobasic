@@ -201,7 +201,8 @@ answer.
 
 Runtime questions investigated in `crates/mir` and `crates/interp`. Checked
 items link their evidence; unchecked parts still need investigation or probes.
-There are currently 13 pending probes and no provisional corpus results;
+There are currently 21 pending probes (13 Level 0 and eight Level 1 library)
+and no provisional corpus results;
 they await the owner's next Windows recording run after run 24.
 
 - [x] `For` evaluates the step, then the limit, then the start (recording:
@@ -779,6 +780,76 @@ evidence, while unchecked parts remain open:
       `962, 962, 963, 963, 963`).
       [Research](research/level0-semantics.md#built-in-members-source-docs-recorded).
       [OpenJDK 19 source](https://github.com/openjdk/jdk19u/blob/jdk-19.0.2%2B7/src/java.base/share/classes/java/lang/ConditionalSpecialCasing.java#L193-L221)
+
+## Level 1 library
+
+Sources, signatures and candidate output for each question are in
+[research/level1-library.md](research/level1-library.md). These eight
+single-module probes await recording run 25. FerroBASIC currently refuses
+all eight (`ferro_rejects = true`); no new acceptance is introduced here.
+Existing diagnostics are retained, including undeclared names for the new
+initialization keywords, rather than changed as part of research.
+
+- [ ] **L1L1 — BytesToString remainder sentinel.** Does nonzero StartOffset
+  with Length=-1 use the whole array length (bounds exception) or remaining
+  bytes? `level1/bytes_length_rest`: `bounds=true` versus `text=BC`;
+  `bounds=false` identifies another exception. FerroBASIC refuses the call
+  as a Level 1 conversion.
+- [ ] **L1L2 — Invalid byte decoding on OpenJDK 19.** The named-charset
+  String constructor leaves malformed input unspecified.
+  `level1/bytes_invalid_sequences`: replacement gives `utf8=65533,40` and
+  `ascii=65533`; dropping gives `utf8=40` and `ascii=`; exceptions print
+  `utf8=error` / `ascii=error`, other policies their UTF-16 units.
+  FerroBASIC refuses BytesToString as a Level 1 conversion.
+- [ ] **L1L3 — Array arguments to initialization keywords.** Does the
+  compiler pass a typed null array and an allocated empty array unchanged?
+  `level1/initialized_array`: `null=false,true; empty=true,false` if so;
+  `null=true,false` if all typed arrays count as initialized, the
+  corresponding `=error` if conversion raises, or no stdout for compiler
+  refusal. The settled empty default of a declaration is not reopened. FerroBASIC refuses Initialized and NotInitialized as
+  undeclared names.
+- [ ] **L1L4 — Wrapper arguments, direct and boxed.** Does an unset List
+  preserve its initialization state through both call paths?
+  `level1/initialized_wrapped_object`: `direct=false,true` and
+  `boxed=false,true` if preserved; `true,false` if lost, or the
+  corresponding `=error` if unwrapping raises. A compiler refusal has
+  no stdout. FerroBASIC refuses both keyword names.
+- [ ] **L1L5 — Generated record initialization field.** Do the keywords
+  inspect a Type record passed as Object, before/after Initialize?
+  `level1/initialized_record`: `unset=false,true; ready=true,false` for
+  field reflection, `unset=true,false; ready=true,false` for null-only
+  testing; the corresponding `=error` for runtime failure, or no stdout
+  for compiler refusal. FerroBASIC refuses both keyword names.
+- [ ] **L1L6 — Invalid literal regex validation stage.**
+  `level1/regex_invalid_literal`: runtime PatternSyntaxException prints
+  `pattern=true`; compile-time refusal has no stdout; unvalidated calls
+  print a Boolean then `accepted`; another exception prints `pattern=false`.
+  Runtime source cannot establish compiler validation. FerroBASIC refuses
+  Regex as a Level 1 object.
+- [ ] **L1L7 — Invalid literal date/time pattern validation stage.**
+  `level1/datetime_invalid_patterns`: runtime setter validation prints
+  `date=true; time=true`; compiler refusal has no stdout; accepted setters
+  print `date=accepted` / `time=accepted`, other exceptions the corresponding
+  `=false`. No clock or time zone is used. FerroBASIC refuses DateTime as
+  a Level 1 object.
+- [ ] **L1L8 — Smart date/time Object operand binding.**
+  `level1/smart_datetime_object`: numeric text in Object gives
+  `d=true; t=true; dt=true` if the runtime helper performs coercion;
+  a runtime error prints `error`, differing semantics the corresponding
+  `false`, compiler refusal no stdout. Literal-only patterns make output
+  independent of locale and zone. FerroBASIC refuses DateTime and all
+  three formatters at Level 0.
+- [ ] **L1L9 — DateTime machine/clock contract, waiting for OD5.** Now,
+  TimeParse's today/midnight, default time zone, DST gap/overlap behavior,
+  locale patterns and the time-dependent two-digit-year window. No probe
+  until the owner settles the recording environment/output contract.
+  FerroBASIC currently refuses DateTime.
+- [ ] **L1L10 — Process environment contract, waiting for OD5.** Which
+  variable may be assumed set or absent, initial system properties and
+  environment-name case across machines. No probe reads machine variables
+  or assumes an arbitrary property is absent. Ordinary property set/read
+  and IsDevTool rules are source-backed; FerroBASIC refuses these members
+  as Level 1 process environment.
 
 ## Porting
 
