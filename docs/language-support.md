@@ -112,7 +112,7 @@ The "not yet" rows come from the
 | Literals `"…"`, also over several lines; `QUOTE`, `CRLF`, `TAB` | ✅ | no escape sequences, as in B4X; [level0.md](spec/level0.md#strings) |
 | Smart strings `$"…${x}…"$` | ✅ | test `smart_string_format`. There is no escape for a literal `${` or `"$`, as in B4J: a `\` or `$` before `${` is an ordinary character, doubled braces and anything before `"$` are refused, and concatenation inside a placeholder writes the delimiters (recording run 24: `smart_literal_open_backslash`, `smart_literal_open_dollars`, `smart_literal_open_concat`, `smart_literal_close_concat`; `smart_literal_open_double`, `smart_literal_close_double`, `smart_literal_close_backslash`, `smart_literal_close_dollars`, negative). |
 | Formatters `$1.2{x}` (number) and `$xml{x}` | ✅ | |
-| Formatters `$date{}`, `$time{}`, `$datetime{}` | ❌ | Level 1 (they need `DateTime`) |
+| Formatters `$date{}`, `$time{}`, `$datetime{}` | ❌ | Level 1 (they need `DateTime`); [library research](research/level1-library.md#smart-string-datetime-formatters). Object operands *(open)*: `level1/smart_datetime_object`. |
 | `NumberFormat`, `NumberFormat2` | ⚠️ | some doubles above 2^63 and subnormals differ in their 16th–17th digits (D3); tests `number_format_d3`, `java_exact_numbers` |
 | Number to string conversion (`Log(2.7)`, `"" & x`) | ✅ | tests `number_to_string`, `java_exact_numbers` |
 | `SmartStringFormatter` called directly | ❌ | not assigned to a level yet; today it is an undeclared name |
@@ -129,8 +129,8 @@ The "not yet" rows come from the
 | `Type` records | ✅ | `Initialize`, `IsInitialized`, fields |
 | `Exception` (`LastException`) | ✅ | `Message`, `IsInitialized`; the innermost cause of what was caught (test `list_sort_type_errors`); JDK message details are *(open)*: probes `exception_message_null_pointer`, `exception_message_class_cast`, `exception_message_illegal_argument` |
 | `Bit` | 🟡 | 11 of the 13 in the reference: `And`, `Or`, `Xor`, `Not`, `ShiftLeft`, `ShiftRight`, `UnsignedShiftRight`, `ToHexString`, `ToBinaryString`, `ToOctalString`, `ParseInt`. Missing: `ArrayCopy`, `InputStreamToBytes`, and the `Long` variants the runtime also has (`AndLong`, `ParseLong`, `ToHexStringLong`…). Test `bit_functions`. |
-| `DateTime` | ❌ | Level 1 |
-| `Regex` | ❌ | Level 1 |
+| `DateTime` | ❌ | Level 1; [library research](research/level1-library.md#datetime-parsing-and-formatting). Literal pattern validation *(open)*: `level1/datetime_invalid_patterns`; clock/zone probes await OD5. |
+| `Regex`, `Matcher` | ❌ | Level 1; [library research](research/level1-library.md#regex-methods), including Matcher2 and all Matcher members. Literal pattern validation *(open)*: `level1/regex_invalid_literal`. |
 | `Timer` | ❌ | Level 1 (needs events) |
 | `File`, streams, `TextReader`/`TextWriter` | ❌ | Level 3 |
 
@@ -147,8 +147,9 @@ The "not yet" rows come from the
 | Types | ⚠️ | `GetType` gives B4J's names for primitives, boxes, `String`, `List`, `Map` and records (test `record_get_type`); other values differ *(open)* |
 | Program | 🟡 | `ExitApplication`, `ExitApplication2`. Missing: `StartMessageLoop`, `StopMessageLoop` (Level 2). Test `exit_code`. |
 | Errors | 🟡 | `LastException`. Missing: `ThrowException` (not assigned to a level yet). |
-| Conversions | ❌ | `BytesToString`, `CharsToString`: Level 1 |
-| Process environment | ❌ | `GetEnvironmentVariable`, `GetSystemProperty`, `SetSystemProperty`, `IsDevTool`: Level 1 |
+| Conversions | ❌ | `BytesToString`, `CharsToString`: Level 1; [library research](research/level1-library.md#bytestostring-and-charstostring). Sentinel length and invalid decoding *(open)*: `level1/bytes_length_rest`, `level1/bytes_invalid_sequences`. |
+| Process environment | ❌ | `GetEnvironmentVariable`, `GetSystemProperty`, `SetSystemProperty`, `IsDevTool`: Level 1; [library research](research/level1-library.md#environment-system-properties-and-product-identity). Machine-dependent probes await OD5. |
+| Initialization keywords | ❌ | `Initialized`, `NotInitialized`: Level 1; [library research](research/level1-library.md#initialized-and-notinitialized). Argument binding *(open)*: `level1/initialized_array`, `level1/initialized_wrapped_object`, `level1/initialized_record`. |
 | Dynamic calls and events | ❌ | `CallSub*`, `CallSubDelayed*`, `SubExists` (Level 2), `Sender`, `Me` (Level 1) |
 | Resumable subs | ❌ | `Sleep`, `Wait For`: Level 2 |
 | UI | ❌ | `Density`, `DipToCurrent`: Level 4 |

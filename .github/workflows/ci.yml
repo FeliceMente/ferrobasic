@@ -1,15 +1,15 @@
 # Continuous integration (docs/compatibility-testing.md, "CI").
 #
-# Runs on pull requests into `main` (releases) and on demand ("Run
-# workflow"), not on every pull request into `dev`, which would wait on
-# six platforms at every push. Pull requests into `dev` are checked
-# locally (AGENTS.md, "Before closing a task").
+# Every pull request into `dev` runs scripts/check-all.sh on Linux.
+# Pull requests into `main` (releases) and on demand ("Run workflow")
+# run the full six-platform matrix and the other release checks.
+# Local checks are still required before every push (AGENTS.md).
 
 name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
@@ -24,17 +24,48 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
-  lint:
-    name: fmt and clippy
+  check-all:
+    name: check-all (Linux)
+    if: github.event_name == 'pull_request' && github.base_ref == 'dev'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      # rust-toolchain.toml selects stable and its components. Include the
+      # resolved compiler in the cache key, since stable moves over time.
+      - name: Identify Rust toolchain
+        id: toolchain
+        run: echo "hash=$(rustc -vV | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache Cargo registry and build output
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            target/
+          key: check-all-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', 'scripts/*.sh', '.github/workflows/ci.yml') }}
+      - name: Install all check-all targets
+        run: rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl
+      # ubuntu-latest provides curl and file. No flags: include the corpus
+      # download and the static Linux build, bundle and recorded smoke test.
+      - name: Run every check
+        run: scripts/check-all.sh
+
+  lint:
+    name: fmt and clippy
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
       # rust-toolchain.toml selects the toolchain and its components.
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     name: test (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
     strategy:
       fail-fast: false
       matrix:
@@ -46,14 +77,19 @@ jobs:
       # Keep line endings as committed: test data files are read byte for byte.
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
   real-world-corpus:
     name: real-world corpus
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
       # Downloads the projects tests/corpus/corpus.toml references, checking
       # their SHA-256, then runs the tests that need them.
       - run: cargo run -p ferro-corpus --bin ferro-corpus-fetch
@@ -62,9 +98,12 @@ jobs:
 
   static-linux:
     name: static Linux binary (musl)
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
       - run: rustup target add x86_64-unknown-linux-musl
       # The build, bundle and checks, shared with scripts/check-all.sh.
       - run: scripts/check-static-linux.sh

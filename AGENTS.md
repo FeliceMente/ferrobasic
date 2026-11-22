@@ -26,9 +26,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   The REPL walkthrough is in `docs/tutorial.md`, section 9.
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
-  run. Recording run 24 is imported: 361 conformance tests, 339 passing,
-  6 deviations, 16 pending and none provisional. The 16 pending tests are
-  probes for the next run. See
+  run. Recording run 24 is imported. With the Level 1 library probes, there are
+  369 conformance tests: 339 passing, 6 deviations, 24 pending and none
+  provisional. The 24 pending tests await the next recording run (25). See
   `docs/roadmap.md`.
 
 ## Read before working
@@ -44,6 +44,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - `docs/spec/cli.md` — `ferro check/run/bundle/repl/lsp`, planned commands, exit codes, standalone binaries.
 - `docs/spec/project-files.md` — project (`.b4j`) and module (`.bas`) file headers, and their sources.
 - `docs/research/level0-semantics.md` — where each Level 0 rule comes from.
+- `docs/research/level1-library.md` — Level 1 library sources and pending probes.
 - `docs/compatibility-testing.md` — how compatibility is measured.
 - `docs/open-questions.md` — unresolved B4X semantics. Check here before guessing.
 
@@ -125,9 +126,9 @@ cargo test -p ferro-project --test projects -- --ignored
    on Linux x86_64, the static Linux binary. A fresh environment first needs
    every target (`docs/compatibility-testing.md`, "Local checks"):
    `rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl`.
-   CI (`.github/workflows/ci.yml`) runs on Linux, Windows and macOS only for
-   pull requests into `main` and on demand (see
-   `docs/compatibility-testing.md`, "CI").
+   CI (`.github/workflows/ci.yml`) runs the Linux check on every pull request
+   into `dev`, and the full Linux, Windows and macOS matrix on pull requests
+   into `main` and on demand (see `docs/compatibility-testing.md`, "CI").
 2. New behaviour has conformance tests; open questions and deviations are recorded.
    A change to what `ferro check` accepts or refuses is compared with
    `ferro-compare` against `origin/dev`, and the PR says what it changes;
