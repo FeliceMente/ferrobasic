@@ -100,6 +100,10 @@ seem to disagree, `AGENTS.md` wins.
   `docs/open-questions.md`, and update the spec, `docs/language-support.md`,
   `docs/research/level0-semantics.md` and the pending count in
   `docs/roadmap.md`.
+- A refusal comment names the first refusal, as in "first refused by B4J
+  10.70 in recording run 14 (2026-11-02)": every later run that B4J
+  refuses rewrites `[recording] date`, so the two give different dates
+  (`docs/compatibility-testing.md`). Existing comments stay as they are.
 
 ## After a pull request is merged
 
