@@ -1,0 +1,12 @@
+# Conformance test metadata. See docs/compatibility-testing.md.
+status = "pending-recording"
+ferro_rejects = true
+level = 1
+features = ["regex"]
+
+# Recording run 25; filled in by tools/recorder.
+# [recording]
+# product = "B4J"
+# version = ""
+# platform = ""
+# date = ""

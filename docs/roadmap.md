@@ -91,9 +91,9 @@ The tooling plan is in [architecture.md](architecture.md#tooling-repl-lsp-dap-vs
       binaries. [Recording run 24](research/recording-run-24.md) (2026-11-21)
       records the 39 Level 0 probes of
       [#148](https://github.com/FeliceMente/ferrobasic/pull/148). Both
-      targets now report 358 tests: 339 passing, 6 documented deviations,
-      13 pending (probes for the next run), no failures or provisional
-      passes.
+      targets now report 366 tests: 339 passing, 6 documented deviations,
+      21 pending (13 Level 0 and 8 Level 1 library probes for run 25),
+      no failures or provisional passes.
 
 The conformance gate and the M1 tooling items above are implemented.
 REPL history and line editing are implemented with bounded in-memory multiline
@@ -141,8 +141,8 @@ every refusal of something still open is a "not known yet" diagnostic.
       `GetSystemProperty`, `SetSystemProperty`, `IsDevTool`, and jCore
       10.70's `Initialized`/`NotInitialized`, from the sources
       [research/level0-semantics.md](research/level0-semantics.md) cites,
-      in a new `research/level1-library.md`, with pending probes in
-      `tests/conformance/level1/` (single-module programs, which today's
+      in [research/level1-library.md](research/level1-library.md), with
+      eight pending probes in `tests/conformance/level1/` (single-module programs, which today's
       recorder can record). Owner decision [OD5](#m2-owner-decisions) on
       clock, time zone and environment.
 - [ ] **First probe batch** (task D), after B: the

@@ -26,9 +26,9 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
   The REPL walkthrough is in `docs/tutorial.md`, section 9.
   The Level 0 corpus is recorded with B4J 10.70 on a Windows
   machine by `tools/recorder`; new pending tests go into the next recording
-  run. Recording run 24 is imported: 358 conformance tests, 339 passing,
-  6 deviations, 13 pending and none provisional. The 13 pending tests are
-  probes for the next run. See
+  run. Recording run 24 is imported. With the Level 1 library probes, there are
+  366 conformance tests: 339 passing, 6 deviations, 21 pending and none
+  provisional. The 21 pending tests await the next recording run (25). See
   `docs/roadmap.md`.
 
 ## Read before working
@@ -44,6 +44,7 @@ every milestone. Do not add a CLAUDE.md, or Claude Code will stop reading this f
 - `docs/spec/cli.md` — `ferro check/run/bundle/repl/lsp`, planned commands, exit codes, standalone binaries.
 - `docs/spec/project-files.md` — project (`.b4j`) and module (`.bas`) file headers, and their sources.
 - `docs/research/level0-semantics.md` — where each Level 0 rule comes from.
+- `docs/research/level1-library.md` — Level 1 library sources and pending probes.
 - `docs/compatibility-testing.md` — how compatibility is measured.
 - `docs/open-questions.md` — unresolved B4X semantics. Check here before guessing.
 
